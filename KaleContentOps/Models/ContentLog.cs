@@ -11,6 +11,9 @@ public class ContentLog
     [MaxLength(100)]
     public string VideoId { get; set; } = string.Empty;
 
+    // TikTok shop context - nullable to support existing single-shop data
+    public long? TikTokShopId { get; set; }
+
     public DateTime? VideoPostTime { get; set; }
 
     [MaxLength(500)]
@@ -51,6 +54,8 @@ public class ContentLog
     public ProductionMethod? ProductionMethod { get; set; }
 
     public MasterPic? Pic { get; set; }
+
+    public TikTokShop? TikTokShop { get; set; }
 
     public ICollection<ContentMetric> Metrics { get; set; }
         = new List<ContentMetric>();

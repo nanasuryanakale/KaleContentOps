@@ -2,7 +2,107 @@
     ViewData["Title"] = "Home Page";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<link rel="stylesheet" href="~/css/home.css" />
+
+<div class="dashboard-page">
+
+    <div class="page-header">
+        <div>
+            <h1>Dashboard</h1>
+            <p>Ringkasan performa Content Ops</p>
+        </div>
+    </div>
+
+    <div class="kpi-grid">
+
+        <div class="kpi-card">
+            <div class="kpi-label">TOTAL CONTENT</div>
+            <div class="kpi-value">71</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-label">VIDEO VIEWS</div>
+            <div class="kpi-value">154.209</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-label">REACH</div>
+            <div class="kpi-value">70.334</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-label">AI PRODUCE</div>
+            <div class="kpi-value">7</div>
+        </div>
+
+    </div>
+
+    <div class="dashboard-grid">
+
+        <section class="dashboard-card">
+            <h2>Content by Platform</h2>
+
+            <div class="platform-row">
+                <span>TikTok</span>
+                <strong>71 videos</strong>
+            </div>
+
+            <div class="platform-row">
+                <span>Instagram</span>
+                <strong>Coming Soon</strong>
+            </div>
+
+            <div class="platform-row">
+                <span>Shopee</span>
+                <strong>Coming Soon</strong>
+            </div>
+        </section>
+
+        <section class="dashboard-card">
+            <h2>Content Classification</h2>
+
+            <div class="summary-row">
+                <span>Keranjang Kuning</span>
+                <strong>32</strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Non-KK</span>
+                <strong>35</strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Auto GMV Live</span>
+                <strong>4</strong>
+            </div>
+        </section>
+
+    </div>
+
+    <section class="dashboard-card">
+        <h2>Quick Actions</h2>
+
+        <div class="quick-actions">
+            <a asp-controller="ContentLog"
+               asp-action="Index"
+               class="quick-action">
+                Content Log
+            </a>
+
+            <a href="#" class="quick-action">
+                Daily Summary
+            </a>
+
+            <a href="#" class="quick-action">
+                Winning Content
+            </a>
+
+            <a asp-controller="MasterPic"
+               asp-action="Index"
+               class="quick-action">
+                Master PIC
+            </a>
+        </div>
+    </section>
+
 </div>

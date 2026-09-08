@@ -14,12 +14,11 @@
     <div class="topbar">
         <div class="topbar-left">
             <span class="app-title">KALE Content Ops</span>
-            <span class="app-sub">Content is user-generated and unverified.</span>
         </div>
-        <div class="topbar-right">
+        @* <div class="topbar-right">
             <button class="btn btn-sm btn-outline-secondary">Share</button>
             <button class="btn btn-sm btn-outline-secondary">Sign in</button>
-        </div>
+        </div> *@
     </div>
 
     @await Html.PartialAsync("_Sidebar")
@@ -32,8 +31,7 @@
 
     <footer class="app-footer">
         <div class="container-fluid">
-            <div class="footer-left">&copy; 2026 - KaleContentOps</div>
-            <div class="footer-right"><a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a></div>
+            <div class="footer-left text-center">&copy; 2026 - KaleContentOps</div>
         </div>
     </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>

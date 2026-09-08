@@ -15,14 +15,16 @@ public class AppDbContext : DbContext
     public DbSet<MasterPic> MasterPics => Set<MasterPic>();
     public DbSet<ContentType> ContentTypes => Set<ContentType>();
     public DbSet<ProductionMethod> ProductionMethods => Set<ProductionMethod>();
+    public DbSet<TikTokShop> TikTokShops => Set<TikTokShop>();
+    public DbSet<TikTokCredential> TikTokCredentials => Set<TikTokCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // ContentLog
+        // ContentLog: ensure uniqueness per shop + video
         modelBuilder.Entity<ContentLog>()
-            .HasIndex(x => x.VideoId)
+            .HasIndex(x => new { x.TikTokShopId, x.VideoId })
             .IsUnique();
 
         modelBuilder.Entity<ContentLog>()

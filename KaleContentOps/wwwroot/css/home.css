@@ -1,0 +1,190 @@
+/* Home page styles for Dashboard */
+:root{
+  --bg:#061022; /* deep navy */
+  --surface:rgba(255,255,255,0.02);
+  --card:#0f1b26; /* card background */
+  --accent:#2aa6ff; /* bright accent */
+  --muted:#9aa6b2;
+  --text:#e6eef6;
+  --radius:10px;
+}
+
+/* Base page */
+.dashboard-page{
+  color:var(--text);
+  padding:36px 48px;
+  min-height:calc(100vh - 80px);
+  background:linear-gradient(180deg, rgba(6,16,34,0.6), transparent 30%);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+.page-header{
+  display:flex;
+  align-items:center;
+  gap:28px;
+  margin-bottom:28px;
+}
+
+.page-header h1{
+  font-size:42px;
+  margin:0;
+  font-weight:700;
+  letter-spacing:-0.02em;
+}
+
+.page-header p{
+  margin:0;
+  color:var(--muted);
+  font-size:15px;
+}
+
+/* KPI grid */
+.kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:18px;
+  margin-bottom:28px;
+}
+
+.kpi-card{
+  background:var(--card);
+  padding:18px 20px;
+  border-radius:var(--radius);
+  box-shadow: 0 4px 18px rgba(2,8,18,0.4);
+  border:1px solid rgba(255,255,255,0.02);
+}
+
+.kpi-label{
+  font-size:12px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:0.14em;
+}
+
+.kpi-value{
+  font-size:24px;
+  font-weight:700;
+  margin-top:8px;
+}
+
+/* Dashboard main grid */
+.dashboard-grid{
+  display:grid;
+  grid-template-columns:2fr 1fr;
+  gap:20px;
+  align-items:start;
+}
+
+.dashboard-card{
+  background:var(--card);
+  padding:22px;
+  border-radius:var(--radius);
+  box-shadow: 0 6px 28px rgba(3,8,20,0.45);
+  border:1px solid rgba(255,255,255,0.03);
+}
+
+.dashboard-card h2{
+  margin-top:0;
+  font-size:28px;
+  color:var(--text);
+  margin-bottom:12px;
+}
+
+.platform-row,
+.summary-row{
+  display:flex;
+  justify-content:space-between;
+  padding:8px 0;
+  border-bottom:1px dashed rgba(255,255,255,0.02);
+}
+
+.platform-row span,
+.summary-row span{
+  color:var(--muted);
+}
+
+.platform-row strong,
+.summary-row strong{
+  color:var(--text);
+}
+
+/* Quick actions */
+.quick-actions{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.quick-action{
+  display:inline-block;
+  padding:10px 14px;
+  background:linear-gradient(90deg, rgba(42,166,255,0.12), rgba(42,166,255,0.04));
+  color:var(--accent);
+  border-radius:8px;
+  text-decoration:none;
+  border:1px solid rgba(42,166,255,0.08);
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+
+.quick-action:hover{
+  transform:translateY(-3px);
+  box-shadow:0 8px 20px rgba(42,166,255,0.08);
+}
+
+/* Small screens */
+@media (max-width:900px){
+  .kpi-grid{ grid-template-columns:repeat(2, 1fr); }
+  .dashboard-grid{ grid-template-columns:1fr; }
+  .page-header h1{ font-size:34px; }
+}
+
+@media (max-width:480px){
+  .dashboard-page{ padding:20px; }
+  .kpi-grid{ grid-template-columns:1fr; }
+  .page-header h1{ font-size:28px; }
+}
+
+/* Utility */
+a.quick-action:active{ transform:translateY(-1px); }
+
+/* Provide some spacing at the bottom */
+.dashboard-page > section:last-child, .dashboard-page > .dashboard-grid + section{
+  margin-top:18px;
+}
+
+/* Sidebar chart icon for menu items (use class "menu-chart" on the anchor or list item)
+   Example markup: <a href="#" class="nav-link menu-chart">Daily</a>
+   The SVG uses currentColor so icon color follows the link color (muted -> accent on hover)
+*/
+.menu-chart{
+  position:relative;
+  padding-left:34px; /* room for the icon */
+  display:inline-flex;
+  align-items:center;
+  color:var(--muted);
+  text-decoration:none;
+  transition: color .12s ease;
+}
+
+.menu-chart::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:50%;
+  transform:translateY(-50%);
+  width:18px;
+  height:18px;
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:contain;
+  /* SVG uses currentColor for stroke/fill so it matches the .menu-chart color */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><polyline points='3 14 9 8 13 11 21 6' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/><circle cx='9' cy='8' r='1.4' fill='currentColor'/><circle cx='13' cy='11' r='1.4' fill='currentColor'/></svg>");
+  transition:transform .12s ease, opacity .12s ease;
+  opacity:0.95;
+}
+
+.menu-chart:hover{ color:var(--accent); }
+.menu-chart:hover::before{ transform:translateY(-50%) scale(1.06); opacity:1; }
+
+/* Smaller size variant */
+.menu-chart.sm::before{ width:14px; height:14px; }
