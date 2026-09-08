@@ -1,0 +1,44 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - KaleContentOps</title>
+    <script type="importmap"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/layout.css" asp-append-version="true" />
+    @await RenderSectionAsync("Styles", required: false)
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <span class="app-title">KALE Content Ops</span>
+            <span class="app-sub">Content is user-generated and unverified.</span>
+        </div>
+        <div class="topbar-right">
+            <button class="btn btn-sm btn-outline-secondary">Share</button>
+            <button class="btn btn-sm btn-outline-secondary">Sign in</button>
+        </div>
+    </div>
+
+    @await Html.PartialAsync("_Sidebar")
+
+    <main class="app-main">
+        <div class="container-fluid">
+            @RenderBody()
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <div class="container-fluid">
+            <div class="footer-left">&copy; 2026 - KaleContentOps</div>
+            <div class="footer-right"><a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a></div>
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

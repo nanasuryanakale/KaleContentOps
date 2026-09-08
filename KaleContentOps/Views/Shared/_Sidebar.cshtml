@@ -1,0 +1,32 @@
+@* Reusable sidebar partial *@
+<aside class="app-sidebar">
+    <div class="brand">
+        <div class="brand-icon">K</div>
+        <div class="brand-text">
+            <div class="title">KALE Content Ops</div>
+            <div class="subtitle">TikTok · Content Log</div>
+        </div>
+    </div>
+
+    <nav class="menu">
+        <div class="menu-section">TIKTOK CONTENT</div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" asp-controller="ContentLog" asp-action="Index">Content Log</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="#">Daily Summary</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">Targets</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">Winning Content</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">Team Performance</a></li>
+        </ul>
+
+        <div class="menu-section">CREATIVE PERFORMANCE</div>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link" href="#">Daily</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">Weekly</a></li>
+            <li class="nav-item"><a class="nav-link" href="#">Monthly</a></li>
+        </ul>
+    </nav>
+
+    @await Html.PartialAsync("_Footer")
+</aside>

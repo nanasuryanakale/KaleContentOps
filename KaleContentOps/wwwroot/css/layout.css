@@ -1,0 +1,39 @@
+/* Layout styles for sidebar + topbar design (mockup-inspired) */
+:root{
+  --bg:#0b1220;
+  --sidebar:#0f1724;
+  --muted:#9aa4b2;
+  --accent:#5b7fff;
+  --text:#dce6f2;
+}
+
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);margin:0;font-family:Segoe UI,system-ui,Arial,Helvetica,sans-serif}
+
+.topbar{height:44px;background:#14181c;color:#fff;padding:6px 16px;position:fixed;left:0;right:0;top:0;z-index:1050;display:flex;align-items:center;justify-content:space-between}
+.topbar .app-title{font-weight:600;margin-right:12px}
+.topbar .app-sub{color:var(--muted);font-size:13px}
+
+.app-sidebar{position:fixed;top:44px;left:0;bottom:0;width:240px;background:var(--sidebar);padding:20px 16px;overflow:auto;border-right:1px solid rgba(255,255,255,0.03)}
+.app-sidebar .brand{display:flex;gap:10px;align-items:center;margin-bottom:18px}
+.brand-icon{width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#7c6cff,#5b7fff);display:flex;align-items:center;justify-content:center;font-weight:700;color:white}
+.brand-text .title{font-weight:700}
+.brand-text .subtitle{font-size:13px;color:var(--muted)}
+
+.menu-section{margin-top:12px;margin-bottom:8px;color:var(--muted);font-size:12px;font-weight:600}
+.app-sidebar .nav-link{color:#b7c2d6;padding:8px 10px;border-radius:8px;margin-bottom:6px}
+.app-sidebar .nav-link.active{background:rgba(91,127,255,0.12);border:1px solid rgba(91,127,255,0.12);color:var(--text)}
+.app-sidebar .nav-link:hover{background:rgba(255,255,255,0.03);color:var(--text)}
+
+.sidebar-footer{position:relative;padding-top:18px;margin-top:12px;border-top:1px solid rgba(255,255,255,0.02);color:var(--muted);font-size:13px}
+
+.app-main{margin-left:240px;padding-top:64px;min-height:100vh;padding-left:24px;padding-right:24px;padding-bottom:80px}
+
+.app-footer{position:fixed;left:240px;right:0;bottom:0;height:56px;background:transparent;color:var(--muted);display:flex;align-items:center;padding:12px 24px;border-top:1px solid rgba(255,255,255,0.02)}
+.app-footer .footer-left{flex:1}
+
+@media (max-width:767px){
+  .app-sidebar{position:static;width:100%;height:auto;top:auto;border-right:none}
+  .app-main{margin-left:0;padding-top:120px}
+  .app-footer{left:0}
+}

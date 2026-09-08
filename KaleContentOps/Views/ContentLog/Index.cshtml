@@ -1,0 +1,167 @@
+@model IEnumerable<KaleContentOps.Models.ContentLog>
+@{
+    ViewData["Title"] = "Content Log";
+    var search = Context.Request.Query["search"].ToString();
+    var selectedContentType = Context.Request.Query["contentType"].ToString();
+    var page = int.TryParse(Context.Request.Query["page"], out var p) ? p : 1;
+}
+
+<div class="content-page">
+    <div class="page-head">
+        <div>
+            <h1>Content Log</h1>
+            <div class="page-subtitle"><span class="dot white"></span> Content is user-generated and unverified.</div>
+            <div class="page-meta"><b>@Model.Count()</b> video ditampilkan dari <b>@Model.Count()</b> total <span class="muted">• sample data untuk mockup, belum ditarik dari TikTok Studio</span></div>
+        </div>
+    </div>
+
+    <div class="toolbar-row">
+        <div class="filter-pills">
+            <a class="filter-pill @(string.IsNullOrEmpty(selectedContentType) ? "active" : "")" href="@Url.Action("Index")">● Semua</a>
+            <a class="filter-pill yellow @(selectedContentType == "KK" ? "active" : "")" href="@Url.Action("Index", new { contentType = "KK" })">● Keranjang Kuning</a>
+            <a class="filter-pill blue @(selectedContentType == "NON_KK" ? "active" : "")" href="@Url.Action("Index", new { contentType = "NON_KK" })">● Non-KK</a>
+            <a class="filter-pill purple @(selectedContentType == "AUTO_GMV_LIVE" ? "active" : "")" href="@Url.Action("Index", new { contentType = "AUTO_GMV_LIVE" })">● Auto GMV Live</a>
+        </div>
+        <div class="toolbar-actions">
+            <button class="ghost-btn" type="button" onclick="togglePanel('columnsPanel')">▦&nbsp; Kolom</button>
+            <button class="ghost-btn" type="button" onclick="togglePanel('picPanel')">♙&nbsp; Master PIC</button>
+            <span class="legend-item yellow-text"><i></i>Keranjang Kuning</span>
+            <span class="legend-item blue-text"><i></i>Non-KK</span>
+            <span class="legend-item purple-text"><i></i>Auto GMV Live</span>
+        </div>
+    </div>
+
+    <div class="search-row">
+        <form asp-action="Index" method="get" class="search-box-wrap">
+            <span class="search-icon">⌕</span>
+            <input class="search-box" type="text" name="search" value="@search" placeholder="Cari judul konten..." />
+            <input type="hidden" name="contentType" value="@selectedContentType" />
+        </form>
+    </div>
+
+    <div id="columnsPanel" class="utility-panel">
+        <div class="panel-title">PILIH KOLOM YANG DITAMPILKAN</div>
+        <div class="column-grid">
+            @foreach (var item in new[] {
+                ("production","Cara Produksi",true),("pic","PIC",true),("link","Link",true),
+                ("avgwatch","Average Watch",true),("fullwatch","% Full Watch",true),("likes","Like",true),
+                ("comments","Comment",true),("save","Save",false),("share","Share",false),
+                ("follower","Follower",true),("nonfollower","Non-Follower",true),("male","Male",true),
+                ("female","Female",true),("nongender","Non-Gender",false),("age18","18-24",false),
+                ("age25","25-34",false),("age35","35-44",false),("age45","45-54",false),("age55","55+",false)
+            }) {
+                <label class="column-check"><input type="checkbox" checked="@item.Item3" /><span>@item.Item2</span></label>
+            }
+        </div>
+        <div class="panel-note">Kolom Metrics &amp; Data Penonton mengikuti struktur Daily Content Performance Log. Pengaturan ini hanya mengatur tampilan tabel, bukan request API baru.</div>
+    </div>
+
+    <div id="picPanel" class="utility-panel">
+        <div class="panel-title">MASTER PIC · NAMA YANG BISA DIPILIH DI KOLOM PIC</div>
+        <div class="pic-chips">
+            <span class="pic-chip">Fauzi <b>×</b></span>
+            <span class="pic-chip">Hadi <b>×</b></span>
+            <span class="pic-chip">Khairul <b>×</b></span>
+            <span class="pic-chip">Dimas <b>×</b></span>
+            <span class="pic-chip">Reza <b>×</b></span>
+        </div>
+        <div class="pic-add-row">
+            <input type="text" placeholder="Nama PIC baru..." />
+            <button class="primary-btn" type="button">Tambah</button>
+        </div>
+        <div class="panel-note">Daftar ini murni data internal Content Ops, bukan dari API TikTok.</div>
+    </div>
+
+    <div class="table-wrap">
+        <table class="content-table">
+            <thead>
+                <tr>
+                    <th colspan="7" class="group-head">KONTEN</th>
+                    <th colspan="8" class="group-head metrics-head">METRICS</th>
+                </tr>
+                <tr class="column-head">
+                    <th>No</th>
+                    <th>Tanggal</th>
+                    <th>Jenis Konten</th>
+                    <th>Cara Produksi</th>
+                    <th>PIC</th>
+                    <th>Judul</th>
+                    <th>Link</th>
+                    <th>Views</th>
+                    <th>Reach</th>
+                    <th>Average<br/>Watch</th>
+                    <th>% Full<br/>Watch</th>
+                    <th>Like</th>
+                    <th>Comment</th>
+                    <th>Share</th>
+                    <th>Follower</th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="15" class="empty-cell">Belum ada data Content Log.</td></tr>
+            }
+            else
+            {
+                var index = (page - 1) * 20;
+                foreach (var row in Model)
+                {
+                    index++;
+                    var metric = row.Metrics?.OrderByDescending(x => x.CapturedAt).FirstOrDefault();
+                    var typeCode = row.ContentType?.Code ?? "NON_KK";
+                    var typeClass = typeCode == "KK" ? "tag-yellow" : (typeCode == "AUTO_GMV_LIVE" ? "tag-purple" : "tag-blue");
+                    var prodName = row.ProductionMethod?.Name ?? "Self Produce";
+                    var prodClass = prodName == "AI Produce" ? "prod-ai" : "prod-self";
+                    <tr>
+                        <td>@index</td>
+                        <td>@(row.VideoPostTime?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td><span class="content-tag @typeClass">● @(row.ContentType?.Name ?? "Non-KK")</span></td>
+                        <td><button class="production-pill @prodClass" type="button">↔ @prodName</button></td>
+                        <td>
+                            <select class="pic-select">
+                                <option>@(row.Pic?.Name ?? "—")</option>
+                            </select>
+                        </td>
+                        <td class="title-cell" title="@row.Title">@row.Title</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(row.VideoUrl))
+                            {
+                                <a class="link-btn" href="@row.VideoUrl" target="_blank" rel="noopener">Lihat post ↗</a>
+                            }
+                            else { <span class="muted">—</span> }
+                        </td>
+                        <td>@(metric?.Views?.ToString("N0") ?? "—")</td>
+                        <td>@(metric?.Reach?.ToString("N0") ?? "—")</td>
+                        <td>@(metric?.AverageWatch?.ToString("0.00") ?? "—")s</td>
+                        <td>@(metric?.FullWatchRate is null ? "—" : (metric.FullWatchRate.Value * 100).ToString("0.0") + "%")</td>
+                        <td>@(metric?.Likes?.ToString("N0") ?? "—")</td>
+                        <td>@(metric?.Comments?.ToString("N0") ?? "—")</td>
+                        <td>@(metric?.Shares?.ToString("N0") ?? "—")</td>
+                        <td>@(metric?.NewFollowers?.ToString("N0") ?? "—")</td>
+                    </tr>
+                }
+            }
+            </tbody>
+        </table>
+        <div class="table-scrollbar-hint"></div>
+    </div>
+
+    <div class="notes-block">
+        <div class="note"><span>ⓘ</span><div><b>Catatan buat programmer:</b> Auto GMV Live diarsipkan otomatis menjadi private (“Hanya Saya”) setelah sesi LIVE selesai. Link tetap ditampilkan di kolom Link. Status archived/private hanya dipakai sebagai sinyal deteksi kandidat, bukan pengganti link maupun field Jenis Konten.</div></div>
+        <div class="note"><span>ⓘ</span><div><b>Cara Produksi (AI Produce / Self Produce)</b> diisi manual langsung di tabel. Default historical content = Self Produce. AI Produce dipilih ketika video benar-benar dibuat dengan AI video generator. Data ini tidak disimpulkan dari <code>author_type</code>.</div></div>
+        <div class="note"><span>ⓘ</span><div><b>PIC diisi manual</b> karena satu account TikTok dapat dipakai bersama beberapa orang. Master PIC adalah data internal dan tidak berasal dari TikTok API.</div></div>
+    </div>
+</div>
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/content-log.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script>
+        function togglePanel(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('open');
+        }
+    </script>
+}
