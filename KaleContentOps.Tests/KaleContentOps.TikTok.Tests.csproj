@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	<TargetFramework>net10.0</TargetFramework>
+	<IsPackable>false</IsPackable>
+	<Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+	<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.5.0" />
+	<PackageReference Include="xunit" Version="2.5.1" />
+	<PackageReference Include="xunit.runner.visualstudio" Version="2.5.1" />
+	  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<ProjectReference Include="..\KaleContentOps\KaleContentOps.csproj" />
+  </ItemGroup>
+</Project>

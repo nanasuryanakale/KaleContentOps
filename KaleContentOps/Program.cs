@@ -6,6 +6,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 
+// Session (used for OAuth state)
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.IdleTimeout = TimeSpan.FromMinutes(15);
+    options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+});
+
 // TikTok configuration
 builder.Services.Configure<TikTokOptions>(builder.Configuration.GetSection("TikTok"));
 
@@ -27,9 +37,16 @@ builder.Services.AddSingleton<ITikTokSignatureService, TikTokSignatureService>()
 // TikTok auth and shop services
 builder.Services.AddScoped<ITikTokAuthService, TikTokAuthService>();
 builder.Services.AddScoped<ITikTokShopService, TikTokShopService>();
+builder.Services.AddScoped<ITikTokVideoService, TikTokVideoService>();
 
 // Data protection (used to secure tokens at rest)
 builder.Services.AddDataProtection();
+
+// Daily sync worker - register only when explicitly enabled via configuration (TikTok:EnableDailySync = true)
+if (builder.Configuration.GetValue<bool>("TikTok:EnableDailySync", false))
+{
+    builder.Services.AddHostedService<TikTokDailySyncService>();
+}
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(
@@ -47,6 +64,8 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+app.UseSession();
 
 app.UseAuthorization();
 

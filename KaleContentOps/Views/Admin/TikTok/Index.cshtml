@@ -1,0 +1,68 @@
+@model IEnumerable<KaleContentOps.Models.TikTokShop>
+@{
+    ViewData["Title"] = "TikTok Admin";
+}
+
+<div class="container">
+    <h2>TikTok Administration</h2>
+
+    @if (TempData["TikTokSyncMessage"] != null)
+    {
+        <div class="alert alert-success">@TempData["TikTokSyncMessage"]</div>
+    }
+    @if (TempData["TikTokSyncError"] != null)
+    {
+        <div class="alert alert-danger">@TempData["TikTokSyncError"]</div>
+    }
+    @if (TempData["TikTokSyncResult"] != null)
+    {
+        <div class="alert alert-info">@TempData["TikTokSyncResult"]</div>
+    }
+    @if (TempData["TikTokSyncPerShopErrors"] != null)
+    {
+        <pre class="text-danger">@TempData["TikTokSyncPerShopErrors"]</pre>
+    }
+
+    <div class="mb-3">
+        <form asp-action="SyncAuthorizedShops" method="post">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-primary">Sync Authorized Shops</button>
+        </form>
+    </div>
+
+    <div class="mb-3">
+        <form asp-action="SyncVideos" method="post">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-success">Sync TikTok Videos</button>
+        </form>
+    </div>
+
+    <h4>Authorized Shops</h4>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>ShopCipher</th>
+                <th>ShopId</th>
+                <th>ShopCode</th>
+                <th>ShopName</th>
+                <th>Region</th>
+                <th>SellerType</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in Model)
+            {
+                <tr>
+                    <td>@s.Id</td>
+                    <td>@s.ShopCipher</td>
+                    <td>@s.ShopId</td>
+                    <td>@s.ShopCode</td>
+                    <td>@s.ShopName</td>
+                    <td>@s.Region</td>
+                    <td>@s.SellerType</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

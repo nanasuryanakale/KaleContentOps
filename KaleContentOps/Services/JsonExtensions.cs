@@ -27,4 +27,16 @@ public static class JsonExtensions
         }
         return null;
     }
+
+    public static long? GetPropertyOrDefaultLong(this JsonElement elem, string propName)
+    {
+        if (elem.ValueKind == JsonValueKind.Undefined || elem.ValueKind == JsonValueKind.Null)
+            return null;
+        if (elem.TryGetProperty(propName, out var prop))
+        {
+            if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt64(out var v)) return v;
+            if (prop.ValueKind == JsonValueKind.String && long.TryParse(prop.GetString(), out var v2)) return v2;
+        }
+        return null;
+    }
 }

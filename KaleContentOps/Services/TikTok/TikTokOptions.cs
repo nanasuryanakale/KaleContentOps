@@ -14,4 +14,7 @@ public class TikTokOptions
     public string? DefaultShopCipher { get; set; }
 
     // Request signing salt or other flags can be added later
+    // OAuth configuration
+    public string? ServiceId { get; set; }
+    public string? RedirectUrl { get; set; }
 }

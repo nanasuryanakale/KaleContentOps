@@ -13,31 +13,37 @@ public class TikTokShopService : ITikTokShopService
     private readonly IHttpClientFactory _httpFactory;
     private readonly TikTokOptions _options;
     private readonly AppDbContext _db;
-    private readonly IDataProtector _protector;
     private readonly ITikTokSignatureService _signatureService;
+    private readonly ITikTokAuthService _authService;
+    private readonly Microsoft.Extensions.Logging.ILogger<TikTokShopService> _logger;
 
     public TikTokShopService(
         IHttpClientFactory httpFactory,
         Microsoft.Extensions.Options.IOptions<TikTokOptions> options,
         AppDbContext db,
-        IDataProtectionProvider dataProtection,
-        ITikTokSignatureService signatureService)
+        ITikTokAuthService authService,
+        ITikTokSignatureService signatureService,
+        Microsoft.Extensions.Logging.ILogger<TikTokShopService>? logger = null)
     {
         _httpFactory = httpFactory;
         _options = options.Value;
         _db = db;
-        _protector = dataProtection.CreateProtector("TikTokAuthService.v1");
+        _authService = authService;
         _signatureService = signatureService;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TikTokShopService>.Instance;
     }
 
     public async Task<IList<TikTokShop>?> FetchAndSaveAuthorizedShopsAsync(CancellationToken cancellationToken = default)
     {
-        // Load credential
+        // Load credential record
         var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
-        if (credential == null || string.IsNullOrEmpty(credential.EncryptedAccessToken))
+        if (credential == null)
             throw new InvalidOperationException("No TikTok credential available. Exchange tokens first.");
 
-        var accessToken = _protector.Unprotect(credential.EncryptedAccessToken);
+        // Obtain a valid access token via the auth service (may refresh if needed)
+        var accessToken = await _authService.GetValidAccessTokenAsync(credential.Id, cancellationToken);
+        if (string.IsNullOrWhiteSpace(accessToken))
+            throw new InvalidOperationException("No valid access token available. Exchange tokens first.");
 
         var client = _httpFactory.CreateClient("TikTokApi");
 
@@ -69,6 +75,16 @@ public class TikTokShopService : ITikTokShopService
 
         using var doc = JsonDocument.Parse(content);
         var root = doc.RootElement;
+
+        // Validate top-level code
+        var code = root.TryGetProperty("code", out var codeElem) && codeElem.TryGetInt32(out var codeVal) ? codeVal : 0;
+        var requestId = root.GetPropertyOrDefault("request_id");
+        if (code != 0)
+        {
+            var message = root.GetPropertyOrDefault("message") ?? "TikTok fetch authorized shops failed";
+            throw new TikTokAuthException($"TikTok shops error: {message}", code, requestId);
+        }
+
         var data = root.TryGetProperty("data", out var dataElem) ? dataElem : root;
 
         var shops = new List<TikTokShop>();
@@ -77,13 +93,13 @@ public class TikTokShopService : ITikTokShopService
         {
             foreach (var item in shopsElem.EnumerateArray())
             {
-                // Extract fields cautiously; field names must be verified
-                var shopCipher = item.GetPropertyOrDefault("shop_cipher");
-                var shopId = item.GetPropertyOrDefault("shop_id");
-                var shopCode = item.GetPropertyOrDefault("shop_code");
-                var shopName = item.GetPropertyOrDefault("shop_name");
+                // Extract fields cautiously; accept multiple possible field names from API variants
+                var shopCipher = item.GetPropertyOrDefault("shop_cipher") ?? item.GetPropertyOrDefault("cipher");
+                var shopId = item.GetPropertyOrDefault("shop_id") ?? item.GetPropertyOrDefault("id");
+                var shopCode = item.GetPropertyOrDefault("shop_code") ?? item.GetPropertyOrDefault("code");
+                var shopName = item.GetPropertyOrDefault("shop_name") ?? item.GetPropertyOrDefault("name");
                 var region = item.GetPropertyOrDefault("region");
-                var sellerType = item.GetPropertyOrDefault("seller_type");
+                var sellerType = item.GetPropertyOrDefault("seller_type") ?? item.GetPropertyOrDefault("user_type");
 
                 var existing = await _db.TikTokShops.FirstOrDefaultAsync(x => x.ShopCipher == shopCipher, cancellationToken);
                 if (existing == null)
@@ -110,11 +126,11 @@ public class TikTokShopService : ITikTokShopService
                     existing.SellerType = sellerType ?? existing.SellerType;
                     existing.UpdatedAt = DateTime.UtcNow;
                 }
-
                 shops.Add(existing);
             }
 
             await _db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Fetched and saved {Count} authorized TikTok shops", shops.Count);
         }
         else
         {
