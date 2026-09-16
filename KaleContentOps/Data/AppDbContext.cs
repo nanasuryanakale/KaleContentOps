@@ -45,6 +45,14 @@ public class AppDbContext : DbContext
             .HasForeignKey(x => x.PicId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<ContentLog>()
+            .HasIndex(x => new
+            {
+                x.VideoPostTime,
+                x.Id
+            })
+            .HasDatabaseName("IX_ContentLogs_VideoPostTime_Id");
+
         // ContentMetric
         modelBuilder.Entity<ContentMetric>()
             .HasOne(x => x.ContentLog)

@@ -15,17 +15,19 @@ public class ContentLog
     public long? TikTokShopId { get; set; }
 
     public DateTime? VideoPostTime { get; set; }
-
-    [MaxLength(500)]
     public string? Title { get; set; }
 
-    [MaxLength(200)]
     public string? Username { get; set; }
 
     public int? Duration { get; set; }
 
     [MaxLength(1000)]
     public string? VideoUrl { get; set; }
+
+    // signals parsed from TikTok response that help content classification
+    public bool? IsArchived { get; set; }
+
+    public bool? HasCommerce { get; set; }
 
     // Creator metadata
     [MaxLength(200)]

@@ -2,6 +2,8 @@ using System.Net.Http;
 using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using KaleContentOps.Data;
 using KaleContentOps.Models;
@@ -25,18 +27,21 @@ public class TikTokAuthService : ITikTokAuthService
     private readonly TikTokOptions _options;
     private readonly AppDbContext _db;
     private readonly IDataProtector _protector;
+    private readonly ILogger<TikTokAuthService> _logger;
     private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public TikTokAuthService(
         IHttpClientFactory httpFactory,
         Microsoft.Extensions.Options.IOptions<TikTokOptions> options,
         AppDbContext db,
-        IDataProtectionProvider dataProtection)
+        IDataProtectionProvider dataProtection,
+        ILogger<TikTokAuthService>? logger = null)
     {
         _httpFactory = httpFactory;
         _options = options.Value;
         _db = db;
         _protector = dataProtection.CreateProtector("TikTokAuthService.v1");
+        _logger = logger ?? NullLogger<TikTokAuthService>.Instance;
     }
 
     private static DateTime ConvertUnixOrOffsetToUtc(long value)
@@ -110,6 +115,16 @@ public class TikTokAuthService : ITikTokAuthService
         var userType = data.GetPropertyOrDefault("user_type");
         var grantedScopes = data.GetPropertyOrDefault("granted_scopes");
 
+        // Safe diagnostic logging: do NOT log tokens or secrets.
+        if (string.IsNullOrWhiteSpace(grantedScopes))
+        {
+            _logger.LogWarning("TikTok token response missing granted_scopes. code={Code} request_id={RequestId} user_type={UserType} seller_base_region={SellerRegion}", code, requestId, userType, sellerRegion);
+        }
+        else
+        {
+            _logger.LogInformation("TikTok token response: code={Code} request_id={RequestId} granted_scopes={GrantedScopes} user_type={UserType} seller_base_region={SellerRegion}", code, requestId, grantedScopes, userType, sellerRegion);
+        }
+
         // Validate required scope
         if (!string.IsNullOrWhiteSpace(grantedScopes))
         {
@@ -166,7 +181,21 @@ public class TikTokAuthService : ITikTokAuthService
 
         if (credential == null) return null;
 
-        var refreshToken = credential.EncryptedRefreshToken != null ? _protector.Unprotect(credential.EncryptedRefreshToken) : null;
+        string? refreshToken = null;
+        if (!string.IsNullOrWhiteSpace(credential.EncryptedRefreshToken))
+        {
+            try
+            {
+                refreshToken = _protector.Unprotect(credential.EncryptedRefreshToken);
+            }
+            catch (Exception ex)
+            {
+                // Do NOT log token values. Log safe diagnostic information for production debugging.
+                _logger.LogWarning(ex, "Data Protection unprotect failed for TikTok refresh token for credential {CredentialId}: {ExceptionType}: {Message}", credential.Id, ex.GetType().FullName, ex.Message);
+                return null;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(refreshToken)) return null;
 
         var client = _httpFactory.CreateClient("TikTokAuth");
@@ -217,6 +246,16 @@ public class TikTokAuthService : ITikTokAuthService
         var userType = data.GetPropertyOrDefault("user_type");
         var grantedScopes = data.GetPropertyOrDefault("granted_scopes");
 
+        // Safe diagnostic logging for token refresh response (do NOT log tokens)
+        if (string.IsNullOrWhiteSpace(grantedScopes))
+        {
+            _logger.LogWarning("TikTok token refresh response missing granted_scopes. code={Code} request_id={RequestId} user_type={UserType} seller_base_region={SellerRegion}", code, requestId, userType, sellerRegion);
+        }
+        else
+        {
+            _logger.LogInformation("TikTok token refresh response: code={Code} request_id={RequestId} granted_scopes={GrantedScopes} user_type={UserType} seller_base_region={SellerRegion}", code, requestId, grantedScopes, userType, sellerRegion);
+        }
+
         if (!string.IsNullOrWhiteSpace(grantedScopes) && !grantedScopes.Contains("data.shop_analytics.public.read"))
         {
             throw new TikTokAuthException("Required scope data.shop_analytics.public.read is missing from granted_scopes", code, requestId);
@@ -264,8 +303,10 @@ public class TikTokAuthService : ITikTokAuthService
         {
             return _protector.Unprotect(credential.EncryptedAccessToken);
         }
-        catch
+        catch (Exception ex)
         {
+            // Do NOT log token values. Log safe diagnostic information for production debugging.
+            _logger.LogWarning(ex, "Data Protection unprotect failed for TikTok access token for credential {CredentialId}: {ExceptionType}: {Message}", credential.Id, ex.GetType().FullName, ex.Message);
             return null;
         }
     }

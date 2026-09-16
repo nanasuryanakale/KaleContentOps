@@ -12,4 +12,7 @@ public interface ITikTokVideoService
     /// Returns the number of content logs created or updated.
     /// </summary>
     Task<int> FetchAndSaveVideoListAsync(string shopCipher, string? startDateIso = null, string? endDateIso = null, CancellationToken cancellationToken = default);
+
+    // Dry-run audit method: does not modify database. Returns a report of parsed videos and matches.
+    Task<KaleContentOps.Services.TikTok.DryRunReport> DryRunVideoClassificationAsync(string shopCipher, string? startDateIso = null, string? endDateIso = null, CancellationToken cancellationToken = default);
 }

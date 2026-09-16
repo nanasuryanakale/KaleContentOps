@@ -28,7 +28,7 @@ namespace KaleContentOps.Controllers.Admin
         public async Task<IActionResult> Index()
         {
             var shops = await _db.TikTokShops.OrderBy(x => x.Id).ToListAsync();
-            return View(shops);
+            return View("~/Views/Admin/TikTok/Index.cshtml", shops);
         }
 
         [HttpPost("SyncAuthorizedShops")]

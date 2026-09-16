@@ -4,6 +4,7 @@ using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KaleContentOps.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260910031743_IncreaseTitleMaxLengthTo500")]
+    partial class IncreaseTitleMaxLengthTo500
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -55,12 +58,6 @@ namespace KaleContentOps.Migrations
                     b.Property<int?>("Duration")
                         .HasColumnType("int");
 
-                    b.Property<bool?>("HasCommerce")
-                        .HasColumnType("bit");
-
-                    b.Property<bool?>("IsArchived")
-                        .HasColumnType("bit");
-
                     b.Property<int?>("PicId")
                         .HasColumnType("int");
 
@@ -71,13 +68,15 @@ namespace KaleContentOps.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("Title")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Username")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("VideoId")
                         .IsRequired()
@@ -102,9 +101,6 @@ namespace KaleContentOps.Migrations
                     b.HasIndex("TikTokShopId", "VideoId")
                         .IsUnique()
                         .HasFilter("[TikTokShopId] IS NOT NULL");
-
-                    b.HasIndex("VideoPostTime", "Id")
-                        .HasDatabaseName("IX_ContentLogs_VideoPostTime_Id");
 
                     b.ToTable("ContentLogs");
                 });

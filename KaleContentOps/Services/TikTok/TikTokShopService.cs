@@ -70,7 +70,8 @@ public class TikTokShopService : ITikTokShopService
         var content = await res.Content.ReadAsStringAsync(cancellationToken);
         if (!res.IsSuccessStatusCode)
         {
-            throw new HttpRequestException($"Fetch authorized shops failed: {res.StatusCode}");
+            throw new HttpRequestException(
+                $"Fetch authorized shops failed: {(int)res.StatusCode} {res.StatusCode}. Response: {content}");
         }
 
         using var doc = JsonDocument.Parse(content);

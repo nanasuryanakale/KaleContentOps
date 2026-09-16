@@ -1,75 +1,160 @@
-@model IEnumerable<KaleContentOps.Models.ContentLog>
+@model KaleContentOps.ViewModels.ContentLogIndexViewModel
 @{
     ViewData["Title"] = "Content Log";
-    var search = Context.Request.Query["search"].ToString();
-    var selectedContentType = Context.Request.Query["contentType"].ToString();
-    var page = int.TryParse(Context.Request.Query["page"], out var p) ? p : 1;
+    var search = Model.Search ?? string.Empty;
+    var selectedContentType = Model.SelectedContentType ?? string.Empty;
+    var page = Model.CurrentPage <= 0 ? 1 : Model.CurrentPage;
+    var pageSize = Model.PageSize <= 0 ? 20 : Model.PageSize;
 }
 
 <div class="content-page">
     <div class="page-head">
         <div>
             <h1>Content Log</h1>
-            <div class="page-subtitle"><span class="dot white"></span> Content is user-generated and unverified.</div>
-            <div class="page-meta"><b>@Model.Count()</b> video ditampilkan dari <b>@Model.Count()</b> total <span class="muted">• sample data untuk mockup, belum ditarik dari TikTok Studio</span></div>
+            <div class="page-meta">
+                <b>@Model.Items.Count</b> video ditampilkan dari <b>@Model.TotalItems</b> total
+            </div>
         </div>
     </div>
 
     <div class="toolbar-row">
         <div class="filter-pills">
-            <a class="filter-pill @(string.IsNullOrEmpty(selectedContentType) ? "active" : "")" href="@Url.Action("Index")">● Semua</a>
-            <a class="filter-pill yellow @(selectedContentType == "KK" ? "active" : "")" href="@Url.Action("Index", new { contentType = "KK" })">● Keranjang Kuning</a>
-            <a class="filter-pill blue @(selectedContentType == "NON_KK" ? "active" : "")" href="@Url.Action("Index", new { contentType = "NON_KK" })">● Non-KK</a>
-            <a class="filter-pill purple @(selectedContentType == "AUTO_GMV_LIVE" ? "active" : "")" href="@Url.Action("Index", new { contentType = "AUTO_GMV_LIVE" })">● Auto GMV Live</a>
+            <a class="filter-pill @(string.IsNullOrEmpty(selectedContentType) ? "active" : "")"
+               href="@Url.Action("Index", new { search = search })">
+                ● Semua
+            </a>
+
+            @foreach (var ct in Model.ContentTypes)
+            {
+                var filterClass = ct.Code == "KK"
+                    ? "yellow"
+                    : (ct.Code == "NON_KK" ? "blue" : "purple");
+
+                <a class="filter-pill @filterClass @(selectedContentType == ct.Code ? "active" : "")"
+                   href="@Url.Action("Index", new { search = search, contentType = ct.Code })">
+                    ● @ct.Name
+                </a>
+            }
         </div>
+
         <div class="toolbar-actions">
-            <button class="ghost-btn" type="button" onclick="togglePanel('columnsPanel')">▦&nbsp; Kolom</button>
-            <button class="ghost-btn" type="button" onclick="togglePanel('picPanel')">♙&nbsp; Master PIC</button>
-            <span class="legend-item yellow-text"><i></i>Keranjang Kuning</span>
-            <span class="legend-item blue-text"><i></i>Non-KK</span>
-            <span class="legend-item purple-text"><i></i>Auto GMV Live</span>
+            <button class="ghost-btn" type="button" onclick="togglePanel('columnsCard')">
+                ▦&nbsp; Kolom
+            </button>
+
+            <button class="ghost-btn" type="button" onclick="togglePanel('picCard')">
+                ♙&nbsp; Master PIC
+            </button>
+
+            <span class="legend-item yellow-text">
+                <i></i>Keranjang Kuning
+            </span>
+
+            <span class="legend-item blue-text">
+                <i></i>Non-KK
+            </span>
+
+            <span class="legend-item purple-text">
+                <i></i>Auto GMV Live
+            </span>
         </div>
     </div>
 
     <div class="search-row">
         <form asp-action="Index" method="get" class="search-box-wrap">
             <span class="search-icon">⌕</span>
-            <input class="search-box" type="text" name="search" value="@search" placeholder="Cari judul konten..." />
-            <input type="hidden" name="contentType" value="@selectedContentType" />
+
+            <input class="search-box"
+                   type="text"
+                   name="search"
+                   value="@search"
+                   placeholder="Cari judul konten..." />
+
+            <input type="hidden"
+                   name="contentType"
+                   value="@selectedContentType" />
         </form>
     </div>
 
-    <div id="columnsPanel" class="utility-panel">
-        <div class="panel-title">PILIH KOLOM YANG DITAMPILKAN</div>
-        <div class="column-grid">
-            @foreach (var item in new[] {
-                ("production","Cara Produksi",true),("pic","PIC",true),("link","Link",true),
-                ("avgwatch","Average Watch",true),("fullwatch","% Full Watch",true),("likes","Like",true),
-                ("comments","Comment",true),("save","Save",false),("share","Share",false),
-                ("follower","Follower",true),("nonfollower","Non-Follower",true),("male","Male",true),
-                ("female","Female",true),("nongender","Non-Gender",false),("age18","18-24",false),
-                ("age25","25-34",false),("age35","35-44",false),("age45","45-54",false),("age55","55+",false)
-            }) {
-                <label class="column-check"><input type="checkbox" checked="@item.Item3" /><span>@item.Item2</span></label>
-            }
+    <!-- CARD 1: KOLOM -->
+    <div id="columnsCard" class="utility-card">
+        <div class="utility-panel">
+            <div class="panel-title">PILIH KOLOM YANG DITAMPILKAN</div>
+
+            <div class="column-grid">
+                @foreach (var item in new[]
+                {
+                    ("production", "Cara Produksi", true),
+                    ("pic", "PIC", true),
+                    ("link", "Link", true),
+                    ("views", "Views", true),
+                    ("reach", "Reach", true),
+                    ("avgwatch", "Average Watch", true),
+                    ("fullwatch", "% Full Watch", true),
+                    ("likes", "Like", true),
+                    ("comments", "Comment", true),
+                    ("share", "Share", true),
+                    ("follower", "Follower", true),
+                    ("nonfollower", "Non-Follower", true),
+                    ("male", "Male", true),
+                    ("female", "Female", true),
+                    ("nongender", "Non-Gender", false),
+                    ("age18", "18-24", false),
+                    ("age25", "25-34", false),
+                    ("age35", "35-44", false),
+                    ("age45", "45-54", false),
+                    ("age55", "55+", false)
+                })
+                {
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="@item.Item3"
+                               class="col-toggle"
+                               data-col-key="@item.Item1" />
+                        <span>@item.Item2</span>
+                    </label>
+                }
+            </div>
+
+            <div class="panel-note">
+                Kolom Metrics &amp; Data Penonton mengikuti struktur Daily Content Performance Log.
+                Pengaturan ini hanya mengatur tampilan tabel, bukan request API baru.
+            </div>
         </div>
-        <div class="panel-note">Kolom Metrics &amp; Data Penonton mengikuti struktur Daily Content Performance Log. Pengaturan ini hanya mengatur tampilan tabel, bukan request API baru.</div>
     </div>
 
-    <div id="picPanel" class="utility-panel">
-        <div class="panel-title">MASTER PIC · NAMA YANG BISA DIPILIH DI KOLOM PIC</div>
-        <div class="pic-chips">
-            <span class="pic-chip">Fauzi <b>×</b></span>
-            <span class="pic-chip">Hadi <b>×</b></span>
-            <span class="pic-chip">Khairul <b>×</b></span>
-            <span class="pic-chip">Dimas <b>×</b></span>
-            <span class="pic-chip">Reza <b>×</b></span>
+    <!-- CARD 2: MASTER PIC -->
+    <div id="picCard" class="utility-card">
+        <div class="utility-panel">
+            <div class="panel-title">
+                MASTER PIC · NAMA YANG BISA DIPILIH DI KOLOM PIC
+            </div>
+
+            <div class="pic-chips" id="picChips">
+                @foreach (var p in Model.MasterPics)
+                {
+                    <span class="pic-chip" data-pic-id="@p.Id">
+                        @p.Name <b data-action="remove">×</b>
+                    </span>
+                }
+            </div>
+
+            <div class="pic-add-row">
+                <input id="newPicName"
+                       type="text"
+                       placeholder="Nama PIC baru..." />
+
+                <button class="primary-btn"
+                        id="addPicBtn"
+                        type="button">
+                    Tambah
+                </button>
+            </div>
+
+            <div class="panel-note">
+                Daftar ini murni data internal Content Ops, bukan dari API TikTok.
+            </div>
         </div>
-        <div class="pic-add-row">
-            <input type="text" placeholder="Nama PIC baru..." />
-            <button class="primary-btn" type="button">Tambah</button>
-        </div>
-        <div class="panel-note">Daftar ini murni data internal Content Ops, bukan dari API TikTok.</div>
     </div>
 
     <div class="table-wrap">
@@ -79,89 +164,685 @@
                     <th colspan="7" class="group-head">KONTEN</th>
                     <th colspan="8" class="group-head metrics-head">METRICS</th>
                 </tr>
+
                 <tr class="column-head">
                     <th>No</th>
                     <th>Tanggal</th>
                     <th>Jenis Konten</th>
-                    <th>Cara Produksi</th>
-                    <th>PIC</th>
-                    <th>Judul</th>
-                    <th>Link</th>
-                    <th>Views</th>
-                    <th>Reach</th>
-                    <th>Average<br/>Watch</th>
-                    <th>% Full<br/>Watch</th>
-                    <th>Like</th>
-                    <th>Comment</th>
-                    <th>Share</th>
-                    <th>Follower</th>
+
+                    <th data-col="production">Cara Produksi</th>
+                    <th data-col="pic">PIC</th>
+
+                    <th class="title-col">Judul</th>
+
+                    <th data-col="link">Link</th>
+
+                    <th data-col="views">Views</th>
+                    <th data-col="reach">Reach</th>
+
+                    <th data-col="avgwatch">
+                        Average<br />Watch
+                    </th>
+
+                    <th data-col="fullwatch">
+                        % Full<br />Watch
+                    </th>
+
+                    <th data-col="likes">Like</th>
+                    <th data-col="comments">Comment</th>
+                    <th data-col="share">Share</th>
+                    <th data-col="follower">Follower</th>
                 </tr>
             </thead>
+
             <tbody>
-            @if (!Model.Any())
-            {
-                <tr><td colspan="15" class="empty-cell">Belum ada data Content Log.</td></tr>
-            }
-            else
-            {
-                var index = (page - 1) * 20;
-                foreach (var row in Model)
+                @if (!Model.Items.Any())
                 {
-                    index++;
-                    var metric = row.Metrics?.OrderByDescending(x => x.CapturedAt).FirstOrDefault();
-                    var typeCode = row.ContentType?.Code ?? "NON_KK";
-                    var typeClass = typeCode == "KK" ? "tag-yellow" : (typeCode == "AUTO_GMV_LIVE" ? "tag-purple" : "tag-blue");
-                    var prodName = row.ProductionMethod?.Name ?? "Self Produce";
-                    var prodClass = prodName == "AI Produce" ? "prod-ai" : "prod-self";
                     <tr>
-                        <td>@index</td>
-                        <td>@(row.VideoPostTime?.ToString("dd/MM/yyyy") ?? "—")</td>
-                        <td><span class="content-tag @typeClass">● @(row.ContentType?.Name ?? "Non-KK")</span></td>
-                        <td><button class="production-pill @prodClass" type="button">↔ @prodName</button></td>
-                        <td>
-                            <select class="pic-select">
-                                <option>@(row.Pic?.Name ?? "—")</option>
-                            </select>
+                        <td colspan="15" class="empty-cell">
+                            Belum ada data Content Log.
                         </td>
-                        <td class="title-cell" title="@row.Title">@row.Title</td>
-                        <td>
-                            @if (!string.IsNullOrEmpty(row.VideoUrl))
-                            {
-                                <a class="link-btn" href="@row.VideoUrl" target="_blank" rel="noopener">Lihat post ↗</a>
-                            }
-                            else { <span class="muted">—</span> }
-                        </td>
-                        <td>@(metric?.Views?.ToString("N0") ?? "—")</td>
-                        <td>@(metric?.Reach?.ToString("N0") ?? "—")</td>
-                        <td>@(metric?.AverageWatch?.ToString("0.00") ?? "—")s</td>
-                        <td>@(metric?.FullWatchRate is null ? "—" : (metric.FullWatchRate.Value * 100).ToString("0.0") + "%")</td>
-                        <td>@(metric?.Likes?.ToString("N0") ?? "—")</td>
-                        <td>@(metric?.Comments?.ToString("N0") ?? "—")</td>
-                        <td>@(metric?.Shares?.ToString("N0") ?? "—")</td>
-                        <td>@(metric?.NewFollowers?.ToString("N0") ?? "—")</td>
                     </tr>
                 }
-            }
+                else
+                {
+                    var index = (page - 1) * pageSize;
+
+                    foreach (var row in Model.Items)
+                    {
+                        index++;
+
+                        var metric = row.Metrics?
+                            .OrderByDescending(x => x.CapturedAt)
+                            .FirstOrDefault();
+
+                        var prodName = row.ProductionMethod?.Name ?? "Self Produce";
+
+                        var prodClass = prodName == "AI Produce"
+                            ? "prod-ai"
+                            : "prod-self";
+                        <tr data-content-id="@row.Id">
+                            <td>@index</td>
+
+                            <td>
+                                @(row.VideoPostTime?.ToString("dd/MM/yyyy") ?? "—")
+                            </td>
+
+                            <td>
+                                <select class="content-type-select"
+                                        data-content-id="@row.Id">
+                                    <option value=""
+                                            selected="@(row.ContentTypeId == null)">
+                                        Belum diklasifikasikan
+                                    </option>
+
+                                    @foreach (var ct in Model.ContentTypes)
+                                    {
+                                        <option value="@ct.Id"
+                                                selected="@(row.ContentTypeId == ct.Id)">
+                                            @ct.Name
+                                        </option>
+                                    }
+                                </select>
+                            </td>
+
+                            <td data-col="production">
+                                @{
+                                    var isAutoGmv = row.ContentType?.Code == "AUTO_GMV_LIVE";
+                                    var selfPm = Model.ProductionMethods.FirstOrDefault(pm => pm.Code == "SELF_PRODUCE");
+                                    var aiPm = Model.ProductionMethods.FirstOrDefault(pm => pm.Code == "AI_PRODUCE");
+                                    var displayMethodId = row.ProductionMethodId ?? selfPm?.Id;
+                                    var displayName = row.ProductionMethod?.Name ?? "Self Produce";
+                                    var displayClass = displayName == "AI Produce" ? "prod-ai" : "prod-self";
+                                }
+
+                                @if (isAutoGmv)
+                                {
+                                    <span class="production-disabled">—</span>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            class="production-toggle production-pill @displayClass"
+                                            data-content-log-id="@row.Id"
+                                            data-production-method-id="@displayMethodId">
+                                        ↔ @displayName
+                                    </button>
+                                }
+                            </td>
+
+                            <td data-col="pic">
+                                <select class="pic-select">
+                                    <option value="0">—</option>
+
+                                    @foreach (var p in Model.MasterPics)
+                                    {
+                                        if (row.PicId == p.Id)
+                                        {
+                                            <option value="@p.Id" selected>
+                                                @p.Name
+                                            </option>
+                                        }
+                                        else
+                                        {
+                                            <option value="@p.Id">
+                                                @p.Name
+                                            </option>
+                                        }
+                                    }
+                                    @* if this row references a historical/inactive pic, render it as selected option with label *@
+                                    @{
+                                        var hist = Model.HistoricalPics.FirstOrDefault(h => h.Id == row.PicId);
+                                        if (hist != null)
+                                        {
+                                            <option value="@hist.Id" selected>
+                                                @hist.Name (dihapus dari master)
+                                            </option>
+                                        }
+                                    }
+                                </select>
+                            </td>
+
+                            <td class="title-cell"
+                                title="@row.Title">
+                                @row.Title
+                            </td>
+
+                            <td data-col="link">
+                                @if (!string.IsNullOrEmpty(row.VideoUrl))
+                                {
+                                    <a class="link-btn"
+                                       href="@row.VideoUrl"
+                                       target="_blank"
+                                       rel="noopener">
+                                        Lihat post ↗
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="muted">—</span>
+                                }
+                            </td>
+
+                            <td data-col="views">
+                                @(metric?.Views?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="reach">
+                                @(metric?.Reach?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="avgwatch">
+                                @(metric?.AverageWatch?.ToString("0.##") ?? "—")s
+                            </td>
+
+                            <td data-col="fullwatch">
+                                @(metric?.FullWatchRate is null
+                                    ? "—"
+                                    : (metric.FullWatchRate.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="likes">
+                                @(metric?.Likes?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="comments">
+                                @(metric?.Comments?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="share">
+                                @(metric?.Shares?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="follower">
+                                @(metric?.NewFollowers?.ToString("N0") ?? "—")
+                            </td>
+                        </tr>
+                    }
+                }
             </tbody>
         </table>
+
         <div class="table-scrollbar-hint"></div>
     </div>
 
-    <div class="notes-block">
-        <div class="note"><span>ⓘ</span><div><b>Catatan buat programmer:</b> Auto GMV Live diarsipkan otomatis menjadi private (“Hanya Saya”) setelah sesi LIVE selesai. Link tetap ditampilkan di kolom Link. Status archived/private hanya dipakai sebagai sinyal deteksi kandidat, bukan pengganti link maupun field Jenis Konten.</div></div>
-        <div class="note"><span>ⓘ</span><div><b>Cara Produksi (AI Produce / Self Produce)</b> diisi manual langsung di tabel. Default historical content = Self Produce. AI Produce dipilih ketika video benar-benar dibuat dengan AI video generator. Data ini tidak disimpulkan dari <code>author_type</code>.</div></div>
-        <div class="note"><span>ⓘ</span><div><b>PIC diisi manual</b> karena satu account TikTok dapat dipakai bersama beberapa orang. Master PIC adalah data internal dan tidak berasal dari TikTok API.</div></div>
+    <div class="pagination-row">
+        <div class="pagination-info">
+            Page @Model.CurrentPage of @Model.TotalPages
+        </div>
+
+        <div class="pagination-controls">
+            @if (Model.CurrentPage > 1)
+            {
+                <a class="page-link"
+                   href="@Url.Action("Index", new {
+                       search = search,
+                       contentType = selectedContentType,
+                       page = Model.CurrentPage - 1
+                   })">
+                    ◀ Prev
+                </a>
+            }
+            else
+            {
+                <span class="page-link disabled">
+                    ◀ Prev
+                </span>
+            }
+
+            <span class="current-page">
+                @Model.CurrentPage
+            </span>
+
+            @if (Model.CurrentPage < Model.TotalPages)
+            {
+                <a class="page-link"
+                   href="@Url.Action("Index", new {
+                       search = search,
+                       contentType = selectedContentType,
+                       page = Model.CurrentPage + 1
+                   })">
+                    Next ▶
+                </a>
+            }
+            else
+            {
+                <span class="page-link disabled">
+                    Next ▶
+                </span>
+            }
+        </div>
     </div>
+
+    <div class="notes-block">
+        <div class="note">
+            <span>✏</span>
+            <div>
+                <b>Catatan buat programmer:</b>
+                Auto GMV Live diarsipkan otomatis menjadi private
+                ("Hanya Saya") setelah sesi LIVE selesai.
+                Link tetap ditampilkan di kolom Link.
+                Status archived/private hanya dipakai sebagai sinyal deteksi kandidat,
+                bukan pengganti link maupun field Jenis Konten.
+            </div>
+        </div>
+
+        <div class="note">
+            <span>✏</span>
+            <div>
+                <b>Cara Produksi (AI Produce / Self Produce)</b>
+                diisi manual langsung di tabel.
+                Default historical content = Self Produce.
+                AI Produce dipilih ketika video benar-benar dibuat dengan AI video generator.
+                Data ini tidak disimpulkan dari <code>author_type</code>.
+            </div>
+        </div>
+
+        <div class="note">
+            <span>✏</span>
+            <div>
+                <b>PIC diisi manual</b>
+                karena satu account TikTok dapat dipakai bersama beberapa orang.
+                Master PIC adalah data internal dan tidak berasal dari TikTok API.
+            </div>
+        </div>
+    </div>
+
 </div>
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/content-log.css" asp-append-version="true" />
+    <link rel="stylesheet"
+          href="~/css/content-log.css"
+          asp-append-version="true" />
 }
+
 @section Scripts {
     <script>
-        function togglePanel(id) {
-            const el = document.getElementById(id);
-            el.classList.toggle('open');
+        // Toggle panel individual: Membuka card pilihan dan menutup card lain jika sedang terbuka
+        function togglePanel(targetCardId) {
+            var target = document.getElementById(targetCardId);
+
+            if (!target) {
+                return;
+            }
+
+            target.classList.toggle('open');
+        }
+
+        // =========================================================
+        // COLUMN VISIBILITY
+        // =========================================================
+        (function () {
+            var key = 'contentlog_columns_visibility_v1';
+
+            var defaults = {};
+
+            document.querySelectorAll('.col-toggle').forEach(function (cb) {
+                var k = cb.getAttribute('data-col-key');
+
+                if (k) {
+                    defaults[k] = cb.checked;
+                }
+            });
+
+        // =========================================================
+        // PRODUCTION METHOD TOGGLE -> SAVE VIA AJAX
+        // =========================================================
+        document.addEventListener('click', function (e) {
+            if (!e.target.classList.contains('production-toggle')) return;
+
+            var btn = e.target;
+            var contentId = btn.getAttribute('data-content-log-id');
+            if (!contentId) return;
+
+            // disable to prevent double-click
+            btn.disabled = true;
+            var originalText = btn.textContent;
+            btn.textContent = '⏳';
+
+            fetch('/ContentLog/ToggleProductionMethod', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'id=' + encodeURIComponent(contentId)
+            })
+            .then(function (res) {
+                if (!res.ok) return res.text().then(function (t) { throw new Error(t); });
+                return res.json();
+            })
+            .then(function (json) {
+                if (json && json.success) {
+                    // update text and class
+                    var name = json.productionMethodName || originalText;
+                    btn.textContent = '↔ ' + name;
+
+                    // update class
+                    if (name === 'AI Produce') {
+                        btn.classList.remove('prod-self');
+                        btn.classList.add('prod-ai');
+                    } else {
+                        btn.classList.remove('prod-ai');
+                        btn.classList.add('prod-self');
+                    }
+                } else {
+                    throw new Error((json && json.message) || 'Unknown error');
+                }
+            })
+            .catch(function (err) {
+                alert('Gagal mengubah Cara Produksi: ' + err.message);
+                btn.textContent = originalText;
+            })
+            .finally(function () {
+                btn.disabled = false;
+            });
+        });
+
+            var state = {};
+
+            try {
+                state = JSON.parse(
+                    localStorage.getItem(key) || '{}'
+                );
+            }
+            catch {
+                state = {};
+            }
+
+            Object.keys(defaults).forEach(function (k) {
+                if (state[k] === undefined) {
+                    state[k] = defaults[k];
+                }
+            });
+
+            function applyState() {
+                document.querySelectorAll('[data-col]').forEach(function (el) {
+                    var col = el.getAttribute('data-col');
+
+                    if (!col) return;
+
+                    var visible = true;
+
+                    if (Object.prototype.hasOwnProperty.call(state, col)) {
+                        visible = state[col];
+                    }
+
+                    el.style.display = visible ? '' : 'none';
+                });
+
+                document.querySelectorAll('.col-toggle').forEach(function (cb) {
+                    var k = cb.getAttribute('data-col-key');
+
+                    if (k) {
+                        cb.checked = !!state[k];
+                    }
+                });
+            }
+
+            document.addEventListener('change', function (e) {
+                if (!e.target.classList.contains('col-toggle')) {
+                    return;
+                }
+
+                var k = e.target.getAttribute('data-col-key');
+
+                if (!k) return;
+
+                state[k] = e.target.checked;
+
+                localStorage.setItem(
+                    key,
+                    JSON.stringify(state)
+                );
+
+                applyState();
+            });
+
+            applyState();
+        })();
+
+        // =========================================================
+        // PIC SELECT -> SAVE VIA AJAX
+        // =========================================================
+        document.addEventListener('change', function (e) {
+            if (!e.target.classList.contains('pic-select')) {
+                return;
+            }
+
+            var select = e.target;
+            var rowEl = select.closest('tr');
+
+            if (!rowEl) return;
+
+            var contentId = rowEl.getAttribute('data-content-id');
+            var picId = select.value;
+
+            if (!contentId) return;
+
+            fetch('/ContentLog/SetPic', {
+                method: 'POST',
+                headers: {
+                    'Content-Type':
+                        'application/x-www-form-urlencoded'
+                },
+                body:
+                    'id=' + encodeURIComponent(contentId) +
+                    '&picId=' + encodeURIComponent(picId)
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.text().then(function (text) {
+                        throw new Error(text);
+                    });
+                }
+
+                return response.json();
+            })
+            .then(function (json) {
+                console.log('PIC saved', json);
+            })
+            .catch(function (err) {
+                alert(
+                    'Gagal menyimpan PIC: ' +
+                    err.message
+                );
+            });
+        });
+
+        // =========================================================
+        // CONTENT TYPE SELECT -> SAVE VIA AJAX
+        // =========================================================
+        document.addEventListener('change', function (e) {
+            if (!e.target.classList.contains('content-type-select')) {
+                return;
+            }
+
+            var select = e.target;
+            var contentId = select.getAttribute('data-content-id');
+
+            if (!contentId) {
+                return;
+            }
+
+            var contentTypeId = select.value;
+
+            fetch('/ContentLog/SetContentType', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body:
+                    'id=' + encodeURIComponent(contentId) +
+                    '&contentTypeId=' + encodeURIComponent(contentTypeId)
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.text().then(function (text) {
+                        throw new Error(text);
+                    });
+                }
+
+                return response.json();
+            })
+            .then(function (json) {
+                // Update the production cell in the same row without reloading
+                try {
+                    var row = document.querySelector('tr[data-content-id="' + contentId + '"]');
+                    if (row) {
+                        var prodCell = row.querySelector('td[data-col="production"]');
+                        if (prodCell) {
+                            if (json.isAutoGmv) {
+                                prodCell.innerHTML = '<span class="production-disabled">—</span>';
+                            } else {
+                                // build button HTML using returned productionMethodName (or default)
+                                var name = json.productionMethodName || 'Self Produce';
+                                var pmId = json.productionMethodId || '';
+                                var cls = (name === 'AI Produce') ? 'prod-ai' : 'prod-self';
+                                prodCell.innerHTML = '<button type="button" class="production-toggle production-pill ' + cls + '" data-content-log-id="' + contentId + '" data-production-method-id="' + pmId + '">↔ ' + name + '</button>';
+                            }
+                        }
+                    }
+                }
+                catch (ex) {
+                    console.error('Failed updating production cell', ex);
+                }
+            })
+            .catch(function (err) {
+                alert(
+                    'Gagal menyimpan Jenis Konten: ' +
+                    err.message
+                );
+            });
+        });
+
+        // =========================================================
+        // ADD NEW PIC VIA AJAX
+        // =========================================================
+        var addPicBtn = document.getElementById('addPicBtn');
+        var newPicName = document.getElementById('newPicName');
+        var picChips = document.getElementById('picChips');
+
+        if (addPicBtn && newPicName && picChips) {
+            addPicBtn.addEventListener('click', function () {
+                var name = newPicName.value &&
+                    newPicName.value.trim();
+
+                if (!name) {
+                    alert('Nama PIC tidak boleh kosong');
+                    return;
+                }
+
+                fetch('/MasterPic/CreateAjax', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: name
+                    })
+                })
+                .then(function (response) {
+                    if (response.status === 409) {
+                        return response.json().then(function (json) {
+                            throw new Error(
+                                json.error || 'Duplicate'
+                            );
+                        });
+                    }
+
+                    if (!response.ok) {
+                        return response.text().then(function (text) {
+                            throw new Error(text);
+                        });
+                    }
+
+                    return response.json();
+                })
+                .then(function (json) {
+                    var chip = document.createElement('span');
+
+                    chip.className = 'pic-chip';
+                    chip.setAttribute(
+                        'data-pic-id',
+                        json.id
+                    );
+
+                    chip.innerHTML =
+                        json.name +
+                        ' <b data-action="remove">×</b>';
+
+                    picChips.appendChild(chip);
+
+                    document
+                        .querySelectorAll('select.pic-select')
+                        .forEach(function (select) {
+                            var option =
+                                document.createElement('option');
+
+                            option.value = json.id;
+                            option.textContent = json.name;
+
+                            select.appendChild(option);
+                        });
+
+                    newPicName.value = '';
+                })
+                .catch(function (err) {
+                    alert(
+                        'Gagal menambahkan PIC: ' +
+                        err.message
+                    );
+                });
+            });
+
+            // =====================================================
+            // REMOVE PIC CHIP FROM UI (soft-deactivate via AJAX)
+            // =====================================================
+            picChips.addEventListener('click', function (e) {
+                if (e.target.getAttribute('data-action') !== 'remove') {
+                    return;
+                }
+
+                var chip = e.target.closest('.pic-chip');
+                if (!chip) return;
+
+                var picId = chip.getAttribute('data-pic-id');
+                if (!picId) return;
+
+                fetch('/MasterPic/DeactivateAjax', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: parseInt(picId, 10) })
+                })
+                .then(function (res) {
+                    if (!res.ok) return res.text().then(function (t) { throw new Error(t); });
+                    return res.json();
+                })
+                .then(function (json) {
+                    // remove chip from master list
+                    chip.remove();
+
+                    // update selects: if an option is selected in a row, keep it but update label to indicate removal;
+                    // otherwise remove the option so it can't be assigned to new rows
+                    document.querySelectorAll('select.pic-select').forEach(function (select) {
+                        var opt = select.querySelector('option[value="' + picId + '"]');
+                        if (!opt) return;
+
+                        if (select.value === picId) {
+                            // keep selected option but update label to show it's removed from master
+                            var name = opt.textContent || '';
+                            // avoid duplicating suffix
+                            if (name.indexOf('(dihapus dari master)') === -1) {
+                                opt.textContent = name + ' (dihapus dari master)';
+                            }
+                        } else {
+                            // remove option for selectable lists
+                            opt.remove();
+                        }
+                    });
+                })
+                .catch(function (err) {
+                    alert('Gagal menonaktifkan PIC: ' + err.message);
+                });
+            });
         }
     </script>
 }

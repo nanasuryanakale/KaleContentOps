@@ -4,6 +4,7 @@ using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KaleContentOps.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260910033112_ChangeContentLogTitleToMax")]
+    partial class ChangeContentLogTitleToMax
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -54,12 +57,6 @@ namespace KaleContentOps.Migrations
 
                     b.Property<int?>("Duration")
                         .HasColumnType("int");
-
-                    b.Property<bool?>("HasCommerce")
-                        .HasColumnType("bit");
-
-                    b.Property<bool?>("IsArchived")
-                        .HasColumnType("bit");
 
                     b.Property<int?>("PicId")
                         .HasColumnType("int");
@@ -102,9 +99,6 @@ namespace KaleContentOps.Migrations
                     b.HasIndex("TikTokShopId", "VideoId")
                         .IsUnique()
                         .HasFilter("[TikTokShopId] IS NOT NULL");
-
-                    b.HasIndex("VideoPostTime", "Id")
-                        .HasDatabaseName("IX_ContentLogs_VideoPostTime_Id");
 
                     b.ToTable("ContentLogs");
                 });
