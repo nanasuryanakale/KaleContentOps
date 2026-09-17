@@ -29,6 +29,7 @@ public class ContentLogController : Controller
         if (!string.IsNullOrWhiteSpace(search))
         {
             search = search.Trim();
+
             // support date search in dd-MM-yyyy format (using range for SQL translation)
             if (DateTime.TryParseExact(search, "dd-MM-yyyy", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
             {
@@ -38,7 +39,22 @@ public class ContentLogController : Controller
             }
             else
             {
-                query = query.Where(x => x.Title != null && x.Title.Contains(search));
+                // attempt numeric parse for views (support commas like 12,543)
+                long? parsedViews = null;
+                var digitsOnly = search.Replace(",", string.Empty);
+                if (long.TryParse(digitsOnly, out var v))
+                {
+                    parsedViews = v;
+                }
+
+                // build predicate that checks multiple fields (Title, ContentType code/name, ProductionMethod name, PIC name, latest metric Views)
+                query = query.Where(x =>
+                    (x.Title != null && x.Title.Contains(search))
+                    || (x.ContentType != null && (x.ContentType.Code != null && x.ContentType.Code.Contains(search) || x.ContentType.Name != null && x.ContentType.Name.Contains(search)))
+                    || (x.ProductionMethod != null && x.ProductionMethod.Name != null && x.ProductionMethod.Name.Contains(search))
+                    || (x.Pic != null && x.Pic.Name != null && x.Pic.Name.Contains(search))
+                    || (parsedViews.HasValue && x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Views).FirstOrDefault() == parsedViews.Value)
+                );
             }
         }
 
@@ -54,17 +70,38 @@ public class ContentLogController : Controller
         var totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
         if (page > totalPages && totalPages > 0) page = totalPages;
 
-        // fetch page with ordering and includes; include only latest metric per content using filtered include
-        var items = await query
+        // Efficient projection: only select fields required by the UI plus the latest metric per content log
+        var pageQuery = query
             .OrderByDescending(x => x.VideoPostTime)
             .ThenByDescending(x => x.Id)
             .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Include(x => x.ContentType)
-            .Include(x => x.ProductionMethod)
-            .Include(x => x.Pic)
-            .Include(x => x.Metrics.OrderByDescending(m => m.CapturedAt).Take(1))
-            .AsSplitQuery()
+            .Take(pageSize);
+
+        var items = await pageQuery
+            .Select(x => new KaleContentOps.ViewModels.ContentLogListItem
+            {
+                Id = x.Id,
+                VideoPostTime = x.VideoPostTime,
+                ContentTypeId = x.ContentTypeId,
+                ContentTypeCode = x.ContentType != null ? x.ContentType.Code : null,
+                ContentTypeName = x.ContentType != null ? x.ContentType.Name : null,
+                ProductionMethodId = x.ProductionMethodId,
+                ProductionMethodName = x.ProductionMethod != null ? x.ProductionMethod.Name : null,
+                PicId = x.PicId,
+                Title = x.Title,
+                VideoUrl = x.VideoUrl,
+                // correlated subquery for latest metric per content log -> project metric scalars
+                Views = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Views).FirstOrDefault(),
+                Reach = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Reach).FirstOrDefault(),
+                AverageWatch = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.AverageWatch).FirstOrDefault(),
+                FullWatchRate = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.FullWatchRate).FirstOrDefault(),
+                Likes = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Likes).FirstOrDefault(),
+                Comments = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Comments).FirstOrDefault(),
+                Shares = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Shares).FirstOrDefault(),
+                NewFollowers = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.NewFollowers).FirstOrDefault(),
+                LatestMetricCapturedAt = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (DateTime?)m.CapturedAt).FirstOrDefault()
+            })
+            .AsNoTracking()
             .ToListAsync();
 
         var contentTypes = await _db.ContentTypes.Where(ct => ct.IsActive).OrderBy(ct => ct.Name).ToListAsync();

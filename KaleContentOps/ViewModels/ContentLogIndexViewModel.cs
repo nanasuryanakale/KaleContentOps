@@ -5,7 +5,7 @@ namespace KaleContentOps.ViewModels;
 
 public class ContentLogIndexViewModel
 {
-    public List<ContentLog> Items { get; set; } = new List<ContentLog>();
+    public List<ContentLogListItem> Items { get; set; } = new List<ContentLogListItem>();
 
     public int CurrentPage { get; set; }
 

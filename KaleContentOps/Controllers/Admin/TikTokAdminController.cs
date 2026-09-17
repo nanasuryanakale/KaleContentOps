@@ -62,7 +62,6 @@ namespace KaleContentOps.Controllers.Admin
 
             int shopsProcessed = 0;
             int videosInserted = 0;
-            int videosUpdated = 0; // we count processed as inserted or updated; service returns total processed
             int errors = 0;
             var perShopErrors = new List<string>();
 

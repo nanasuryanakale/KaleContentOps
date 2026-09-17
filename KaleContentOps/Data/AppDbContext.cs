@@ -60,6 +60,11 @@ public class AppDbContext : DbContext
             .HasForeignKey(x => x.ContentLogId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Add index to support latest metric lookup per ContentLog: WHERE ContentLogId = ? ORDER BY CapturedAt DESC
+        modelBuilder.Entity<ContentMetric>()
+            .HasIndex(x => new { x.ContentLogId, x.CapturedAt })
+            .HasDatabaseName("IX_ContentMetrics_ContentLogId_CapturedAt");
+
         // Decimal precision
         modelBuilder.Entity<ContentMetric>()
             .Property(x => x.AverageWatch)

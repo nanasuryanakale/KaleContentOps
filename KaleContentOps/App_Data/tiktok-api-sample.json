@@ -1,0 +1,111 @@
+[
+  {
+    "avg_customers": 446,
+    "click_through_rate": "0.0637",
+    "creator": {
+      "author_type": "AFFILIATE_ACCOUNTS",
+      "nick_name": "fiorefarrel",
+      "open_id": "E3R4wwAAAABAn9ClecJINJuETyKe2_8d4aruNwIBr5g_Q1Idy4GJxA",
+      "user_name": "pengengondrongs"
+    },
+    "duration": 22,
+    "gmv": {
+      "amount": "100655055.00",
+      "currency": "IDR"
+    },
+    "gpm": {
+      "amount": "282477.86",
+      "currency": "IDR"
+    },
+    "hash_tags": [
+      "kale"
+    ],
+    "id": "7631544267172842773",
+    "items_sold": 537,
+    "products": [
+      {
+        "id": "1731469947016938789",
+        "name": "Kale Juno T-Shirt Cotton Cloudy Asian Fit"
+      }
+    ],
+    "sku_orders": 530,
+    "title": "sumpah lembut bgt ni kaos @Kale ",
+    "username": "pengengondrongs",
+    "video_post_time": "2026-04-22 18:29:30",
+    "views": 356329
+  },
+  {
+    "avg_customers": 148,
+    "click_through_rate": "0.0727",
+    "creator": {
+      "author_type": "AFFILIATE_ACCOUNTS",
+      "nick_name": "IG : Shugara \uD83C\uDFA7",
+      "open_id": "WX68cQAAAABAn9ClecJINJuETyKe2_8dz-hhAOLF6V2Xul9j5yK6Yg",
+      "user_name": "shugara__"
+    },
+    "duration": 28,
+    "gmv": {
+      "amount": "31415584.00",
+      "currency": "IDR"
+    },
+    "gpm": {
+      "amount": "123323.63",
+      "currency": "IDR"
+    },
+    "hash_tags": [
+      "kaos",
+      "premium",
+      "tiktokshop"
+    ],
+    "id": "7594446527892933896",
+    "items_sold": 179,
+    "products": [
+      {
+        "id": "1731469947016938789",
+        "name": "Kale Juno T-Shirt Cotton Cloudy Asian Fit"
+      }
+    ],
+    "sku_orders": 179,
+    "title": "#kale #tshirtkale #kaospolos ",
+    "username": "shugara__",
+    "video_post_time": "2026-01-12 19:11:18",
+    "views": 254741
+  },
+  {
+    "avg_customers": 211,
+    "click_through_rate": "0.0342",
+    "creator": {
+      "author_type": "AFFILIATE_ACCOUNTS",
+      "nick_name": "alka.fj",
+      "open_id": "5T7sFgAAAABAn9ClecJINJuETyKe2_8dl5XhU_DtmtF7vrTirx8uRg",
+      "user_name": "alka.fj"
+    },
+    "duration": 16,
+    "gmv": {
+      "amount": "29353518.00",
+      "currency": "IDR"
+    },
+    "gpm": {
+      "amount": "148928.54",
+      "currency": "IDR"
+    },
+    "hash_tags": [
+      "kaos",
+      "premium",
+      "tiktokshop"
+    ],
+    "id": "7587038209008356628",
+    "items_sold": 225,
+    "products": [
+      {
+        "id": "1729433717879638309",
+        "name": "Kale Arthur T-shirt Cotton Viscose Asian Fit"
+      }
+    ],
+    "sku_orders": 224,
+    "title": "Kale Arthur T-shirt Cotton \uD83E\uDD76 #kaos #premium #tiktokshop ",
+    "username": "alka.fj",
+    "video_post_time": "2025-12-23 20:03:15",
+    "views": 197098
+  }
+]

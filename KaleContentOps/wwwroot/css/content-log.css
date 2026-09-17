@@ -74,7 +74,12 @@ body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSyst
 .content-table { width:1400px; min-width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
 .content-table th, .content-table td { padding:12px 12px; border-bottom:1px solid #263043; white-space:nowrap; }
 .group-head { background:#202946; color:#6fa0ff; font-size:11px; text-align:left; letter-spacing:.25px; position:sticky; top:0; z-index:2; }
-.metrics-head { text-align:center; }
+.metrics-head {
+    text-align: center;
+    background: #1c2c42;
+    color: #6FA8FF;
+}
+.audience-head { text-align:center; background: var(--yellow-bg); color: var(--yellow); }
 .column-head th { background:#252d40; color:#dfe5f1; font-weight:700; font-size:11px; text-align:left; position:sticky; top:32px; z-index:2; }
 .content-table tbody tr:nth-child(even) { background:#151b27; }
 .content-table tbody tr:hover { background:#1a2130; }

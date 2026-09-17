@@ -12,6 +12,17 @@ public class TikTokOptions
 
     // Optional: default shop_cipher if known
     public string? DefaultShopCipher { get; set; }
+    // Details endpoint configuration (optional). If set and EnableDetails is true,
+    // the service will call this endpoint to retrieve per-video engagement metrics.
+    // Do NOT set in source control; provide via user secrets or environment.
+    public string? DetailsPath { get; set; }
+
+    // Enable calling Details API during sync. Default false to avoid accidental API calls.
+    public bool EnableDetails { get; set; } = false;
+
+    // Concurrency limit for Details calls (bounded). Default 5.
+    // Concurrency limit for Details calls (bounded). Default 1 to be conservative.
+    public int DetailsConcurrency { get; set; } = 1;
 
     // Request signing salt or other flags can be added later
     // OAuth configuration

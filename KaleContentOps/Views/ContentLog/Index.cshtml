@@ -85,25 +85,26 @@
                 @foreach (var item in new[]
                 {
                     ("production", "Cara Produksi", true),
-                    ("pic", "PIC", true),
-                    ("link", "Link", true),
-                    ("views", "Views", true),
-                    ("reach", "Reach", true),
-                    ("avgwatch", "Average Watch", true),
-                    ("fullwatch", "% Full Watch", true),
-                    ("likes", "Like", true),
-                    ("comments", "Comment", true),
-                    ("share", "Share", true),
-                    ("follower", "Follower", true),
-                    ("nonfollower", "Non-Follower", true),
-                    ("male", "Male", true),
-                    ("female", "Female", true),
-                    ("nongender", "Non-Gender", false),
-                    ("age18", "18-24", false),
-                    ("age25", "25-34", false),
-                    ("age35", "35-44", false),
-                    ("age45", "45-54", false),
-                    ("age55", "55+", false)
+                ("pic", "PIC", true),
+                ("link", "Link", true),
+                ("views", "Views", true),
+                ("reach", "Reach", true),
+                ("avgwatch", "Average Watch", true),
+                ("fullwatch", "% Full Watch", true),
+                ("likes", "Like", true),
+                ("comments", "Comment", true),
+                ("save", "Save", false),
+                ("share", "Share", false),
+                ("follower", "Follower", true),
+                ("nonfollower", "Non-Follower", true),
+                ("male", "Male", true),
+                ("female", "Female", true),
+                ("nongender", "Non-Gender", false),
+                ("age18", "18-24", false),
+                ("age25", "25-34", false),
+                ("age35", "35-44", false),
+                ("age45", "45-54", false),
+                ("age55", "55+", false)
                 })
                 {
                     <label class="column-check">
@@ -163,6 +164,7 @@
                 <tr>
                     <th colspan="7" class="group-head">KONTEN</th>
                     <th colspan="8" class="group-head metrics-head">METRICS</th>
+                    <th colspan="10" class="group-head audience-head">DATA PENONTON (%)</th>
                 </tr>
 
                 <tr class="column-head">
@@ -190,16 +192,27 @@
 
                     <th data-col="likes">Like</th>
                     <th data-col="comments">Comment</th>
+                    <th data-col="save">Save</th>
                     <th data-col="share">Share</th>
+
                     <th data-col="follower">Follower</th>
+                    <th data-col="nonfollower">Non-Follower</th>
+                    <th data-col="male">Male</th>
+                    <th data-col="female">Female</th>
+                    <th data-col="nongender">Non-Gender</th>
+                    <th data-col="age18">18-24</th>
+                    <th data-col="age25">25-34</th>
+                    <th data-col="age35">35-44</th>
+                    <th data-col="age45">45-54</th>
+                    <th data-col="age55">55+</th>
                 </tr>
             </thead>
 
             <tbody>
                 @if (!Model.Items.Any())
                 {
-                    <tr>
-                        <td colspan="15" class="empty-cell">
+                <tr>
+                    <td colspan="25" class="empty-cell">
                             Belum ada data Content Log.
                         </td>
                     </tr>
@@ -212,11 +225,31 @@
                     {
                         index++;
 
-                        var metric = row.Metrics?
-                            .OrderByDescending(x => x.CapturedAt)
-                            .FirstOrDefault();
+                        // metric projection: latest metric scalars are provided in the DTO
+                        var metric = new {
+                            Views = row.Views,
+                            Reach = row.Reach,
+                            AverageWatch = row.AverageWatch,
+                            FullWatchRate = row.FullWatchRate,
+                            Likes = row.Likes,
+                            Comments = row.Comments,
+                            Shares = row.Shares,
+                            NewFollowers = row.NewFollowers,
+                            CapturedAt = row.LatestMetricCapturedAt,
+                            // placeholder metrics (nullable) provided by DTO — remain null until data available
+                            Saves = row.Saves,
+                            NonFollowers = row.NonFollowers,
+                            Male = row.Male,
+                            Female = row.Female,
+                            NonGender = row.NonGender,
+                            Age18_24 = row.Age18_24,
+                            Age25_34 = row.Age25_34,
+                            Age35_44 = row.Age35_44,
+                            Age45_54 = row.Age45_54,
+                            Age55Plus = row.Age55Plus
+                        };
 
-                        var prodName = row.ProductionMethod?.Name ?? "Self Produce";
+                        var prodName = row.ProductionMethodName ?? "Self Produce";
 
                         var prodClass = prodName == "AI Produce"
                             ? "prod-ai"
@@ -248,11 +281,11 @@
 
                             <td data-col="production">
                                 @{
-                                    var isAutoGmv = row.ContentType?.Code == "AUTO_GMV_LIVE";
+                                    var isAutoGmv = row.ContentTypeCode == "AUTO_GMV_LIVE";
                                     var selfPm = Model.ProductionMethods.FirstOrDefault(pm => pm.Code == "SELF_PRODUCE");
                                     var aiPm = Model.ProductionMethods.FirstOrDefault(pm => pm.Code == "AI_PRODUCE");
                                     var displayMethodId = row.ProductionMethodId ?? selfPm?.Id;
-                                    var displayName = row.ProductionMethod?.Name ?? "Self Produce";
+                                    var displayName = row.ProductionMethodName ?? "Self Produce";
                                     var displayClass = displayName == "AI Produce" ? "prod-ai" : "prod-self";
                                 }
 
@@ -350,12 +383,52 @@
                                 @(metric?.Comments?.ToString("N0") ?? "—")
                             </td>
 
+                            <td data-col="save">
+                                @(metric?.Saves?.ToString("N0") ?? "—")
+                            </td>
+
                             <td data-col="share">
                                 @(metric?.Shares?.ToString("N0") ?? "—")
                             </td>
 
                             <td data-col="follower">
                                 @(metric?.NewFollowers?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="nonfollower">
+                                @(metric?.NonFollowers?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="male">
+                                @(metric?.Male?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="female">
+                                @(metric?.Female?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="nongender">
+                                @(metric?.NonGender?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="age18">
+                                @(metric?.Age18_24?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="age25">
+                                @(metric?.Age25_34?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="age35">
+                                @(metric?.Age35_44?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="age45">
+                                @(metric?.Age45_54?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="age55">
+                                @(metric?.Age55Plus?.ToString("N0") ?? "—")
                             </td>
                         </tr>
                     }
@@ -473,7 +546,7 @@
         // COLUMN VISIBILITY
         // =========================================================
         (function () {
-            var key = 'contentlog_columns_visibility_v1';
+            var key = 'contentlog_columns_visibility_v2';
 
             var defaults = {};
 
