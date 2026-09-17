@@ -43,8 +43,41 @@ public class TikTokVideoService : ITikTokVideoService
 
         try
         {
-            // navigate to data.performance.intervals[].traffic
-            if (data.ValueKind == JsonValueKind.Object && data.TryGetProperty("performance", out var perf) && perf.ValueKind == JsonValueKind.Object && perf.TryGetProperty("intervals", out var intervals) && intervals.ValueKind == JsonValueKind.Array)
+            // navigate to data.performance
+            if (!(data.ValueKind == JsonValueKind.Object && data.TryGetProperty("performance", out var perf) && perf.ValueKind == JsonValueKind.Object))
+            {
+                return result; // no performance object => nothing to parse
+            }
+
+            // helper to read long
+            long? ReadLong(JsonElement elem, params string[] names)
+            {
+                foreach (var name in names)
+                {
+                    if (elem.TryGetProperty(name, out var pe))
+                    {
+                        if (pe.ValueKind == JsonValueKind.Number && pe.TryGetInt64(out var lv)) return lv;
+                        if (pe.ValueKind == JsonValueKind.String && long.TryParse(pe.GetString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lv2)) return lv2;
+                    }
+                }
+                return null;
+            }
+
+            decimal? ReadDecimal(JsonElement elem, params string[] names)
+            {
+                foreach (var name in names)
+                {
+                    if (elem.TryGetProperty(name, out var pe))
+                    {
+                        if (pe.ValueKind == JsonValueKind.Number && pe.TryGetDecimal(out var dv)) return dv;
+                        if (pe.ValueKind == JsonValueKind.String && decimal.TryParse(pe.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var dv2)) return dv2;
+                    }
+                }
+                return null;
+            }
+
+            // Parse intervals[].traffic if present (may be missing on some responses)
+            if (perf.TryGetProperty("intervals", out var intervals) && intervals.ValueKind == JsonValueKind.Array)
             {
                 long viewsSum = 0;
                 long likesSum = 0;
@@ -63,33 +96,6 @@ public class TikTokVideoService : ITikTokVideoService
                 {
                     if (interval.ValueKind != JsonValueKind.Object) continue;
                     if (!interval.TryGetProperty("traffic", out var traffic) || traffic.ValueKind != JsonValueKind.Object) continue;
-
-                    // helper to read long
-                    long? ReadLong(JsonElement elem, params string[] names)
-                    {
-                        foreach (var name in names)
-                        {
-                            if (elem.TryGetProperty(name, out var pe))
-                            {
-                                if (pe.ValueKind == JsonValueKind.Number && pe.TryGetInt64(out var lv)) return lv;
-                                if (pe.ValueKind == JsonValueKind.String && long.TryParse(pe.GetString(), out var lv2)) return lv2;
-                            }
-                        }
-                        return null;
-                    }
-
-                    decimal? ReadDecimal(JsonElement elem, params string[] names)
-                    {
-                        foreach (var name in names)
-                        {
-                            if (elem.TryGetProperty(name, out var pe))
-                            {
-                                if (pe.ValueKind == JsonValueKind.Number && pe.TryGetDecimal(out var dv)) return dv;
-                                if (pe.ValueKind == JsonValueKind.String && decimal.TryParse(pe.GetString(), out var dv2)) return dv2;
-                            }
-                        }
-                        return null;
-                    }
 
                     var v = ReadLong(traffic, "views", "view_count"); if (v.HasValue) { viewsSum += v.Value; if (result.ViewsPath == null) result.ViewsPath = "data.performance.intervals[].traffic.views"; }
                     var l = ReadLong(traffic, "likes", "like_count"); if (l.HasValue) { likesSum += l.Value; if (result.LikesPath == null) result.LikesPath = "data.performance.intervals[].traffic.likes"; }
@@ -112,69 +118,70 @@ public class TikTokVideoService : ITikTokVideoService
                 if (avgWatchFound) result.AverageWatch = avgWatchSum; // sum of avg may not be meaningful; preserve presence
                 if (fullWatchFound) result.FullWatchRate = fullWatchSum;
                 if (reachFound) result.Reach = reachSum;
-                // Parse viewer_profile[type=="VIEWERS"] demographics from performance.viewer_profile if present
-                try
+            }
+
+            // Parse viewer_profile[type=="VIEWERS"] demographics from performance.viewer_profile if present
+            try
+            {
+                if (perf.TryGetProperty("viewer_profile", out var vp) && vp.ValueKind == JsonValueKind.Array)
                 {
-                    if (perf.ValueKind == JsonValueKind.Object && perf.TryGetProperty("viewer_profile", out var vp) && vp.ValueKind == JsonValueKind.Array)
+                    foreach (var profile in vp.EnumerateArray())
                     {
-                        foreach (var profile in vp.EnumerateArray())
+                        if (profile.ValueKind != JsonValueKind.Object) continue;
+                        if (!profile.TryGetProperty("type", out var ptype) || ptype.ValueKind != JsonValueKind.String) continue;
+                        var t = ptype.GetString();
+                        if (!string.Equals(t, "VIEWERS", System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                        // gender_distribution[]
+                        if (profile.TryGetProperty("gender_distribution", out var gdist) && gdist.ValueKind == JsonValueKind.Array)
                         {
-                            if (profile.ValueKind != JsonValueKind.Object) continue;
-                            if (!profile.TryGetProperty("type", out var ptype) || ptype.ValueKind != JsonValueKind.String) continue;
-                            var t = ptype.GetString();
-                            if (!string.Equals(t, "VIEWERS", System.StringComparison.OrdinalIgnoreCase)) continue;
-
-                            // gender_distribution[]
-                            if (profile.TryGetProperty("gender_distribution", out var gdist) && gdist.ValueKind == JsonValueKind.Array)
+                            foreach (var g in gdist.EnumerateArray())
                             {
-                                foreach (var g in gdist.EnumerateArray())
+                                if (g.ValueKind != JsonValueKind.Object) continue;
+                                var gender = g.TryGetProperty("gender", out var ggender) && ggender.ValueKind == JsonValueKind.String ? ggender.GetString() : null;
+                                decimal? perc = null;
+                                if (g.TryGetProperty("percentage", out var gperc))
                                 {
-                                    if (g.ValueKind != JsonValueKind.Object) continue;
-                                    var gender = g.TryGetProperty("gender", out var ggender) && ggender.ValueKind == JsonValueKind.String ? ggender.GetString() : null;
-                                    decimal? perc = null;
-                                    if (g.TryGetProperty("percentage", out var gperc))
-                                    {
-                                        if (gperc.ValueKind == JsonValueKind.String && decimal.TryParse(gperc.GetString(), out var dperc)) perc = dperc;
-                                        else if (gperc.ValueKind == JsonValueKind.Number && gperc.TryGetDecimal(out var dnum)) perc = dnum;
-                                    }
-                                    if (gender == null) continue;
-                                    if (string.Equals(gender, "male", System.StringComparison.OrdinalIgnoreCase)) { result.Male = perc; if (result.MalePath == null) result.MalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"male\"].percentage"; }
-                                    else if (string.Equals(gender, "female", System.StringComparison.OrdinalIgnoreCase)) { result.Female = perc; if (result.FemalePath == null) result.FemalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"female\"].percentage"; }
-                                    else if (string.Equals(gender, "no_gender", System.StringComparison.OrdinalIgnoreCase) || string.Equals(gender, "unknown", System.StringComparison.OrdinalIgnoreCase)) { result.NoGender = perc; if (result.NoGenderPath == null) result.NoGenderPath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"no_gender\"].percentage"; }
+                                    if (gperc.ValueKind == JsonValueKind.String && decimal.TryParse(gperc.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var dperc)) perc = dperc;
+                                    else if (gperc.ValueKind == JsonValueKind.Number && gperc.TryGetDecimal(out var dnum)) perc = dnum;
                                 }
+                                if (gender == null) continue;
+                                if (string.Equals(gender, "male", System.StringComparison.OrdinalIgnoreCase)) { result.Male = perc; if (result.MalePath == null) result.MalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"male\"].percentage"; }
+                                else if (string.Equals(gender, "female", System.StringComparison.OrdinalIgnoreCase)) { result.Female = perc; if (result.FemalePath == null) result.FemalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"female\"].percentage"; }
+                                else if (string.Equals(gender, "no_gender", System.StringComparison.OrdinalIgnoreCase) || string.Equals(gender, "unknown", System.StringComparison.OrdinalIgnoreCase)) { result.NoGender = perc; if (result.NoGenderPath == null) result.NoGenderPath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"no_gender\"].percentage"; }
                             }
-
-                            // age_distribution[]
-                            if (profile.TryGetProperty("age_distribution", out var adist) && adist.ValueKind == JsonValueKind.Array)
-                            {
-                                foreach (var a in adist.EnumerateArray())
-                                {
-                                    if (a.ValueKind != JsonValueKind.Object) continue;
-                                    var ageRange = a.TryGetProperty("age", out var aage) && aage.ValueKind == JsonValueKind.String ? aage.GetString() : null;
-                                    decimal? perc = null;
-                                    if (a.TryGetProperty("percentage", out var aperc))
-                                    {
-                                        if (aperc.ValueKind == JsonValueKind.String && decimal.TryParse(aperc.GetString(), out var dperc)) perc = dperc;
-                                        else if (aperc.ValueKind == JsonValueKind.Number && aperc.TryGetDecimal(out var dnum)) perc = dnum;
-                                    }
-                                    if (ageRange == null) continue;
-                                    if (ageRange == "18-24") { result.Age18 = perc; if (result.Age18Path == null) result.Age18Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"18-24\"].percentage"; }
-                                    else if (ageRange == "25-34") { result.Age25 = perc; if (result.Age25Path == null) result.Age25Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"25-34\"].percentage"; }
-                                    else if (ageRange == "35-44") { result.Age35 = perc; if (result.Age35Path == null) result.Age35Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"35-44\"].percentage"; }
-                                    else if (ageRange == "45-54") { result.Age45 = perc; if (result.Age45Path == null) result.Age45Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"45-54\"].percentage"; }
-                                    else if (ageRange == "55+" || string.Equals(ageRange, "55 and above", System.StringComparison.OrdinalIgnoreCase)) { result.Age55 = perc; if (result.Age55Path == null) result.Age55Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"55+\"].percentage"; }
-                                }
-                            }
-
-                            // stop after first VIEWERS profile
-                            break;
                         }
+
+                        // age_distribution[]
+                        if (profile.TryGetProperty("age_distribution", out var adist) && adist.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var a in adist.EnumerateArray())
+                            {
+                                if (a.ValueKind != JsonValueKind.Object) continue;
+                                var ageRange = a.TryGetProperty("age", out var aage) && aage.ValueKind == JsonValueKind.String ? aage.GetString() : null;
+                                decimal? perc = null;
+                                if (a.TryGetProperty("percentage", out var aperc))
+                                {
+                                    if (aperc.ValueKind == JsonValueKind.String && decimal.TryParse(aperc.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var dperc)) perc = dperc;
+                                    else if (aperc.ValueKind == JsonValueKind.Number && aperc.TryGetDecimal(out var dnum)) perc = dnum;
+                                }
+                                if (ageRange == null) continue;
+                                if (string.Equals(ageRange, "18-24", System.StringComparison.OrdinalIgnoreCase)) { result.Age18 = perc; if (result.Age18Path == null) result.Age18Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"18-24\"].percentage"; }
+                                else if (string.Equals(ageRange, "25-34", System.StringComparison.OrdinalIgnoreCase)) { result.Age25 = perc; if (result.Age25Path == null) result.Age25Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"25-34\"].percentage"; }
+                                else if (string.Equals(ageRange, "35-44", System.StringComparison.OrdinalIgnoreCase)) { result.Age35 = perc; if (result.Age35Path == null) result.Age35Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"35-44\"].percentage"; }
+                                else if (string.Equals(ageRange, "45-54", System.StringComparison.OrdinalIgnoreCase)) { result.Age45 = perc; if (result.Age45Path == null) result.Age45Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"45-54\"].percentage"; }
+                                else if (string.Equals(ageRange, "55+", System.StringComparison.OrdinalIgnoreCase) || string.Equals(ageRange, "55 and above", System.StringComparison.OrdinalIgnoreCase)) { result.Age55 = perc; if (result.Age55Path == null) result.Age55Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"55+\"].percentage"; }
+                            }
+                        }
+
+                        // stop after first VIEWERS profile
+                        break;
                     }
                 }
-                catch
-                {
-                    // ignore parsing issues for demographics
-                }
+            }
+            catch
+            {
+                // ignore parsing issues for demographics
             }
         }
         catch

@@ -33,15 +33,25 @@ public class TikTokDetailsSyncService
             .AsNoTracking()
             .Where(cl => cl.TikTokShop != null && cl.TikTokShop.ShopCipher == shopCipher && !string.IsNullOrEmpty(cl.VideoId));
 
-        // Order: missing metrics first, then oldest metric captured
+        // Determine candidate priority using latest ContentMetric per ContentLog
+        // Priority: 0 = no metric, 1 = metric exists but NOT enriched (views-only), 2 = metric exists and enriched
         var candidates = query
             .Select(cl => new
             {
                 Cl = cl,
-                LatestMetricCaptured = _db.ContentMetrics.Where(m => m.ContentLogId == cl.Id).OrderByDescending(m => m.CapturedAt).Select(m => (DateTime?)m.CapturedAt).FirstOrDefault()
+                LatestMetric = _db.ContentMetrics
+                    .Where(m => m.ContentLogId == cl.Id)
+                    .OrderByDescending(m => m.CapturedAt)
+                    .Select(m => new
+                    {
+                        m.CapturedAt,
+                        IsEnriched = (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null)
+                    })
+                    .FirstOrDefault()
             })
-            .OrderBy(x => x.LatestMetricCaptured.HasValue ? 1 : 0) // missing first
-            .ThenBy(x => x.LatestMetricCaptured ?? DateTime.MinValue)
+            .AsEnumerable() // switch to in-memory ordering for the composite priority calculation
+            .OrderBy(x => x.LatestMetric == null ? 0 : (x.LatestMetric.IsEnriched ? 2 : 1))
+            .ThenBy(x => x.LatestMetric?.CapturedAt ?? DateTime.MinValue)
             .Skip(skip)
             .Take(limit)
             .ToList();
