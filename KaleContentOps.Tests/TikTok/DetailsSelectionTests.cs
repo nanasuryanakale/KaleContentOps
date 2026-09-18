@@ -81,5 +81,42 @@ namespace KaleContentOps.TikTok.Tests
             Assert.Equal("B", firstThree[1]);
             Assert.Equal("C", firstThree[2]);
         }
+
+        [Fact]
+        public async Task Selection_Order_Within_Priority_Should_Prefer_Newer_VideoPostTime()
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
+
+            var shop = new TikTokShop { ShopCipher = "SHOP2" };
+
+            using (var db = new AppDbContext(options))
+            {
+                db.TikTokShops.Add(shop);
+                db.SaveChanges();
+
+                // Create three ContentLogs with no metrics but different VideoPostTime
+                var older = new ContentLog { VideoId = "V1", TikTokShop = shop, VideoPostTime = DateTime.UtcNow.AddDays(-10) };
+                var middle = new ContentLog { VideoId = "V2", TikTokShop = shop, VideoPostTime = DateTime.UtcNow.AddDays(-5) };
+                var newest = new ContentLog { VideoId = "V3", TikTokShop = shop, VideoPostTime = DateTime.UtcNow.AddDays(-1) };
+
+                db.ContentLogs.AddRange(older, middle, newest);
+                db.SaveChanges();
+            }
+
+            var fakeVideoSvc = new FakeVideoService();
+            var detailsSvc = new TikTokDetailsSyncService(new FakeHttpFactory(), Options.Create(new TikTokOptions()), new AppDbContext(options), fakeVideoSvc, NullLogger<TikTokDetailsSyncService>.Instance);
+
+            var processed = await detailsSvc.RunDetailsSyncAsync("SHOP2", limit: 10);
+
+            Assert.True(fakeVideoSvc.CalledVideoIds.Count >= 3, "Expected at least 3 video detail attempts");
+            var firstThree = fakeVideoSvc.CalledVideoIds.Take(3).ToArray();
+
+            // Expect newest first
+            Assert.Equal("V3", firstThree[0]);
+            Assert.Equal("V2", firstThree[1]);
+            Assert.Equal("V1", firstThree[2]);
+        }
     }
 }

@@ -35,26 +35,103 @@ public class TikTokDetailsSyncService
 
         // Determine candidate priority using latest ContentMetric per ContentLog
         // Priority: 0 = no metric, 1 = metric exists but NOT enriched (views-only), 2 = metric exists and enriched
-        var candidates = query
-            .Select(cl => new
+
+        // 1) Compute latest CapturedAt per ContentLog (server-side)
+        var latestPerLog = _db.ContentMetrics
+            .GroupBy(m => m.ContentLogId)
+            .Select(g => new
             {
-                Cl = cl,
-                LatestMetric = _db.ContentMetrics
-                    .Where(m => m.ContentLogId == cl.Id)
-                    .OrderByDescending(m => m.CapturedAt)
-                    .Select(m => new
-                    {
-                        m.CapturedAt,
-                        IsEnriched = (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null)
-                    })
-                    .FirstOrDefault()
-            })
-            .AsEnumerable() // switch to in-memory ordering for the composite priority calculation
-            .OrderBy(x => x.LatestMetric == null ? 0 : (x.LatestMetric.IsEnriched ? 2 : 1))
-            .ThenBy(x => x.LatestMetric?.CapturedAt ?? DateTime.MinValue)
-            .Skip(skip)
-            .Take(limit)
-            .ToList();
+                ContentLogId = g.Key,
+                CapturedAt = g.Max(x => x.CapturedAt)
+            });
+
+        // 2) Join back to ContentMetrics to obtain the latest metric row and compute IsEnriched (server-side)
+        var latestRows = from lm in latestPerLog
+                         join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
+                         select new
+                         {
+                             m.ContentLogId,
+                             m.CapturedAt,
+                             IsEnriched = (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null)
+                         };
+
+        // 3) Left-join ContentLogs with latestRows so logs without metrics are included
+        var candidateQuery = from cl in query
+                             join lr in latestRows on cl.Id equals lr.ContentLogId into lj
+                             from lr in lj.DefaultIfEmpty()
+                             select new
+                             {
+                                 Cl = cl,
+                                 LatestCapturedAt = (DateTime?)lr.CapturedAt,
+                                 IsEnriched = (bool?)lr.IsEnriched
+                             };
+
+        // 4) Apply pagination while preserving priority semantics.
+        // To avoid expensive server-side grouping over huge tables, execute prioritized queries in sequence
+        // and apply skip/limit across the priority buckets so we only materialize the minimum rows.
+
+        var results = new List<dynamic>();
+        int remainingSkip = skip;
+        int remainingLimit = limit;
+
+        // Priority 0: ContentLogs with no metrics
+        // Order priority 0 (no metric) by newest VideoPostTime first, tie-breaker Id DESC to prefer newer inserts
+        var priority0Query = query.Where(cl => !_db.ContentMetrics.Any(m => m.ContentLogId == cl.Id))
+            .OrderByDescending(cl => cl.VideoPostTime)
+            .ThenByDescending(cl => cl.Id);
+        if (remainingLimit > 0)
+        {
+            var p0 = await priority0Query.Skip(remainingSkip).Take(remainingLimit).ToListAsync(cancellationToken);
+            results.AddRange(p0.Select(cl => new { Cl = cl, LatestCapturedAt = (DateTime?)null, IsEnriched = (bool?)null }));
+            remainingSkip = Math.Max(0, remainingSkip - p0.Count);
+            remainingLimit -= p0.Count;
+        }
+
+        // Prepare base content log ids for this shop to restrict subsequent queries
+        var shopContentLogIds = query.Select(cl => cl.Id);
+
+        // Helper: function to fetch next bucket (priority 1 = not enriched, priority 2 = enriched)
+        async Task<List<(ContentLog Cl, DateTime? CapturedAt, bool IsEnriched)>> FetchPriorityBucketAsync(bool wantEnriched, int skipCount, int takeCount, CancellationToken ct)
+        {
+            // latest per log (restricted to this shop) -> join back to metrics
+            var latestPerLogRestricted = _db.ContentMetrics
+                .Where(m => shopContentLogIds.Contains(m.ContentLogId))
+                .GroupBy(m => m.ContentLogId)
+                .Select(g => new { ContentLogId = g.Key, CapturedAt = g.Max(x => x.CapturedAt) });
+
+            var latestMetrics = from lm in latestPerLogRestricted
+                                join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
+                                where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null) == wantEnriched
+                                select new { lm.ContentLogId, m.CapturedAt };
+
+            // Order by ContentLog.VideoPostTime DESC then Id DESC to prioritize newest videos within the same priority bucket
+            var q = from cl in query
+                    join lm in latestMetrics on cl.Id equals lm.ContentLogId
+                    orderby cl.VideoPostTime descending, cl.Id descending
+                    select new { Cl = cl, CapturedAt = (DateTime?)lm.CapturedAt };
+
+            var page = await q.Skip(skipCount).Take(takeCount).ToListAsync(ct);
+            return page.Select(x => ((ContentLog)x.Cl, x.CapturedAt, wantEnriched)).ToList();
+        }
+
+        // Priority 1: not enriched
+        if (remainingLimit > 0)
+        {
+            var p1 = await FetchPriorityBucketAsync(false, remainingSkip, remainingLimit, cancellationToken);
+            results.AddRange(p1.Select(t => new { Cl = t.Cl, LatestCapturedAt = t.CapturedAt, IsEnriched = (bool?)t.IsEnriched }));
+            remainingSkip = Math.Max(0, remainingSkip - p1.Count);
+            remainingLimit -= p1.Count;
+        }
+
+        // Priority 2: enriched
+        if (remainingLimit > 0)
+        {
+            var p2 = await FetchPriorityBucketAsync(true, remainingSkip, remainingLimit, cancellationToken);
+            results.AddRange(p2.Select(t => new { Cl = t.Cl, LatestCapturedAt = t.CapturedAt, IsEnriched = (bool?)t.IsEnriched }));
+        }
+
+        // Build candidates list expected by the remainder of the method
+        var candidates = results.Select(r => new { Cl = (ContentLog)r.Cl, LatestMetric = (object?)null }).ToList();
 
         if (candidates.Count == 0)
         {

@@ -12,7 +12,7 @@
         <div class="menu-section">TIKTOK CONTENT</div>
         <ul class="nav flex-column">
             <li class="nav-item">
-                <a class="nav-link active" asp-controller="ContentLog" asp-action="Index">
+                <a class="nav-link @(ViewContext.RouteData.Values["controller"] as string == "ContentLog" ? "active" : "")" asp-controller="ContentLog" asp-action="Index">
                     <span class="nav-icon" aria-hidden="true">
                         <!-- list / table icon -->
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -24,7 +24,7 @@
                     <span class="nav-text">Content Log</span>
                 </a>
             </li>
-            <li class="nav-item"><a class="nav-link" href="#"><span class="nav-icon" aria-hidden="true">
+            <li class="nav-item"><a class="nav-link @(ViewContext.RouteData.Values["controller"] as string == "DailySummary" ? "active" : "")" asp-controller="DailySummary" asp-action="Index"><span class="nav-icon" aria-hidden="true">
                         <!-- calendar icon -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.2" />

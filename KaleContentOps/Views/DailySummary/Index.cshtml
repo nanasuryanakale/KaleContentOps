@@ -1,0 +1,310 @@
+@model KaleContentOps.ViewModels.DailySummaryPageModel
+@{
+    ViewData["Title"] = "Daily Summary";
+    var data = Model.Data;
+}
+<link rel="stylesheet" href="~/css/daily-summary.css" />
+
+<div class="content-page daily-summary-page" data-start="@data.StartDate.ToString("yyyy-MM-dd")" data-end="@data.EndDate.ToString("yyyy-MM-dd")">
+    <header class="summary-header">
+        <div>
+            <div class="eyebrow">CONTENT PERFORMANCE</div>
+            <h1>Daily Summary</h1>
+            <p>Jumlah konten &amp; total views per hari berdasarkan tanggal video diposting.</p>
+        </div>
+        <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel">
+            <span class="calendar-icon" aria-hidden="true">▣</span>
+            <span><strong id="dateRangeLabel">@data.StartDate.ToString("dd MMM yyyy") - @data.EndDate.ToString("dd MMM yyyy")</strong><small>GMT+7</small></span>
+            <span class="chevron" aria-hidden="true">⌄</span>
+        </button>
+    </header>
+
+    <div class="daily-toolbar">
+        <div class="toolbar-left">
+            <button type="button" class="toolbar-button" id="columnsButton" aria-expanded="false" aria-controls="columnPanel">
+                <span aria-hidden="true">▤</span> Kolom <span class="toolbar-chevron">⌄</span>
+            </button>
+            <label class="switch-control">
+                <input id="includeAutoGmv" type="checkbox" @(data.IncludeAutoGmvInTotal ? "checked" : null) />
+                <span class="switch-track"></span>
+                Termasuk Auto GMV Live di kolom Total
+            </label>
+        </div>
+        <label class="archive-control">
+            <input id="includeArchived" type="checkbox" @(data.IncludeArchived ? "checked" : null) />
+            Include Archived
+        </label>
+    </div>
+
+    <section class="popover-panel column-panel" id="columnPanel" hidden>
+        <div class="popover-title">PILIH JENIS KONTEN YANG DITAMPILKAN</div>
+        <div class="popover-help">Setiap jenis konten mengatur dua kolom: Jumlah Konten dan Total Views.</div>
+        <label><input type="checkbox" data-column="nonkk" checked="@(Model.ShowNonKk ? "checked" : null)" /> <span class="category-dot nonkk"></span> Non-KK</label>
+        <label><input type="checkbox" data-column="kk" checked="@(Model.ShowKk ? "checked" : null)" /> <span class="category-dot kk"></span> Keranjang Kuning</label>
+        <label><input type="checkbox" data-column="autogmv" checked="@(Model.ShowAutoGmv ? "checked" : null)" /> <span class="category-dot autogmv"></span> Auto GMV Live</label>
+    </section>
+
+    <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
+        <div class="date-picker-topline">
+            <div><strong id="pendingRangeLabel"></strong><small>Pilih rentang tanggal laporan</small></div>
+            <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">×</button>
+        </div>
+        <div class="preset-list">
+            <button type="button" data-preset="today">Hari Ini</button>
+            <button type="button" data-preset="yesterday">Kemarin</button>
+            <button type="button" data-preset="7">1 Minggu Terakhir</button>
+            <button type="button" data-preset="30">1 Bulan Terakhir</button>
+            <button type="button" data-preset="90">3 Bulan Terakhir</button>
+        </div>
+        <div class="calendar-toolbar">
+            <button type="button" id="previousMonth" aria-label="Previous month">‹</button>
+            <strong id="calendarTitle"></strong>
+            <button type="button" id="nextMonth" aria-label="Next month">›</button>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+        <div class="date-picker-actions">
+            <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
+            <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
+        </div>
+    </section>
+
+    <div class="legend-row">
+        <span><i class="category-dot kk"></i> Keranjang Kuning</span>
+        <span><i class="category-dot nonkk"></i> Non-KK</span>
+        <span><i class="category-dot autogmv"></i> Auto GMV Live</span>
+    </div>
+
+    <section class="table-card daily-table-card">
+        <div class="table-scroll">
+            <table class="daily-summary-table">
+                <thead>
+                    <tr class="group-row">
+                        <th rowspan="2" class="index-column">No</th>
+                        <th rowspan="2" class="date-column">Tanggal</th>
+                        <th class="group-total" colspan="2">TOTAL</th>
+                        <th class="group-nonkk col-nonkk" colspan="2">NON-KK</th>
+                        <th class="group-kk col-kk" colspan="2">KERANJANG KUNING</th>
+                        <th class="group-autogmv col-autogmv" colspan="2">AUTO GMV LIVE</th>
+                    </tr>
+                    <tr class="column-row">
+                        <th>Jumlah Konten</th><th>Total Views</th>
+                        <th class="col-nonkk">Jumlah Konten</th><th class="col-nonkk">Total Views</th>
+                        <th class="col-kk">Jumlah Konten</th><th class="col-kk">Total Views</th>
+                        <th class="col-autogmv">Jumlah Konten</th><th class="col-autogmv">Total Views</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @for (var i = 0; i < data.Rows.Count; i++)
+                {
+                    var row = data.Rows[i];
+                    <tr>
+                        <td class="index-column">@(i + 1)</td>
+                        <td class="date-column">@row.Date.ToString("dd MMM yyyy")</td>
+                        <td class="total-content" data-nonkk="@row.NonKkCount" data-kk="@row.KkCount" data-autogmv="@row.AutoGmvCount">@row.TotalCount</td>
+                        <td class="total-views number" data-nonkk="@row.NonKkViews" data-kk="@row.KkViews" data-autogmv="@row.AutoGmvViews">@row.TotalViews.ToString("N0")</td>
+                        <td class="col-nonkk @($"tgt-{row.NonKkContentStatus}")">@row.NonKkCount</td>
+                        <td class="col-nonkk number @($"tgt-{row.NonKkViewsStatus}")">@row.NonKkViews.ToString("N0")</td>
+                        <td class="col-kk @($"tgt-{row.KkContentStatus}")">@row.KkCount</td>
+                        <td class="col-kk number @($"tgt-{row.KkViewsStatus}")">@row.KkViews.ToString("N0")</td>
+                        <td class="col-autogmv">@row.AutoGmvCount</td>
+                        <td class="col-autogmv number">@row.AutoGmvViews.ToString("N0")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="summary-layout">
+        <section class="report-card summary-card">
+            <div class="card-heading"><span>RINGKASAN</span><small>@data.StartDate.ToString("dd MMM") - @data.EndDate.ToString("dd MMM yyyy")</small></div>
+            <div class="table-scroll">
+                <table class="report-table summary-table">
+                    <thead><tr><th>JENIS KONTEN</th><th>AVG KONTEN/HARI</th><th>AVG VIEWS/HARI</th><th>TOTAL KONTEN</th><th>TOTAL VIEWS</th></tr></thead>
+                    <tbody>
+                    @foreach (var item in Model.TypeSummaries)
+                    {
+                        var dotClass = item.Code == "NON_KK" ? "nonkk" : item.Code == "KK" ? "kk" : "autogmv";
+                        <tr><td><span class="category-dot @dotClass"></span>@item.Name</td><td>@item.AvgContentPerDay.ToString("N2")</td><td>@item.AvgViewsPerDay.ToString("N0")</td><td>@item.TotalCount</td><td>@item.TotalViews.ToString("N0")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="report-card composition-card">
+            <div class="card-heading"><span>KOMPOSISI JENIS KONTEN</span><small>@data.StartDate.ToString("dd MMM") - @data.EndDate.ToString("dd MMM yyyy")</small></div>
+            <div class="composition-content">
+                <div class="donut" id="compositionDonut"></div>
+                <div class="composition-legend">
+                @foreach (var item in Model.Composition)
+                {
+                    var dotClass = item.Code == "NON_KK" ? "nonkk" : item.Code == "KK" ? "kk" : "autogmv";
+                    <div><span><i class="category-dot @dotClass"></i>@item.Name</span><strong>@item.Percentage.ToString("N2")%</strong></div>
+                }
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="report-card target-card">
+        <div class="card-heading"><span>TARGET ACHIEVEMENT</span><small>@data.CalendarDays HARI KALENDER</small></div>
+        <div class="table-scroll">
+            <table class="report-table target-table">
+                <thead><tr><th>JENIS KONTEN</th><th>METRIK</th><th>TARGET PERIODE INI</th><th>ACTUAL</th><th>SELISIH</th><th>STATUS</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.TargetAchievements)
+                {
+                    var statusClass = item.Status == "achieved" ? "status-achieved" : "status-below";
+                    <tr><td>@item.ContentTypeName</td><td>@item.MetricName</td><td>@item.TargetPeriodValue.ToString("N0")</td><td>@item.ActualValue.ToString("N0")</td><td class="@(item.VarianceValue >= 0 ? "tgt-above" : "tgt-below")">@item.VarianceValue.ToString("+0;-0;0")</td><td><span class="status-pill @statusClass">@(item.Status == "achieved" ? "Achieved" : "Not achieved")</span></td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <aside class="info-note">
+        <strong>Catatan perhitungan</strong>
+        <span>Rentang tanggal yang dipilih menentukan periode target. Target periode dihitung berdasarkan jumlah hari kalender yang dipilih. Status merah berarti actual masih di bawah target harian; status hijau berarti target tercapai atau terlampaui. Views yang ditampilkan adalah akumulasi terbaru.</span>
+    </aside>
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    const page = document.querySelector('.daily-summary-page');
+    const rangeButton = document.getElementById('dateRangeButton');
+    const datePanel = document.getElementById('datePickerPanel');
+    const columnPanel = document.getElementById('columnPanel');
+    const appliedStart = page.dataset.start;
+    const appliedEnd = page.dataset.end;
+    let pendingStart = appliedStart;
+    let pendingEnd = appliedEnd;
+    let calendarMonth = new Date(`${appliedStart}T00:00:00`);
+    calendarMonth.setDate(1);
+
+    const parseDate = value => new Date(`${value}T00:00:00`);
+    const isoDate = date => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    const formatDate = value => parseDate(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    const formatNumber = value => Number(value || 0).toLocaleString('id-ID');
+
+    function setPanel(panel, button, open) {
+        panel.hidden = !open;
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function renderPendingLabel() {
+        document.getElementById('pendingRangeLabel').textContent = `${formatDate(pendingStart)} - ${formatDate(pendingEnd)}`;
+    }
+
+    function renderCalendar() {
+        const grid = document.getElementById('calendarGrid');
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const firstMonth = new Date(calendarMonth);
+        const secondMonth = new Date(calendarMonth);
+        secondMonth.setMonth(secondMonth.getMonth() + 1);
+        document.getElementById('calendarTitle').textContent = `${monthNames[firstMonth.getMonth()]} ${firstMonth.getFullYear()} · ${monthNames[secondMonth.getMonth()]} ${secondMonth.getFullYear()}`;
+        grid.innerHTML = [firstMonth, secondMonth].map(renderMonth).join('');
+        grid.querySelectorAll('[data-date]').forEach(day => day.addEventListener('click', () => {
+            const selected = day.dataset.date;
+            if (!pendingStart || (pendingStart && pendingEnd)) {
+                pendingStart = selected;
+                pendingEnd = selected;
+            } else if (selected < pendingStart) {
+                pendingEnd = pendingStart;
+                pendingStart = selected;
+            } else {
+                pendingEnd = selected;
+            }
+            renderPendingLabel();
+            renderCalendar();
+        }));
+    }
+
+    function renderMonth(month) {
+        const weekdays = ['Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb', 'Mg'];
+        const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+        const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+        let html = `<div class="calendar-month"><strong>${firstDay.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</strong><div class="weekday-row">${weekdays.map(x => `<span>${x}</span>`).join('')}</div><div class="days-grid">`;
+        const offset = (firstDay.getDay() + 6) % 7;
+        for (let i = 0; i < offset; i++) html += '<span class="empty-day"></span>';
+        for (let day = 1; day <= daysInMonth; day++) {
+            const value = isoDate(new Date(month.getFullYear(), month.getMonth(), day));
+            const selected = value === pendingStart || value === pendingEnd;
+            const inRange = value > pendingStart && value < pendingEnd;
+            html += `<button type="button" class="calendar-day${selected ? ' selected' : ''}${inRange ? ' in-range' : ''}" data-date="${value}">${day}</button>`;
+        }
+        return html + '</div></div>';
+    }
+
+    function updateTotals() {
+        const includeAuto = document.getElementById('includeAutoGmv').checked;
+        document.querySelectorAll('.total-content').forEach(cell => {
+            const value = Number(cell.dataset.nonkk) + Number(cell.dataset.kk) + (includeAuto ? Number(cell.dataset.autogmv) : 0);
+            cell.textContent = formatNumber(value);
+        });
+        document.querySelectorAll('.total-views').forEach(cell => {
+            const value = Number(cell.dataset.nonkk) + Number(cell.dataset.kk) + (includeAuto ? Number(cell.dataset.autogmv) : 0);
+            cell.textContent = formatNumber(value);
+        });
+    }
+
+    function reloadForArchive() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('startDate', appliedStart);
+        url.searchParams.set('endDate', appliedEnd);
+        url.searchParams.set('includeArchived', document.getElementById('includeArchived').checked ? 'true' : 'false');
+        url.searchParams.set('includeAutoGmvInTotal', document.getElementById('includeAutoGmv').checked ? 'true' : 'false');
+        window.location.assign(url.toString());
+    }
+
+    rangeButton.addEventListener('click', () => {
+        setPanel(datePanel, rangeButton, datePanel.hidden);
+        setPanel(columnPanel, document.getElementById('columnsButton'), false);
+        if (!datePanel.hidden) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    });
+    document.getElementById('closeDatePicker').addEventListener('click', () => setPanel(datePanel, rangeButton, false));
+    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; setPanel(datePanel, rangeButton, false); });
+    document.getElementById('previousMonth').addEventListener('click', () => { calendarMonth.setMonth(calendarMonth.getMonth() - 1); renderCalendar(); });
+    document.getElementById('nextMonth').addEventListener('click', () => { calendarMonth.setMonth(calendarMonth.getMonth() + 1); renderCalendar(); });
+    document.getElementById('applyDatePicker').addEventListener('click', () => {
+        const form = document.createElement('form');
+        form.method = 'get';
+        [['startDate', pendingStart], ['endDate', pendingEnd], ['includeArchived', document.getElementById('includeArchived').checked], ['includeAutoGmvInTotal', document.getElementById('includeAutoGmv').checked]].forEach(([name, value]) => { const input = document.createElement('input'); input.name = name; input.value = value; form.appendChild(input); });
+        document.body.appendChild(form);
+        form.submit();
+    });
+    document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+        const today = new Date();
+        const preset = button.dataset.preset;
+        const end = new Date(today);
+        const start = new Date(today);
+        if (preset === 'yesterday') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); }
+        else if (preset !== 'today') start.setDate(start.getDate() - Number(preset) + 1);
+        pendingStart = isoDate(start); pendingEnd = isoDate(end); renderPendingLabel(); renderCalendar();
+    }));
+
+    document.getElementById('columnsButton').addEventListener('click', () => {
+        setPanel(columnPanel, document.getElementById('columnsButton'), columnPanel.hidden);
+        setPanel(datePanel, rangeButton, false);
+    });
+    document.querySelectorAll('[data-column]').forEach(input => input.addEventListener('change', () => {
+        document.querySelectorAll(`.col-${input.dataset.column}`).forEach(cell => cell.hidden = !input.checked);
+    }));
+    document.getElementById('includeAutoGmv').addEventListener('change', updateTotals);
+    document.getElementById('includeArchived').addEventListener('change', reloadForArchive);
+
+    const composition = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Composition.Select(x => new { x.Percentage, x.Code })));
+    let offset = 0;
+    const colors = { NON_KK: '#4d9fff', KK: '#e8b83f', AUTO_GMV_LIVE: '#a975e8' };
+    const segments = composition.map(item => { const segment = `${colors[item.code] || '#64748b'} ${offset}% ${offset + item.percentage}%`; offset += item.percentage; return segment; });
+    document.getElementById('compositionDonut').style.background = `conic-gradient(${segments.join(',')})`;
+    updateTotals();
+})();
+</script>
+}

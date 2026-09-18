@@ -2,6 +2,7 @@ using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
 using KaleContentOps.Services.TikTok;
 using KaleContentOps.Services;
+using KaleContentOps.Services.DailySummary;
 using System.IO;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -21,6 +22,11 @@ builder.Services.AddSession(options =>
 
 // TikTok configuration
 builder.Services.Configure<TikTokOptions>(builder.Configuration.GetSection("TikTok"));
+var dailySummaryTargets = builder.Configuration
+    .GetSection(DailySummaryTargetOptions.SectionName)
+    .Get<DailySummaryTargetOptions>() ?? new DailySummaryTargetOptions();
+builder.Services.AddSingleton(dailySummaryTargets);
+builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
 
 // Register named HttpClients for TikTok API and Auth endpoints. Concrete services will be registered later.
 builder.Services.AddHttpClient("TikTokApi", client =>
@@ -52,6 +58,8 @@ builder.Services.AddSingleton<ITikTokSignatureService, TikTokSignatureService>()
 builder.Services.AddScoped<ITikTokAuthService, TikTokAuthService>();
 builder.Services.AddScoped<ITikTokShopService, TikTokShopService>();
 builder.Services.AddScoped<ITikTokVideoService, TikTokVideoService>();
+// Details sync service (used by CLI and background worker)
+builder.Services.AddScoped<TikTokDetailsSyncService>();
 
 // Daily sync worker - register only when explicitly enabled via configuration (TikTok:EnableDailySync = true)
 if (builder.Configuration.GetValue<bool>("TikTok:EnableDailySync", false))

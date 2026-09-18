@@ -92,10 +92,14 @@ public class TikTokVideoService : ITikTokVideoService
                 long reachSum = 0;
                 bool reachFound = false;
 
+                bool trafficFound = false;
+
                 foreach (var interval in intervals.EnumerateArray())
                 {
                     if (interval.ValueKind != JsonValueKind.Object) continue;
                     if (!interval.TryGetProperty("traffic", out var traffic) || traffic.ValueKind != JsonValueKind.Object) continue;
+
+                    trafficFound = true;
 
                     var v = ReadLong(traffic, "views", "view_count"); if (v.HasValue) { viewsSum += v.Value; if (result.ViewsPath == null) result.ViewsPath = "data.performance.intervals[].traffic.views"; }
                     var l = ReadLong(traffic, "likes", "like_count"); if (l.HasValue) { likesSum += l.Value; if (result.LikesPath == null) result.LikesPath = "data.performance.intervals[].traffic.likes"; }
@@ -108,16 +112,20 @@ public class TikTokVideoService : ITikTokVideoService
                     var r = ReadLong(traffic, "reach", "reach_count"); if (r.HasValue) { reachFound = true; reachSum += r.Value; if (result.ReachPath == null) result.ReachPath = "data.performance.intervals[].traffic.reach"; }
                 }
 
-                // Assign sums even when zero to preserve explicit zero values from the API. Only leave null when no data present at all.
-                result.Views = viewsSum;
-                result.Likes = likesSum;
-                result.Comments = commentsSum;
-                result.Shares = sharesSum;
-                result.NewFollowers = newFollowersSum;
+                // Only assign sums to result when at least one traffic object was found.
+                // This preserves explicit zero values when traffic exists, and leaves fields null when traffic is absent.
+                if (trafficFound)
+                {
+                    result.Views = viewsSum;
+                    result.Likes = likesSum;
+                    result.Comments = commentsSum;
+                    result.Shares = sharesSum;
+                    result.NewFollowers = newFollowersSum;
 
-                if (avgWatchFound) result.AverageWatch = avgWatchSum; // sum of avg may not be meaningful; preserve presence
-                if (fullWatchFound) result.FullWatchRate = fullWatchSum;
-                if (reachFound) result.Reach = reachSum;
+                    if (avgWatchFound) result.AverageWatch = avgWatchSum; // sum of avg may not be meaningful; preserve presence
+                    if (fullWatchFound) result.FullWatchRate = fullWatchSum;
+                    if (reachFound) result.Reach = reachSum;
+                }
             }
 
             // Parse viewer_profile[type=="VIEWERS"] demographics from performance.viewer_profile if present
@@ -466,6 +474,26 @@ public class TikTokVideoService : ITikTokVideoService
             {
                 using var doc = JsonDocument.Parse(body);
                 var root = doc.RootElement.Clone();
+
+                // Detect top-level business code and treat non-zero as business error (do not forward as successful data)
+                var code = 0;
+                try
+                {
+                    if (root.TryGetProperty("code", out var codeElem) && codeElem.ValueKind == JsonValueKind.Number && codeElem.TryGetInt32(out var codeVal)) code = codeVal;
+                    else if (root.TryGetProperty("code", out var codeElem2) && codeElem2.ValueKind == JsonValueKind.String && int.TryParse(codeElem2.GetString(), out var codeVal2)) code = codeVal2;
+                }
+                catch
+                {
+                    // ignore parsing code errors and default to 0
+                    code = 0;
+                }
+
+                if (code != 0)
+                {
+                    // Business error: do not return data as successful. Return root but Data = null so callers treat as non-successful details.
+                    return (status, url, root, null);
+                }
+
                 var data = root.TryGetProperty("data", out var dataElem) ? dataElem.Clone() : root;
                 return (status, url, root, data);
             }
