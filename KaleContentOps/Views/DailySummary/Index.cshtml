@@ -7,71 +7,88 @@
 
 <div class="content-page daily-summary-page" data-start="@data.StartDate.ToString("yyyy-MM-dd")" data-end="@data.EndDate.ToString("yyyy-MM-dd")">
     <header class="summary-header">
-        <div>
-            <div class="eyebrow">CONTENT PERFORMANCE</div>
+        <div class="summary-title">
             <h1>Daily Summary</h1>
             <p>Jumlah konten &amp; total views per hari berdasarkan tanggal video diposting.</p>
         </div>
-        <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel">
-            <span class="calendar-icon" aria-hidden="true">▣</span>
-            <span><strong id="dateRangeLabel">@data.StartDate.ToString("dd MMM yyyy") - @data.EndDate.ToString("dd MMM yyyy")</strong><small>GMT+7</small></span>
-            <span class="chevron" aria-hidden="true">⌄</span>
-        </button>
+        <div class="header-anchor">
+            <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel">
+                <span class="calendar-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.4" />
+                        <path d="M16 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                        <path d="M8 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <strong id="dateRangeLabel">@data.StartDate.ToString("dd/MM") - @data.EndDate.ToString("dd/MM")</strong>
+                <small>GMT+7</small>
+                <span class="chevron" aria-hidden="true">⌄</span>
+            </button>
+
+            <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
+                <div class="date-picker-topline">
+                    <div>
+                        <strong id="pendingRangeLabel"></strong>
+                        <small>Pilih rentang tanggal laporan</small>
+                    </div>
+                    <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">×</button>
+                </div>
+                <div class="date-picker-body">
+                    <div class="preset-list" id="presetList">
+                        <div class="preset-title">PERIODE CEPAT</div>
+                        <button type="button" data-preset="today">Hari Ini</button>
+                        <button type="button" data-preset="yesterday">Kemarin</button>
+                        <button type="button" data-preset="7">1 Minggu Terakhir</button>
+                        <button type="button" data-preset="30">1 Bulan Terakhir</button>
+                        <button type="button" data-preset="90">3 Bulan Terakhir</button>
+                    </div>
+                    <div class="calendar-area">
+                        <div class="calendar-toolbar">
+                            <button type="button" id="previousMonth" aria-label="Previous month">‹</button>
+                            <strong id="calendarTitle"></strong>
+                            <button type="button" id="nextMonth" aria-label="Next month">›</button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                    </div>
+                </div>
+                <div class="date-picker-actions">
+                    <div class="date-picker-selected" id="datePickerSelected"></div>
+                    <div>
+                        <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
+                        <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
+                    </div>
+                </div>
+            </section>
+        </div>
     </header>
 
     <div class="daily-toolbar">
         <div class="toolbar-left">
-            <button type="button" class="toolbar-button" id="columnsButton" aria-expanded="false" aria-controls="columnPanel">
-                <span aria-hidden="true">▤</span> Kolom <span class="toolbar-chevron">⌄</span>
-            </button>
-            <label class="switch-control">
+            <div class="toolbar-anchor">
+                <button type="button" class="toolbar-button" id="columnsButton" aria-expanded="false" aria-controls="columnPanel">
+                    <span aria-hidden="true">▤</span> Kolom <span class="toolbar-chevron">⌄</span>
+                </button>
+                <section class="popover-panel column-panel" id="columnPanel" hidden>
+                    <div class="popover-title">TAMPILKAN KOLOM</div>
+                    <label><input type="checkbox" data-column="nonkk" checked="@(Model.ShowNonKk ? "checked" : null)" /> <span class="category-dot nonkk"></span> Non-KK</label>
+                    <label><input type="checkbox" data-column="kk" checked="@(Model.ShowKk ? "checked" : null)" /> <span class="category-dot kk"></span> Keranjang Kuning</label>
+                    <label><input type="checkbox" data-column="autogmv" checked="@(Model.ShowAutoGmv ? "checked" : null)" /> <span class="category-dot autogmv"></span> Auto GMV Live</label>
+                </section>
+            </div>
+            <label class="check-control">
                 <input id="includeAutoGmv" type="checkbox" @(data.IncludeAutoGmvInTotal ? "checked" : null) />
-                <span class="switch-track"></span>
                 Termasuk Auto GMV Live di kolom Total
             </label>
+            <label class="check-control check-control-muted">
+                <input id="includeArchived" type="checkbox" @(data.IncludeArchived ? "checked" : null) />
+                Include Archived
+            </label>
         </div>
-        <label class="archive-control">
-            <input id="includeArchived" type="checkbox" @(data.IncludeArchived ? "checked" : null) />
-            Include Archived
-        </label>
-    </div>
-
-    <section class="popover-panel column-panel" id="columnPanel" hidden>
-        <div class="popover-title">PILIH JENIS KONTEN YANG DITAMPILKAN</div>
-        <div class="popover-help">Setiap jenis konten mengatur dua kolom: Jumlah Konten dan Total Views.</div>
-        <label><input type="checkbox" data-column="nonkk" checked="@(Model.ShowNonKk ? "checked" : null)" /> <span class="category-dot nonkk"></span> Non-KK</label>
-        <label><input type="checkbox" data-column="kk" checked="@(Model.ShowKk ? "checked" : null)" /> <span class="category-dot kk"></span> Keranjang Kuning</label>
-        <label><input type="checkbox" data-column="autogmv" checked="@(Model.ShowAutoGmv ? "checked" : null)" /> <span class="category-dot autogmv"></span> Auto GMV Live</label>
-    </section>
-
-    <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
-        <div class="date-picker-topline">
-            <div><strong id="pendingRangeLabel"></strong><small>Pilih rentang tanggal laporan</small></div>
-            <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">×</button>
+        <div class="legend-row">
+            <span><i class="category-dot kk"></i> Keranjang Kuning</span>
+            <span><i class="category-dot nonkk"></i> Non-KK</span>
+            <span><i class="category-dot autogmv"></i> Auto GMV Live</span>
         </div>
-        <div class="preset-list">
-            <button type="button" data-preset="today">Hari Ini</button>
-            <button type="button" data-preset="yesterday">Kemarin</button>
-            <button type="button" data-preset="7">1 Minggu Terakhir</button>
-            <button type="button" data-preset="30">1 Bulan Terakhir</button>
-            <button type="button" data-preset="90">3 Bulan Terakhir</button>
-        </div>
-        <div class="calendar-toolbar">
-            <button type="button" id="previousMonth" aria-label="Previous month">‹</button>
-            <strong id="calendarTitle"></strong>
-            <button type="button" id="nextMonth" aria-label="Next month">›</button>
-        </div>
-        <div class="calendar-grid" id="calendarGrid"></div>
-        <div class="date-picker-actions">
-            <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
-            <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
-        </div>
-    </section>
-
-    <div class="legend-row">
-        <span><i class="category-dot kk"></i> Keranjang Kuning</span>
-        <span><i class="category-dot nonkk"></i> Non-KK</span>
-        <span><i class="category-dot autogmv"></i> Auto GMV Live</span>
     </div>
 
     <section class="table-card daily-table-card">
@@ -100,13 +117,13 @@
                     <tr>
                         <td class="index-column">@(i + 1)</td>
                         <td class="date-column">@row.Date.ToString("dd MMM yyyy")</td>
-                        <td class="total-content" data-nonkk="@row.NonKkCount" data-kk="@row.KkCount" data-autogmv="@row.AutoGmvCount">@row.TotalCount</td>
+                        <td class="total-content" data-nonkk="@row.NonKkCount" data-kk="@row.KkCount" data-autogmv="@row.AutoGmvCount">@row.TotalCount.ToString("N0")</td>
                         <td class="total-views number" data-nonkk="@row.NonKkViews" data-kk="@row.KkViews" data-autogmv="@row.AutoGmvViews">@row.TotalViews.ToString("N0")</td>
-                        <td class="col-nonkk @($"tgt-{row.NonKkContentStatus}")">@row.NonKkCount</td>
+                        <td class="col-nonkk @($"tgt-{row.NonKkContentStatus}")">@row.NonKkCount.ToString("N0")</td>
                         <td class="col-nonkk number @($"tgt-{row.NonKkViewsStatus}")">@row.NonKkViews.ToString("N0")</td>
-                        <td class="col-kk @($"tgt-{row.KkContentStatus}")">@row.KkCount</td>
+                        <td class="col-kk @($"tgt-{row.KkContentStatus}")">@row.KkCount.ToString("N0")</td>
                         <td class="col-kk number @($"tgt-{row.KkViewsStatus}")">@row.KkViews.ToString("N0")</td>
-                        <td class="col-autogmv">@row.AutoGmvCount</td>
+                        <td class="col-autogmv">@row.AutoGmvCount.ToString("N0")</td>
                         <td class="col-autogmv number">@row.AutoGmvViews.ToString("N0")</td>
                     </tr>
                 }
@@ -125,7 +142,7 @@
                     @foreach (var item in Model.TypeSummaries)
                     {
                         var dotClass = item.Code == "NON_KK" ? "nonkk" : item.Code == "KK" ? "kk" : "autogmv";
-                        <tr><td><span class="category-dot @dotClass"></span>@item.Name</td><td>@item.AvgContentPerDay.ToString("N2")</td><td>@item.AvgViewsPerDay.ToString("N0")</td><td>@item.TotalCount</td><td>@item.TotalViews.ToString("N0")</td></tr>
+                        <tr><td><span class="category-dot @dotClass"></span>@item.Name</td><td>@item.AvgContentPerDay.ToString("N2")</td><td>@item.AvgViewsPerDay.ToString("N0")</td><td>@item.TotalCount.ToString("N0")</td><td>@item.TotalViews.ToString("N0")</td></tr>
                     }
                     </tbody>
                 </table>
@@ -176,6 +193,7 @@
     const rangeButton = document.getElementById('dateRangeButton');
     const datePanel = document.getElementById('datePickerPanel');
     const columnPanel = document.getElementById('columnPanel');
+    const columnsButton = document.getElementById('columnsButton');
     const appliedStart = page.dataset.start;
     const appliedEnd = page.dataset.end;
     let pendingStart = appliedStart;
@@ -199,7 +217,17 @@
     }
 
     function renderPendingLabel() {
-        document.getElementById('pendingRangeLabel').textContent = `${formatDate(pendingStart)} - ${formatDate(pendingEnd)}`;
+        const label = document.getElementById('pendingRangeLabel');
+        if (pendingStart && pendingEnd) label.textContent = `${formatDate(pendingStart)} - ${formatDate(pendingEnd)}`;
+        else if (pendingStart && !pendingEnd) label.textContent = `${formatDate(pendingStart)} - ...`;
+        else label.textContent = 'Pilih rentang tanggal';
+        // footer short label
+        const footer = document.getElementById('datePickerSelected');
+        if (footer) {
+            if (pendingStart && pendingEnd) footer.textContent = `${formatDate(pendingStart)} - ${formatDate(pendingEnd)}`;
+            else if (pendingStart) footer.textContent = `${formatDate(pendingStart)} - ...`;
+            else footer.textContent = '';
+        }
     }
 
     function renderCalendar() {
@@ -210,17 +238,36 @@
         secondMonth.setMonth(secondMonth.getMonth() + 1);
         document.getElementById('calendarTitle').textContent = `${monthNames[firstMonth.getMonth()]} ${firstMonth.getFullYear()} · ${monthNames[secondMonth.getMonth()]} ${secondMonth.getFullYear()}`;
         grid.innerHTML = [firstMonth, secondMonth].map(renderMonth).join('');
-        grid.querySelectorAll('[data-date]').forEach(day => day.addEventListener('click', () => {
+        grid.querySelectorAll('[data-date]').forEach(day => day.addEventListener('click', event => {
+            // The click re-renders the calendar grid, detaching this button from the DOM before
+            // the event finishes bubbling; stop it here so the click-outside handler cannot close the panel.
+            event.stopPropagation();
             const selected = day.dataset.date;
-            if (!pendingStart || (pendingStart && pendingEnd)) {
+            // Compare as timestamps
+            const selTime = new Date(selected).getTime();
+            const hasStart = !!pendingStart;
+            const hasEnd = !!pendingEnd;
+
+            if (!hasStart) {
+                // CASE 1: no start
                 pendingStart = selected;
-                pendingEnd = selected;
-            } else if (selected < pendingStart) {
-                pendingEnd = pendingStart;
-                pendingStart = selected;
+                pendingEnd = null;
+            } else if (hasStart && !hasEnd) {
+                // CASE 2: have start only
+                const startTime = new Date(pendingStart).getTime();
+                if (selTime >= startTime) {
+                    pendingEnd = selected;
+                } else {
+                    // selected before start -> treat as new start
+                    pendingStart = selected;
+                    pendingEnd = null;
+                }
             } else {
-                pendingEnd = selected;
+                // CASE 3: both exist -> start new range
+                pendingStart = selected;
+                pendingEnd = null;
             }
+
             renderPendingLabel();
             renderCalendar();
         }));
@@ -235,8 +282,8 @@
         for (let i = 0; i < offset; i++) html += '<span class="empty-day"></span>';
         for (let day = 1; day <= daysInMonth; day++) {
             const value = isoDate(new Date(month.getFullYear(), month.getMonth(), day));
-            const selected = value === pendingStart || value === pendingEnd;
-            const inRange = value > pendingStart && value < pendingEnd;
+            const selected = (pendingStart && value === pendingStart) || (pendingEnd && value === pendingEnd);
+            const inRange = pendingStart && pendingEnd && (new Date(value).getTime() > new Date(pendingStart).getTime() && new Date(value).getTime() < new Date(pendingEnd).getTime());
             html += `<button type="button" class="calendar-day${selected ? ' selected' : ''}${inRange ? ' in-range' : ''}" data-date="${value}">${day}</button>`;
         }
         return html + '</div></div>';
@@ -254,28 +301,62 @@
         });
     }
 
-    function reloadForArchive() {
+    function getColumnState() {
+        const state = { nonkk: true, kk: true, autogmv: true };
+        document.querySelectorAll('[data-column]').forEach(input => { state[input.dataset.column] = input.checked; });
+        return state;
+    }
+
+    function buildReloadUrl() {
         const url = new URL(window.location.href);
+        const columns = getColumnState();
         url.searchParams.set('startDate', appliedStart);
         url.searchParams.set('endDate', appliedEnd);
         url.searchParams.set('includeArchived', document.getElementById('includeArchived').checked ? 'true' : 'false');
         url.searchParams.set('includeAutoGmvInTotal', document.getElementById('includeAutoGmv').checked ? 'true' : 'false');
-        window.location.assign(url.toString());
+        url.searchParams.set('showNonKkColumns', columns.nonkk ? 'true' : 'false');
+        url.searchParams.set('showKkColumns', columns.kk ? 'true' : 'false');
+        url.searchParams.set('showAutoGmvColumns', columns.autogmv ? 'true' : 'false');
+        return url.toString();
     }
 
-    rangeButton.addEventListener('click', () => {
-        setPanel(datePanel, rangeButton, datePanel.hidden);
-        setPanel(columnPanel, document.getElementById('columnsButton'), false);
-        if (!datePanel.hidden) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    function reloadForArchive() {
+        window.location.assign(buildReloadUrl());
+    }
+
+    function closeAllPanels() {
+        setPanel(columnPanel, columnsButton, false);
+        setPanel(datePanel, rangeButton, false);
+    }
+
+    // click-outside + escape closes floating cards
+    // Note: if the clicked element was detached from the DOM during handling (e.g. calendar re-render),
+    // closest() returns null - treat that as an inside click so the panel stays open.
+    document.addEventListener('click', event => {
+        const clicked = event.target instanceof Element && event.target.isConnected ? event.target : null;
+        if (!columnPanel.hidden && (!clicked || !clicked.closest('.toolbar-anchor'))) setPanel(columnPanel, columnsButton, false);
+        if (!datePanel.hidden && (!clicked || !clicked.closest('.header-anchor'))) setPanel(datePanel, rangeButton, false);
     });
-    document.getElementById('closeDatePicker').addEventListener('click', () => setPanel(datePanel, rangeButton, false));
-    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; setPanel(datePanel, rangeButton, false); });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeAllPanels();
+    });
+
+    rangeButton.addEventListener('click', () => {
+        const open = datePanel.hidden;
+        setPanel(datePanel, rangeButton, open);
+        setPanel(columnPanel, columnsButton, false);
+        if (open) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    });
+    document.getElementById('closeDatePicker').addEventListener('click', closeAllPanels);
+    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; closeAllPanels(); });
     document.getElementById('previousMonth').addEventListener('click', () => { calendarMonth.setMonth(calendarMonth.getMonth() - 1); renderCalendar(); });
     document.getElementById('nextMonth').addEventListener('click', () => { calendarMonth.setMonth(calendarMonth.getMonth() + 1); renderCalendar(); });
     document.getElementById('applyDatePicker').addEventListener('click', () => {
+        if (!pendingStart || !pendingEnd) return;
         const form = document.createElement('form');
         form.method = 'get';
-        [['startDate', pendingStart], ['endDate', pendingEnd], ['includeArchived', document.getElementById('includeArchived').checked], ['includeAutoGmvInTotal', document.getElementById('includeAutoGmv').checked]].forEach(([name, value]) => { const input = document.createElement('input'); input.name = name; input.value = value; form.appendChild(input); });
+        const columns = getColumnState();
+        [['startDate', pendingStart], ['endDate', pendingEnd], ['includeArchived', document.getElementById('includeArchived').checked], ['includeAutoGmvInTotal', document.getElementById('includeAutoGmv').checked], ['showNonKkColumns', columns.nonkk], ['showKkColumns', columns.kk], ['showAutoGmvColumns', columns.autogmv]].forEach(([name, value]) => { const input = document.createElement('input'); input.name = name; input.value = value; form.appendChild(input); });
         document.body.appendChild(form);
         form.submit();
     });
@@ -289,8 +370,8 @@
         pendingStart = isoDate(start); pendingEnd = isoDate(end); renderPendingLabel(); renderCalendar();
     }));
 
-    document.getElementById('columnsButton').addEventListener('click', () => {
-        setPanel(columnPanel, document.getElementById('columnsButton'), columnPanel.hidden);
+    columnsButton.addEventListener('click', () => {
+        setPanel(columnPanel, columnsButton, columnPanel.hidden);
         setPanel(datePanel, rangeButton, false);
     });
     document.querySelectorAll('[data-column]').forEach(input => input.addEventListener('change', () => {
@@ -299,11 +380,17 @@
     document.getElementById('includeAutoGmv').addEventListener('change', updateTotals);
     document.getElementById('includeArchived').addEventListener('change', reloadForArchive);
 
-    const composition = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Composition.Select(x => new { x.Percentage, x.Code })));
-    let offset = 0;
+    const composition = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Composition.Select(x => new { percentage = x.Percentage, code = x.Code })));
     const colors = { NON_KK: '#4d9fff', KK: '#e8b83f', AUTO_GMV_LIVE: '#a975e8' };
-    const segments = composition.map(item => { const segment = `${colors[item.code] || '#64748b'} ${offset}% ${offset + item.percentage}%`; offset += item.percentage; return segment; });
-    document.getElementById('compositionDonut').style.background = `conic-gradient(${segments.join(',')})`;
+    const donut = document.getElementById('compositionDonut');
+    const totalPercentage = composition.reduce((sum, item) => sum + (Number(item.percentage) || 0), 0);
+    if (totalPercentage > 0) {
+        let offset = 0;
+        const segments = composition.map(item => { const segment = `${colors[item.code] || '#64748b'} ${offset}% ${offset + item.percentage}%`; offset += item.percentage; return segment; });
+        donut.style.background = `conic-gradient(${segments.join(',')})`;
+    } else {
+        donut.classList.add('donut-empty');
+    }
     updateTotals();
 })();
 </script>

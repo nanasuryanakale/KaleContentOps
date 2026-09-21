@@ -97,7 +97,7 @@ body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSyst
 }
 .link-btn { color:#7fa7ff; text-decoration:underline; }
 .empty-cell { text-align:center; padding:35px!important; color:#73809a; }
-.notes-block { margin-top:12px; color:#78849d; font-size:11px; line-height:1.6; }
+.notes-block { margin-top:12px; margin-bottom:40px; color:#78849d; font-size:11px; line-height:1.6; }
 .note { display:flex; gap:10px; margin:10px 0; }
 .note > span { color:#7e8aa6; }
 .note b { color:#a9b3c6; }
