@@ -146,15 +146,34 @@
 
     <div class="summary-layout">
         <section class="report-card summary-card">
-            <div class="card-heading"><span>RINGKASAN</span><small>@data.StartDate.ToString("dd MMM") - @data.EndDate.ToString("dd MMM yyyy")</small></div>
+            <div class="card-heading summary-card-heading">
+                RINGKASAN · @data.StartDate.ToString("d MMM", new System.Globalization.CultureInfo("id-ID")).ToUpper()–@data.EndDate.ToString("d MMM yyyy", new System.Globalization.CultureInfo("id-ID")).ToUpper()
+            </div>
             <div class="table-scroll">
                 <table class="report-table summary-table">
-                    <thead><tr><th>JENIS KONTEN</th><th>AVG KONTEN/HARI</th><th>AVG VIEWS/HARI</th><th>TOTAL KONTEN</th><th>TOTAL VIEWS</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>JENIS KONTEN</th>
+                            <th>AVG KONTEN/HARI</th>
+                            <th>AVG VIEWS/HARI</th>
+                            <th>TOTAL KONTEN</th>
+                            <th>TOTAL VIEWS</th>
+                        </tr>
+                    </thead>
                     <tbody>
                     @foreach (var item in Model.TypeSummaries)
                     {
                         var dotClass = item.Code == "NON_KK" ? "nonkk" : item.Code == "KK" ? "kk" : "autogmv";
-                        <tr><td><span class="category-dot @dotClass"></span>@item.Name</td><td>@item.AvgContentPerDay.ToString("N2")</td><td>@item.AvgViewsPerDay.ToString("N0")</td><td>@item.TotalCount.ToString("N0")</td><td>@item.TotalViews.ToString("N0")</td></tr>
+                        <tr>
+                            <td class="col-jenis">
+                                <span class="category-dot @dotClass"></span>
+                                <strong>@item.Name</strong>
+                            </td>
+                            <td class="col-avg">@item.AvgContentPerDay.ToString("0.#", new System.Globalization.CultureInfo("id-ID"))</td>
+                            <td class="col-avg">@item.AvgViewsPerDay.ToString("N0", new System.Globalization.CultureInfo("id-ID"))</td>
+                            <td class="col-total">@item.TotalCount.ToString("N0")</td>
+                            <td class="col-total">@item.TotalViews.ToString("N0")</td>
+                        </tr>
                     }
                     </tbody>
                 </table>
@@ -162,14 +181,20 @@
         </section>
 
         <section class="report-card composition-card">
-            <div class="card-heading"><span>KOMPOSISI JENIS KONTEN</span><small>@data.StartDate.ToString("dd MMM") - @data.EndDate.ToString("dd MMM yyyy")</small></div>
+            <div class="card-heading composition-card-heading">
+                KOMPOSISI JENIS KONTEN · @data.StartDate.ToString("d MMM", new System.Globalization.CultureInfo("id-ID")).ToUpper()–@data.EndDate.ToString("d MMM yyyy", new System.Globalization.CultureInfo("id-ID")).ToUpper()
+            </div>
+    
             <div class="composition-content">
                 <div class="donut" id="compositionDonut"></div>
                 <div class="composition-legend">
                 @foreach (var item in Model.Composition)
                 {
                     var dotClass = item.Code == "NON_KK" ? "nonkk" : item.Code == "KK" ? "kk" : "autogmv";
-                    <div><span><i class="category-dot @dotClass"></i>@item.Name</span><strong>@item.Percentage.ToString("N2")%</strong></div>
+                    <div>
+                        <span><i class="category-dot @dotClass"></i>@item.Name</span>
+                        <strong>@item.Percentage.ToString("N0")%</strong>
+                    </div>
                 }
                 </div>
             </div>
@@ -177,15 +202,41 @@
     </div>
 
     <section class="report-card target-card">
-        <div class="card-heading"><span>TARGET ACHIEVEMENT</span><small>@data.CalendarDays HARI KALENDER</small></div>
+        <div class="card-heading">
+            PENCAPAIAN VS TARGET · @data.StartDate.ToString("d MMM", new System.Globalization.CultureInfo("id-ID")).ToUpper()–@data.EndDate.ToString("d MMM yyyy", new System.Globalization.CultureInfo("id-ID")).ToUpper()
+        </div>
         <div class="table-scroll">
             <table class="report-table target-table">
-                <thead><tr><th>JENIS KONTEN</th><th>METRIK</th><th>TARGET PERIODE INI</th><th>ACTUAL</th><th>SELISIH</th><th>STATUS</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>JENIS KONTEN</th>
+                        <th>METRIK</th>
+                        <th>TARGET PERIODE INI</th>
+                        <th>ACTUAL</th>
+                        <th>SELISIH</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
                 <tbody>
                 @foreach (var item in Model.TargetAchievements)
                 {
                     var statusClass = item.Status == "achieved" ? "status-achieved" : "status-below";
-                    <tr><td>@item.ContentTypeName</td><td>@item.MetricName</td><td>@item.TargetPeriodValue.ToString("N0")</td><td>@item.ActualValue.ToString("N0")</td><td class="@(item.VarianceValue >= 0 ? "tgt-above" : "tgt-below")">@item.VarianceValue.ToString("+0;-0;0")</td><td><span class="status-pill @statusClass">@(item.Status == "achieved" ? "Achieved" : "Not achieved")</span></td></tr>
+                    var statusText = item.Status == "achieved" ? "Tercapai" : "Belum Tercapai";
+                
+                    // Menentukan warna titik berdasarkan nama konten
+                    var dotClass = item.ContentTypeName.Contains("Non-KK") ? "nonkk" : (item.ContentTypeName.Contains("Keranjang Kuning") ? "kk" : "autogmv");
+                
+                    <tr>
+                        <td>
+                            <span class="category-dot @dotClass"></span>
+                            @item.ContentTypeName
+                        </td>
+                        <td>@item.MetricName</td>
+                        <td>@item.TargetPeriodValue.ToString("N0")</td>
+                        <td>@item.ActualValue.ToString("N0")</td>
+                        <td class="@(item.VarianceValue >= 0 ? "tgt-above" : "tgt-below")">@item.VarianceValue.ToString("+0;-0;0")</td>
+                        <td><span class="status-pill @statusClass">@statusText</span></td>
+                    </tr>
                 }
                 </tbody>
             </table>

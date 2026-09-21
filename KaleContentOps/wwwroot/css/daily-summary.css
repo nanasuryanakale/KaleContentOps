@@ -168,18 +168,130 @@
 /* ============ Summary + Composition ============ */
 .summary-layout { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 16px; margin-top: 16px; }
 .report-card { overflow: hidden; }
-.card-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 13px 16px; color: #f1f5fa; font-size: 11px; font-weight: 700; letter-spacing: .08em; background: var(--summary-card-2); border-bottom: 1px solid var(--summary-line); }
+.card-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 16px; color: #f1f5fa; font-size: 11px; font-weight: 700; letter-spacing: .08em; background: var(--summary-card-2); border-bottom: 1px solid var(--summary-line); border-top-left-radius: var(--summary-radius); border-top-right-radius: var(--summary-radius); }
 .card-heading small { color: var(--summary-muted); font-size: 11px; font-weight: 400; letter-spacing: 0; }
-.report-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.report-table th, .report-table td { padding: 11px 14px; border-bottom: 1px solid var(--summary-line-soft); white-space: nowrap; }
-.report-table th { color: #77869b; font-size: 10px; font-weight: 700; text-align: left; }
+.report-card.composition-card .card-heading.composition-card-heading {
+    background: transparent;
+    border-bottom: none;
+    padding: 18px 20px 0 20px;
+    color: #7d8da1;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    display: block;
+}
+.report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.report-table th, .report-table td { padding: 12px 16px; border-bottom: 1px solid var(--summary-line-soft); white-space: nowrap; }
+.report-table th { color: #91a3b8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; text-align: center; }
 .report-table td { color: #dce5f0; }
+
+/* Specific styling for the Ringkasan summary table to match mockup */
+/* ============ Specific styling for Ringkasan Summary Card (Matching Mockup) ============ */
+.report-card.summary-card {
+    background: #111a27;
+    border: 1px solid #1e2a3d;
+    border-radius: 10px;
+    padding-bottom: 8px;
+}
+
+    /* Header Ringkasan & Tanggal menyatu tanpa background terpisah */
+    .report-card.summary-card .card-heading.summary-card-heading {
+        background: transparent;
+        border-bottom: none;
+        padding: 18px 20px 12px 20px;
+        color: #7d8da1;
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        display: block;
+    }
+
+    /* Tabel Ringkasan */
+    .report-card.summary-card .report-table.summary-table {
+        width: 100%;
+        min-width: 520px;
+        border-collapse: collapse;
+    }
+
+        .report-card.summary-card .report-table.summary-table thead th {
+            background: transparent;
+            color: #7d8da1;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 10px 16px;
+            border-bottom: 1px solid #1e2a3d;
+            text-align: right;
+            text-transform: uppercase;
+        }
+
+            .report-card.summary-card .report-table.summary-table thead th:first-child {
+                text-align: left;
+                padding-left: 20px;
+            }
+
+        .report-card.summary-card .report-table.summary-table tbody tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+            .report-card.summary-card .report-table.summary-table tbody tr:last-child {
+                border-bottom: none;
+            }
+
+        .report-card.summary-card .report-table.summary-table td {
+            padding: 14px 16px;
+            font-size: 13px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+            /* Kolom 1: Jenis Konten */
+            .report-card.summary-card .report-table.summary-table td.col-jenis {
+                text-align: left;
+                padding-left: 20px;
+                color: #ffffff;
+            }
+
+                .report-card.summary-card .report-table.summary-table td.col-jenis strong {
+                    color: #ffffff;
+                    font-weight: 600;
+                }
+
+                .report-card.summary-card .report-table.summary-table td.col-jenis .category-dot {
+                    margin-right: 10px;
+                    width: 8px;
+                    height: 8px;
+                    display: inline-block;
+                    border-radius: 50%;
+                }
+
+            /* Kolom AVG (Regular Weight, Soft Gray) */
+            .report-card.summary-card .report-table.summary-table td.col-avg {
+                color: #c6d1e0;
+                font-weight: 400;
+            }
+
+            /* Kolom TOTAL (Bold & Putih Terang) */
+            .report-card.summary-card .report-table.summary-table td.col-total {
+                color: #ffffff;
+                font-weight: 700;
+            }
+
+        .report-card.summary-card .report-table.summary-table tbody tr:hover td {
+            background: transparent;
+        }
 .report-table tbody tr:last-child td { border-bottom: 0; }
 .report-table tbody tr:hover td { background: rgba(255, 255, 255, .02); }
 
 .composition-content { display: flex; align-items: center; gap: 22px; min-height: 170px; padding: 16px; }
 .donut { width: 135px; height: 135px; flex: 0 0 135px; position: relative; border: 1px solid #29384d; border-radius: 50%; }
-.donut::after { content: ''; position: absolute; inset: 29px; background: var(--summary-card); border-radius: 50%; }
+.donut::after {
+        content: '';
+        position: absolute;
+        inset: 18px;
+        background: var(--summary-card);
+        border-radius: 50%;
+}
 .donut-empty { background: #1c2736; }
 .composition-legend { flex: 1; min-width: 0; }
 .composition-legend > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 9px 0; color: #b9c5d5; font-size: 11.5px; }
@@ -187,14 +299,147 @@
 .composition-legend strong { color: #edf2f7; font-variant-numeric: tabular-nums; }
 
 /* ============ Target achievement + note ============ */
-.target-card { margin-top: 16px; }
-.target-table { min-width: 760px; }
-.status-pill { display: inline-block; padding: 4px 9px; border-radius: 12px; font-size: 10px; font-weight: 700; }
-.status-achieved { color: #8af0b4; background: rgba(69, 212, 131, .13); }
-.status-below { color: #ff9a9a; background: rgba(244, 119, 119, .13); }
+.report-card.target-card {
+    margin-top: 16px;
+    background: #111a27;
+    border: 1px solid #1e2a3d;
+    border-radius: 10px;
+    padding-bottom: 8px;
+}
 
-.info-note { display: flex; flex-direction: column; gap: 6px; margin: 16px 0 40px; padding: 13px 16px; color: var(--summary-muted); background: rgba(17, 26, 39, .62); border-left: 3px solid #4c6482; border-radius: 5px; font-size: 11px; line-height: 1.55; }
-.info-note strong { color: #cbd6e3; font-size: 11px; }
+    /* Header Tabel Target */
+    .report-card.target-card .card-heading {
+        background: transparent;
+        border-bottom: none;
+        padding: 18px 20px 12px 20px;
+        color: #7d8da1;
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        display: block;
+    }
+
+        .report-card.target-card .card-heading small {
+            display: none; /* Disembunyikan agar bersih seperti mockup */
+        }
+
+/* Tabel Target */
+.report-table.target-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+}
+
+    .report-table.target-table thead th {
+        background: transparent;
+        color: #7d8da1;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        padding: 10px 16px;
+        border-bottom: 1px solid #1e2a3d;
+        text-align: right;
+    }
+
+        /* Kolom 1 (Jenis Konten) & 2 (Metrik) rata kiri */
+        .report-table.target-table thead th:nth-child(1),
+        .report-table.target-table thead th:nth-child(2) {
+            text-align: left;
+            padding-left: 20px;
+        }
+
+        /* Kolom Status rata kiri */
+        .report-table.target-table thead th:last-child {
+            text-align: left;
+        }
+
+    .report-table.target-table tbody tr {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+        .report-table.target-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+    .report-table.target-table td {
+        padding: 14px 16px;
+        font-size: 13px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        color: #c6d1e0;
+    }
+
+        /* Kolom Jenis Konten */
+        .report-table.target-table td:nth-child(1) {
+            text-align: left;
+            padding-left: 20px;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Kolom Metrik */
+        .report-table.target-table td:nth-child(2) {
+            text-align: left;
+            padding-left: 20px;
+        }
+
+        /* Kolom Actual (Bold & Putih Terang) */
+        .report-table.target-table td:nth-child(4) {
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        /* Kolom Status */
+        .report-table.target-table td:last-child {
+            text-align: left;
+        }
+
+/* Status Pill Styling Baru (Sesuai Mockup) */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+    .status-pill::before {
+        content: '●';
+        font-size: 9px;
+    }
+
+.status-achieved {
+    color: #45d483;
+    background: rgba(69, 212, 131, 0.12);
+}
+
+.status-below {
+    color: #f47777;
+    background: rgba(244, 119, 119, 0.12);
+}
+
+/* Note Informasi Bawah */
+.info-note {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 16px 0 40px;
+    padding: 13px 16px;
+    color: var(--summary-muted);
+    background: rgba(17, 26, 39, .62);
+    border-left: 3px solid #4c6482;
+    border-radius: 5px;
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+    .info-note strong {
+        color: #cbd6e3;
+        font-size: 11px;
+    }
 
 /* ============ Responsive ============ */
 @media (max-width: 1050px) {
