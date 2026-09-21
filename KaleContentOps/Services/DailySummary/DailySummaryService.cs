@@ -118,6 +118,14 @@ public sealed class DailySummaryService : IDailySummaryService
                 NonKkViewsStatus = GetStatus(nonKk.Views, _targets.NonKk.DailyViewsTarget),
                 KkContentStatus = GetStatus(kk.Count, _targets.KeranjangKuning.DailyContentTarget),
                 KkViewsStatus = GetStatus(kk.Views, _targets.KeranjangKuning.DailyViewsTarget)
+                ,
+                // Total status is derived from Non-KK + Keranjang Kuning targets (Auto GMV has no target)
+                TotalContentStatus = GetStatus(
+                    nonKk.Count + kk.Count + (filter.IncludeAutoGmvInTotal ? autoGmv.Count : 0),
+                    _targets.NonKk.DailyContentTarget + _targets.KeranjangKuning.DailyContentTarget),
+                TotalViewsStatus = GetStatus(
+                    nonKk.Views + kk.Views + (filter.IncludeAutoGmvInTotal ? autoGmv.Views : 0),
+                    _targets.NonKk.DailyViewsTarget + _targets.KeranjangKuning.DailyViewsTarget)
             };
         }).ToList();
 
@@ -161,7 +169,10 @@ public sealed class DailySummaryService : IDailySummaryService
                 IncludeAutoGmvInTotal = filter.IncludeAutoGmvInTotal,
                 ShowNonKkColumns = filter.ShowNonKkColumns,
                 ShowKkColumns = filter.ShowKkColumns,
-                ShowAutoGmvColumns = filter.ShowAutoGmvColumns
+                ShowAutoGmvColumns = filter.ShowAutoGmvColumns,
+                // Expose total daily targets (sum of Non-KK and KK targets) for client-side status calculation
+                TotalDailyContentTarget = _targets.NonKk.DailyContentTarget + _targets.KeranjangKuning.DailyContentTarget,
+                TotalDailyViewsTarget = _targets.NonKk.DailyViewsTarget + _targets.KeranjangKuning.DailyViewsTarget
             },
             TypeSummaries = summaries,
             Composition = composition,

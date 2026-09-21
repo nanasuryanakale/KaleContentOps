@@ -20,6 +20,11 @@ public class DailySummaryViewModel
     public bool ShowAutoGmvColumns { get; set; } = true;
 
     public int CalendarDays => (EndDate.Date - StartDate.Date).Days + 1;
+
+    // Combined daily targets (sum of Non-KK and Keranjang Kuning daily targets)
+    // Used by client-side to evaluate TOTAL status without requiring a reload.
+    public decimal TotalDailyContentTarget { get; set; }
+    public decimal TotalDailyViewsTarget { get; set; }
 }
 
 public class DailySummaryRowViewModel
@@ -28,6 +33,9 @@ public class DailySummaryRowViewModel
 
     public int TotalCount { get; set; }
     public long TotalViews { get; set; }
+
+    public string TotalContentStatus { get; set; } = string.Empty;
+    public string TotalViewsStatus { get; set; } = string.Empty;
 
     public int NonKkCount { get; set; }
     public long NonKkViews { get; set; }

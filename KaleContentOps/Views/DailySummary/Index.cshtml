@@ -129,8 +129,8 @@
                     <tr>
                         <td class="index-column">@(i + 1)</td>
                         <td class="date-column">@row.Date.ToString("dd MMM yyyy")</td>
-                        <td class="total-content" data-nonkk="@row.NonKkCount" data-kk="@row.KkCount" data-autogmv="@row.AutoGmvCount">@row.TotalCount.ToString("N0")</td>
-                        <td class="total-views number" data-nonkk="@row.NonKkViews" data-kk="@row.KkViews" data-autogmv="@row.AutoGmvViews">@row.TotalViews.ToString("N0")</td>
+                        <td class="total-content @($"tgt-{row.TotalContentStatus}")" data-nonkk="@row.NonKkCount" data-kk="@row.KkCount" data-autogmv="@row.AutoGmvCount" data-total-content-target="@data.TotalDailyContentTarget">@row.TotalCount.ToString("N0")</td>
+                        <td class="total-views number @($"tgt-{row.TotalViewsStatus}")" data-nonkk="@row.NonKkViews" data-kk="@row.KkViews" data-autogmv="@row.AutoGmvViews" data-total-views-target="@data.TotalDailyViewsTarget">@row.TotalViews.ToString("N0")</td>
                         <td class="col-nonkk @($"tgt-{row.NonKkContentStatus}")">@row.NonKkCount.ToString("N0")</td>
                         <td class="col-nonkk number @($"tgt-{row.NonKkViewsStatus}")">@row.NonKkViews.ToString("N0")</td>
                         <td class="col-kk @($"tgt-{row.KkContentStatus}")">@row.KkCount.ToString("N0")</td>
@@ -304,12 +304,30 @@
     function updateTotals() {
         const includeAuto = document.getElementById('includeAutoGmv').checked;
         document.querySelectorAll('.total-content').forEach(cell => {
-            const value = Number(cell.dataset.nonkk) + Number(cell.dataset.kk) + (includeAuto ? Number(cell.dataset.autogmv) : 0);
+            const nonkk = Number(cell.dataset.nonkk) || 0;
+            const kk = Number(cell.dataset.kk) || 0;
+            const autogmv = Number(cell.dataset.autogmv) || 0;
+            const value = nonkk + kk + (includeAuto ? autogmv : 0);
             cell.textContent = formatNumber(value);
+
+            // Update status class to match server-side GetStatus (actual >= target => above)
+            const target = Number(cell.dataset.totalContentTarget) || 0;
+            cell.classList.remove('tgt-above', 'tgt-below');
+            const cls = value >= target ? 'tgt-above' : 'tgt-below';
+            cell.classList.add(cls);
         });
+
         document.querySelectorAll('.total-views').forEach(cell => {
-            const value = Number(cell.dataset.nonkk) + Number(cell.dataset.kk) + (includeAuto ? Number(cell.dataset.autogmv) : 0);
+            const nonkk = Number(cell.dataset.nonkk) || 0;
+            const kk = Number(cell.dataset.kk) || 0;
+            const autogmv = Number(cell.dataset.autogmv) || 0;
+            const value = nonkk + kk + (includeAuto ? autogmv : 0);
             cell.textContent = formatNumber(value);
+
+            const target = Number(cell.dataset.totalViewsTarget) || 0;
+            cell.classList.remove('tgt-above', 'tgt-below');
+            const cls = value >= target ? 'tgt-above' : 'tgt-below';
+            cell.classList.add(cls);
         });
     }
 
