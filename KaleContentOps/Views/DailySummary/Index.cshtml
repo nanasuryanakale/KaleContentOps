@@ -22,7 +22,6 @@
                 </span>
                 <strong id="dateRangeLabel">@data.StartDate.ToString("dd/MM") - @data.EndDate.ToString("dd/MM")</strong>
                 <small>GMT+7</small>
-                <span class="chevron" aria-hidden="true">⌄</span>
             </button>
 
             <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
@@ -63,47 +62,60 @@
     </header>
 
     <div class="daily-toolbar">
-        <div class="toolbar-left">
-            <div class="toolbar-anchor">
-                <button type="button" class="toolbar-button" id="columnsButton" aria-expanded="false" aria-controls="columnPanel">
-                    <span aria-hidden="true">▤</span> Kolom <span class="toolbar-chevron">⌄</span>
-                </button>
-                <section class="popover-panel column-panel" id="columnPanel" hidden>
-                    <div class="popover-title">TAMPILKAN KOLOM</div>
-                    <label><input type="checkbox" data-column="nonkk" checked="@(Model.ShowNonKk ? "checked" : null)" /> <span class="category-dot nonkk"></span> Non-KK</label>
-                    <label><input type="checkbox" data-column="kk" checked="@(Model.ShowKk ? "checked" : null)" /> <span class="category-dot kk"></span> Keranjang Kuning</label>
-                    <label><input type="checkbox" data-column="autogmv" checked="@(Model.ShowAutoGmv ? "checked" : null)" /> <span class="category-dot autogmv"></span> Auto GMV Live</label>
-                </section>
+        <!-- Top row: controls (button, checkboxes, legend) -->
+        <div class="toolbar-top">
+            <div class="toolbar-left">
+                <div class="toolbar-anchor">
+                    <button type="button" class="toolbar-button" id="columnsButton" aria-expanded="false" aria-controls="columnPanel">
+                        <span aria-hidden="true">▤</span> Kolom
+                    </button>
+                </div>
+                <label class="check-control">
+                    <input id="includeAutoGmv" type="checkbox" @(data.IncludeAutoGmvInTotal ? "checked" : null) />
+                    Termasuk Auto GMV Live di kolom Total
+                </label>
+                <label class="check-control check-control-muted">
+                    <input id="includeArchived" type="checkbox" @(data.IncludeArchived ? "checked" : null) />
+                    Include Archived
+                </label>
             </div>
-            <label class="check-control">
-                <input id="includeAutoGmv" type="checkbox" @(data.IncludeAutoGmvInTotal ? "checked" : null) />
-                Termasuk Auto GMV Live di kolom Total
-            </label>
-            <label class="check-control check-control-muted">
-                <input id="includeArchived" type="checkbox" @(data.IncludeArchived ? "checked" : null) />
-                Include Archived
-            </label>
+
+            <div class="legend-row">
+                <span><i class="category-dot kk"></i> Keranjang Kuning</span>
+                <span><i class="category-dot nonkk"></i> Non-KK</span>
+                <span><i class="category-dot autogmv"></i> Auto GMV Live</span>
+            </div>
         </div>
-        <div class="legend-row">
-            <span><i class="category-dot kk"></i> Keranjang Kuning</span>
-            <span><i class="category-dot nonkk"></i> Non-KK</span>
-            <span><i class="category-dot autogmv"></i> Auto GMV Live</span>
-        </div>
+
+        <!-- Second row: column filter card (kept out of the top row so it appears on its own line) -->
+        <section class="popover-panel column-panel" id="columnPanel" hidden>
+            <div class="popover-title">PILIH JENIS KONTEN YANG DITAMPILKAN</div>
+            <div class="column-body">
+                <div class="checkbox-row">
+                    <label><input type="checkbox" data-column="nonkk" checked="@(Model.ShowNonKk ? "checked" : null)" /> Non-KK</label>
+                    <label><input type="checkbox" data-column="kk" checked="@(Model.ShowKk ? "checked" : null)" /> Keranjang Kuning</label>
+                    <label><input type="checkbox" data-column="autogmv" checked="@(Model.ShowAutoGmv ? "checked" : null)" /> Auto GMV Live</label>
+                </div>
+                <div class="column-note">Tiap jenis konten nampilin 2 kolom sekaligus (Jumlah Konten &amp; Total Views) — matching panel toggle di sheet rancangan baru.</div>
+            </div>
+        </section>
     </div>
 
-    <section class="table-card daily-table-card">
+    <section class="table-card daily-table-card mt-3">
         <div class="table-scroll">
             <table class="daily-summary-table">
                 <thead>
                     <tr class="group-row">
-                        <th rowspan="2" class="index-column">No</th>
-                        <th rowspan="2" class="date-column">Tanggal</th>
-                        <th class="group-total" colspan="2">TOTAL</th>
+                        <th class="index-column"></th>
+                        <th class="date-column"></th>
+                        <th class="group-total" colspan="2">TOTAL (NON-KK+KK)</th>
                         <th class="group-nonkk col-nonkk" colspan="2">NON-KK</th>
                         <th class="group-kk col-kk" colspan="2">KERANJANG KUNING</th>
                         <th class="group-autogmv col-autogmv" colspan="2">AUTO GMV LIVE</th>
                     </tr>
                     <tr class="column-row">
+                        <th class="index-column">No</th>
+                        <th class="date-column">Tanggal</th>
                         <th>Jumlah Konten</th><th>Total Views</th>
                         <th class="col-nonkk">Jumlah Konten</th><th class="col-nonkk">Total Views</th>
                         <th class="col-kk">Jumlah Konten</th><th class="col-kk">Total Views</th>
@@ -374,11 +386,47 @@
         setPanel(columnPanel, columnsButton, columnPanel.hidden);
         setPanel(datePanel, rangeButton, false);
     });
-    document.querySelectorAll('[data-column]').forEach(input => input.addEventListener('change', () => {
-        document.querySelectorAll(`.col-${input.dataset.column}`).forEach(cell => cell.hidden = !input.checked);
-    }));
-    document.getElementById('includeAutoGmv').addEventListener('change', updateTotals);
-    document.getElementById('includeArchived').addEventListener('change', reloadForArchive);
+    // Prevent checkbox interactions from closing the panel due to event bubbling.
+    document.querySelectorAll('[data-column]').forEach(input => {
+        // stop clicks on the input itself from bubbling up to document click handler
+        input.addEventListener('click', event => event.stopPropagation());
+        // stop clicks on the label (if present) as well
+        const lbl = input.closest('label');
+        if (lbl) lbl.addEventListener('click', event => event.stopPropagation());
+        // handle change while preventing propagation
+        input.addEventListener('change', event => {
+            event.stopPropagation();
+            document.querySelectorAll(`.col-${input.dataset.column}`).forEach(cell => cell.hidden = !input.checked);
+        });
+    });
+
+    const includeAuto = document.getElementById('includeAutoGmv');
+    if (includeAuto) {
+        includeAuto.addEventListener('click', event => event.stopPropagation());
+        includeAuto.addEventListener('change', event => { event.stopPropagation(); updateTotals(); });
+        const lblAuto = includeAuto.closest('label');
+        if (lblAuto) lblAuto.addEventListener('click', event => event.stopPropagation());
+    }
+
+    const includeArchivedEl = document.getElementById('includeArchived');
+    if (includeArchivedEl) {
+        includeArchivedEl.addEventListener('click', event => event.stopPropagation());
+        includeArchivedEl.addEventListener('change', event => {
+            // prevent bubbling so document click-outside doesn't close the panel
+            event.stopPropagation();
+            // Avoid full page reload which will always close the panel.
+            // Instead update the browser URL param so state is reflected without navigation.
+            try {
+                const newUrl = buildReloadUrl();
+                window.history.replaceState(null, '', newUrl);
+            } catch (e) {
+                // Fallback: if history API not available, perform original reload to preserve behavior
+                reloadForArchive();
+            }
+        });
+        const lblArch = includeArchivedEl.closest('label');
+        if (lblArch) lblArch.addEventListener('click', event => event.stopPropagation());
+    }
 
     const composition = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Composition.Select(x => new { percentage = x.Percentage, code = x.Code })));
     const colors = { NON_KK: '#4d9fff', KK: '#e8b83f', AUTO_GMV_LIVE: '#a975e8' };
