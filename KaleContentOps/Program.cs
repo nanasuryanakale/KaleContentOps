@@ -22,6 +22,11 @@ builder.Services.AddSession(options =>
 
 // TikTok configuration
 builder.Services.Configure<TikTokOptions>(builder.Configuration.GetSection("TikTok"));
+
+// Shop reporting timezone - single shared source for Daily Summary "today" (Issue A)
+// and TikTok API start_date_ge/end_date_lt boundaries (Issue B)
+builder.Services.Configure<ShopTimeZoneOptions>(builder.Configuration.GetSection(ShopTimeZoneOptions.SectionName));
+builder.Services.AddSingleton<IShopTimeZone, ShopTimeZone>();
 var dailySummaryTargets = builder.Configuration
     .GetSection(DailySummaryTargetOptions.SectionName)
     .Get<DailySummaryTargetOptions>() ?? new DailySummaryTargetOptions();

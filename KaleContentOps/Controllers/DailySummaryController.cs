@@ -1,3 +1,4 @@
+using KaleContentOps.Services;
 using KaleContentOps.Services.DailySummary;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,10 +7,12 @@ namespace KaleContentOps.Controllers;
 public class DailySummaryController : Controller
 {
     private readonly IDailySummaryService _dailySummaryService;
+    private readonly IShopTimeZone _shopTimeZone;
 
-    public DailySummaryController(IDailySummaryService dailySummaryService)
+    public DailySummaryController(IDailySummaryService dailySummaryService, IShopTimeZone shopTimeZone)
     {
         _dailySummaryService = dailySummaryService;
+        _shopTimeZone = shopTimeZone;
     }
 
     [HttpGet]
@@ -23,7 +26,9 @@ public class DailySummaryController : Controller
         bool showAutoGmvColumns = true,
         CancellationToken cancellationToken = default)
     {
-        var end = (endDate ?? DateTime.UtcNow.Date).Date;
+        // Issue A: default "today" must follow the shop reporting timezone (Asia/Jakarta),
+        // not UTC and not the server machine timezone.
+        var end = (endDate ?? _shopTimeZone.TodayMidnight()).Date;
         var start = (startDate ?? end.AddDays(-6)).Date;
 
         var model = await _dailySummaryService.BuildAsync(new DailySummaryFilter

@@ -17,6 +17,7 @@ public class TikTokVideoService : ITikTokVideoService
     private readonly ITikTokAuthService _authService;
     private readonly Microsoft.Extensions.Logging.ILogger<TikTokVideoService> _logger;
     private readonly Microsoft.Extensions.Hosting.IHostEnvironment? _env;
+    private readonly IShopTimeZone _shopTimeZone;
 
     public TikTokVideoService(
         IHttpClientFactory httpFactory,
@@ -25,7 +26,8 @@ public class TikTokVideoService : ITikTokVideoService
         ITikTokAuthService authService,
         ITikTokSignatureService signatureService,
         Microsoft.Extensions.Hosting.IHostEnvironment? env = null,
-        Microsoft.Extensions.Logging.ILogger<TikTokVideoService>? logger = null)
+        Microsoft.Extensions.Logging.ILogger<TikTokVideoService>? logger = null,
+        IShopTimeZone? shopTimeZone = null)
     {
         _httpFactory = httpFactory;
         _options = options.Value;
@@ -34,6 +36,8 @@ public class TikTokVideoService : ITikTokVideoService
         _signatureService = signatureService;
         _env = env;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TikTokVideoService>.Instance;
+        // Single shared shop timezone source (Asia/Jakarta by default, see ShopTimeZoneOptions).
+        _shopTimeZone = shopTimeZone ?? new ShopTimeZone(Microsoft.Extensions.Options.Options.Create(new ShopTimeZoneOptions()));
     }
 
     // Parse v202509 details response 'data' element and extract metrics from performance.intervals[].traffic
@@ -395,8 +399,11 @@ public class TikTokVideoService : ITikTokVideoService
         var path = $"/analytics/202509/shop_videos/{videoId}/performance"; // exact endpoint provided by user
 
         // determine date range: prefer ContentLog.VideoPostTime if available, otherwise last 30 days
-        DateTime startDate = DateTime.UtcNow.Date.AddDays(-30);
-        DateTime endDate = DateTime.UtcNow.Date.AddDays(1);
+        // Issue B: TikTok start_date_ge/end_date_lt are defined by TikTok as ISO dates in the
+        // shop registered timezone. Build the existing 30-day calendar window from the
+        // shop-local calendar date (Asia/Jakarta), not from DateTime.UtcNow.Date.
+        DateTime startDate = _shopTimeZone.TodayMidnight().AddDays(-30);
+        DateTime endDate = _shopTimeZone.TodayMidnight().AddDays(1);
         try
         {
             var existing = await _db.ContentLogs.AsNoTracking().FirstOrDefaultAsync(x => x.VideoId == videoId, cancellationToken);
@@ -516,8 +523,11 @@ public class TikTokVideoService : ITikTokVideoService
         var path = "/analytics/202605/shop_videos/performance";
 
         // determine date range: prefer ContentLog.VideoPostTime if available, otherwise last 30 days
-        DateTime startDate = DateTime.UtcNow.Date.AddDays(-30);
-        DateTime endDate = DateTime.UtcNow.Date.AddDays(1);
+        // Issue B: TikTok start_date_ge/end_date_lt are defined by TikTok as ISO dates in the
+        // shop registered timezone. Build the existing 30-day calendar window from the
+        // shop-local calendar date (Asia/Jakarta), not from DateTime.UtcNow.Date.
+        DateTime startDate = _shopTimeZone.TodayMidnight().AddDays(-30);
+        DateTime endDate = _shopTimeZone.TodayMidnight().AddDays(1);
         try
         {
             var existing = await _db.ContentLogs.AsNoTracking().FirstOrDefaultAsync(x => x.VideoId == videoId, cancellationToken);
@@ -755,9 +765,9 @@ public class TikTokVideoService : ITikTokVideoService
             };
 
             if (!string.IsNullOrWhiteSpace(pageToken)) query["page_token"] = pageToken;
-            var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? DateTime.UtcNow.Date.AddDays(-30) : DateTime.Parse(startDateIso).Date;
+            var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? _shopTimeZone.TodayMidnight().AddDays(-30) : DateTime.Parse(startDateIso).Date;
             var effectiveEndDate = string.IsNullOrWhiteSpace(endDateIso)
-                ? DateTime.UtcNow.Date.AddDays(1)
+                ? _shopTimeZone.TodayMidnight().AddDays(1)
                 : DateTime.Parse(endDateIso).Date;
 
             query["start_date_ge"] = effectiveStartDate.ToString("yyyy-MM-dd");
@@ -927,10 +937,10 @@ public class TikTokVideoService : ITikTokVideoService
             };
 
             if (!string.IsNullOrWhiteSpace(pageToken)) query["page_token"] = pageToken;
-            var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? DateTime.UtcNow.Date.AddDays(-30) : DateTime.Parse(startDateIso).Date;
+            var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? _shopTimeZone.TodayMidnight().AddDays(-30) : DateTime.Parse(startDateIso).Date;
 
             var effectiveEndDate = string.IsNullOrWhiteSpace(endDateIso)
-                ? DateTime.UtcNow.Date.AddDays(1)
+                ? _shopTimeZone.TodayMidnight().AddDays(1)
                 : DateTime.Parse(endDateIso).Date;
 
             query["start_date_ge"] = effectiveStartDate.ToString("yyyy-MM-dd");
