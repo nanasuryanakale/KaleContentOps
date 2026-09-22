@@ -2,6 +2,11 @@
 @{
     ViewData["Title"] = "Daily Summary";
     var data = Model.Data;
+    // TOTAL group header label follows the Include Auto GMV state so the header always
+    // matches the actual TOTAL composition. Label only - values/formula are unchanged.
+    var totalGroupHeader = data.IncludeAutoGmvInTotal
+        ? "TOTAL (NON-KK + KK + AUTO GMV LIVE)"
+        : "TOTAL (NON-KK + KK)";
 }
 <link rel="stylesheet" href="~/css/daily-summary.css" />
 
@@ -108,7 +113,7 @@
                     <tr class="group-row">
                         <th class="index-column"></th>
                         <th class="date-column"></th>
-                        <th class="group-total" colspan="2">TOTAL (NON-KK+KK)</th>
+                        <th class="group-total" colspan="2" id="totalGroupHeader">@totalGroupHeader</th>
                         <th class="group-nonkk col-nonkk" colspan="2">NON-KK</th>
                         <th class="group-kk col-kk" colspan="2">KERANJANG KUNING</th>
                         <th class="group-autogmv col-autogmv" colspan="2">AUTO GMV LIVE</th>
@@ -380,6 +385,15 @@
             const cls = value >= target ? 'tgt-above' : 'tgt-below';
             cell.classList.add(cls);
         });
+
+        // Keep the TOTAL group header label in sync with the Include Auto GMV state.
+        // Label only - the numeric TOTAL values and tgt-above/tgt-below above are unchanged.
+        const totalHeader = document.getElementById('totalGroupHeader');
+        if (totalHeader) {
+            totalHeader.textContent = includeAuto
+                ? 'TOTAL (NON-KK + KK + AUTO GMV LIVE)'
+                : 'TOTAL (NON-KK + KK)';
+        }
     }
 
     function getColumnState() {

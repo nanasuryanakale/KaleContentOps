@@ -330,6 +330,13 @@ Composition is based on content count, not views.
 
 Do not hardcode mockup percentages.
 
+**FINAL DECISION (locked):** Composition ALWAYS includes all three content types
+(Non-KK, Keranjang Kuning, Auto GMV Live). It is a data summary of the whole
+account, independent of the table column selector, independent of the
+`show*Columns` flags, and independent of the Include Auto GMV toggle
+(which only affects the TOTAL columns of the table). Hiding a table column
+group must never remove a Composition legend item or donut segment.
+
 ## 23. Column Selector
 
 Button `Kolom` controls visibility of column groups:
@@ -338,6 +345,13 @@ Button `Kolom` controls visibility of column groups:
 - Auto GMV Live (Jumlah Konten + Total Views)
 
 Visibility is presentation state, not aggregation filtering.
+
+**Scope is the Daily Summary TABLE ONLY (FINAL DECISION):**
+- Table: hiding a group hides its columns/group header cells.
+- Ringkasan, Komposisi Jenis Konten, and Pencapaian vs Target are NOT
+  affected by column visibility and always cover all content types.
+- This is deliberately different from the Include Auto GMV toggle, which is
+  a business rule that changes the TOTAL calculation (see section 15).
 
 ## 24. Data Source Mapping
 
@@ -571,12 +585,14 @@ These are test/reference values only and must never be hardcoded.
 ## 34. Remaining Open Questions
 
 1. What is the default state of Include Archived?
-2. Should composition include hidden categories when a column group is hidden?
+2. RESOLVED (see sections 22 and 23): Composition always includes all three
+   content types; column visibility only affects the table columns and never
+   changes Ringkasan, Composition, or Pencapaian vs Target.
 3. What exact SQL persistence model should store management targets?
 4. Should target changes be effective-dated/versioned so historical reports preserve the target that was active at that time?
 5. Should PIC allocation live in the target model or a separate configuration model?
 6. How should TOTAL target/status be presented if Auto GMV Live actual is included but has no target?
-7. What exact timezone conversion should be used before extracting the VideoPostTime date?
+7. What exact timezone conversion should be used before extracting the VideoPostTime date? (ground truth for video_post_time still pending)
 
 ## 35. Copilot Working Rule
 
