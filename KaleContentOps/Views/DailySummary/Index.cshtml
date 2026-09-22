@@ -398,6 +398,10 @@
         url.searchParams.set('showNonKkColumns', columns.nonkk ? 'true' : 'false');
         url.searchParams.set('showKkColumns', columns.kk ? 'true' : 'false');
         url.searchParams.set('showAutoGmvColumns', columns.autogmv ? 'true' : 'false');
+
+        const isColumnPanelOpen = !document.getElementById('columnPanel').hidden;
+        url.searchParams.set('openColumnPanel', isColumnPanelOpen ? 'true' : 'false');
+
         return url.toString();
     }
 
@@ -504,6 +508,12 @@
     } else {
         donut.classList.add('donut-empty');
     }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('openColumnPanel') === 'true') {
+        setPanel(columnPanel, columnsButton, true);
+    }
+
     updateTotals();
 })();
 </script>
