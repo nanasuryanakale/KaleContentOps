@@ -37,6 +37,14 @@
         </form>
     </div>
 
+    <div class="mb-3">
+        <form asp-action="SyncVideoDetails" method="post">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-info">Sync Video Details ( Likes, Comments, Share, New Followers )</button>
+            <small class="text-muted">Enriches up to 20 videos per shop per run. Rate-limit safe via shared retry/backoff.</small>
+        </form>
+    </div>
+
     <h4>Authorized Shops</h4>
     <table class="table table-striped">
         <thead>

@@ -13,16 +13,18 @@ namespace KaleContentOps.Controllers.Admin
     [Route("Admin/TikTok")]
     public class TikTokAdminController : Controller
     {
-        private readonly ITikTokShopService _shopService;
-        private readonly ITikTokVideoService _videoService;
-        private readonly AppDbContext _db;
+    private readonly ITikTokShopService _shopService;
+    private readonly ITikTokVideoService _videoService;
+    private readonly TikTokDetailsSyncService _detailsService;
+    private readonly AppDbContext _db;
 
-        public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, AppDbContext db)
-        {
-            _shopService = shopService;
-            _videoService = videoService;
-            _db = db;
-        }
+    public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, AppDbContext db)
+    {
+        _shopService = shopService;
+        _videoService = videoService;
+        _detailsService = detailsService;
+        _db = db;
+    }
 
         [HttpGet("")]
         public async Task<IActionResult> Index()
@@ -88,6 +90,58 @@ namespace KaleContentOps.Controllers.Admin
             }
 
             TempData["TikTokSyncResult"] = $"TikTok Video Sync completed. Shops processed: {shopsProcessed}. Videos processed: {videosInserted}. Errors: {errors}";
+            if (perShopErrors.Count > 0) TempData["TikTokSyncPerShopErrors"] = string.Join("\n", perShopErrors);
+
+            return RedirectToAction("Index");
+        }
+
+        // Manual trigger for per-video Details enrichment. Bounded per shop to stay rate-limit safe:
+        // each call goes through the shared TikTokGetWithRetryAsync (Retry-After, exponential backoff
+        // with jitter, business code 36009002) and the DetailsSemaphore concurrency limiter.
+        [HttpPost("SyncVideoDetails")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SyncVideoDetails(int limit = 20, CancellationToken cancellationToken = default)
+        {
+            if (limit < 1) limit = 1;
+            if (limit > 100) limit = 100; // hard upper bound to prevent accidental bulk runs
+
+            var shops = await _db.TikTokShops.ToListAsync(cancellationToken);
+            if (shops == null || shops.Count == 0)
+            {
+                TempData["TikTokSyncError"] = "No authorized TikTok shops found. Sync authorized shops first.";
+                return RedirectToAction("Index");
+            }
+
+            var detailsService = _detailsService;
+
+            int shopsProcessed = 0;
+            int videosEnriched = 0;
+            int errors = 0;
+            var perShopErrors = new List<string>();
+
+            foreach (var shop in shops)
+            {
+                if (string.IsNullOrWhiteSpace(shop.ShopCipher))
+                {
+                    perShopErrors.Add($"Shop {shop.Id} has empty ShopCipher");
+                    errors++;
+                    continue;
+                }
+
+                try
+                {
+                    var processed = await detailsService.RunDetailsSyncAsync(shop.ShopCipher, limit: limit, cancellationToken: cancellationToken);
+                    shopsProcessed++;
+                    videosEnriched += processed;
+                }
+                catch (Exception ex)
+                {
+                    errors++;
+                    perShopErrors.Add($"Shop {shop.Id} error: {ex.Message}");
+                }
+            }
+
+            TempData["TikTokSyncResult"] = $"TikTok Details Sync completed. Shops processed: {shopsProcessed}. Videos enriched: {videosEnriched}. Errors: {errors}";
             if (perShopErrors.Count > 0) TempData["TikTokSyncPerShopErrors"] = string.Join("\n", perShopErrors);
 
             return RedirectToAction("Index");

@@ -4,6 +4,7 @@ using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KaleContentOps.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922044257_AddCommerceMetricsToContentMetric")]
+    partial class AddCommerceMetricsToContentMetric
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -331,57 +334,6 @@ namespace KaleContentOps.Migrations
                         });
                 });
 
-            modelBuilder.Entity("KaleContentOps.Models.Target", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ContentTypeId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateOnly>("EffectiveFrom")
-                        .HasColumnType("date");
-
-                    b.Property<DateOnly?>("EffectiveTo")
-                        .HasColumnType("date");
-
-                    b.Property<int>("TargetUpload")
-                        .HasColumnType("int");
-
-                    b.Property<long>("TargetViews")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ContentTypeId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_Targets_ContentTypeId_Active")
-                        .HasFilter("[EffectiveTo] IS NULL");
-
-                    b.HasIndex("ContentTypeId", "EffectiveFrom", "EffectiveTo")
-                        .HasDatabaseName("IX_Targets_ContentTypeId_EffectiveFrom_EffectiveTo");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("ContentTypeId", "EffectiveFrom", "EffectiveTo"), new[] { "TargetUpload", "TargetViews" });
-
-                    b.ToTable("Targets", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_Targets_EffectiveDates", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]");
-
-                            t.HasCheckConstraint("CK_Targets_TargetUpload_NonNegative", "[TargetUpload] >= 0");
-
-                            t.HasCheckConstraint("CK_Targets_TargetViews_NonNegative", "[TargetViews] >= 0");
-                        });
-                });
-
             modelBuilder.Entity("KaleContentOps.Models.TikTokCredential", b =>
                 {
                     b.Property<long>("Id")
@@ -517,17 +469,6 @@ namespace KaleContentOps.Migrations
                         .IsRequired();
 
                     b.Navigation("ContentLog");
-                });
-
-            modelBuilder.Entity("KaleContentOps.Models.Target", b =>
-                {
-                    b.HasOne("KaleContentOps.Models.ContentType", "ContentType")
-                        .WithMany()
-                        .HasForeignKey("ContentTypeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ContentType");
                 });
 
             modelBuilder.Entity("KaleContentOps.Models.ContentLog", b =>

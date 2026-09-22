@@ -104,7 +104,14 @@
                 ("age25", "25-34", false),
                 ("age35", "35-44", false),
                 ("age45", "45-54", false),
-                ("age55", "55+", false)
+                ("age55", "55+", false),
+                ("gmv", "GMV", true),
+                ("items", "Items Sold", false),
+                ("sku", "SKU Orders", false),
+                ("avgcust", "Avg Customers", false),
+                ("ctr", "CTR", false),
+                ("hashtags", "Hashtags", false),
+                ("products", "Products", false)
                 })
                 {
                     <label class="column-check">
@@ -165,6 +172,7 @@
                     <th colspan="7" class="group-head">KONTEN</th>
                     <th colspan="8" class="group-head metrics-head">METRICS</th>
                     <th colspan="10" class="group-head audience-head">DATA PENONTON (%)</th>
+                    <th colspan="7" class="group-head commerce-head">KOMERSIL &amp; ATRIBUT</th>
                 </tr>
 
                 <tr class="column-head">
@@ -205,6 +213,13 @@
                     <th data-col="age35">35-44</th>
                     <th data-col="age45">45-54</th>
                     <th data-col="age55">55+</th>
+                    <th data-col="gmv">GMV</th>
+                    <th data-col="items">Items Sold</th>
+                    <th data-col="sku">SKU Orders</th>
+                    <th data-col="avgcust">Avg<br />Customers</th>
+                    <th data-col="ctr">CTR</th>
+                    <th data-col="hashtags">Hashtags</th>
+                    <th data-col="products">Products</th>
                 </tr>
             </thead>
 
@@ -212,7 +227,7 @@
                 @if (!Model.Items.Any())
                 {
                 <tr>
-                    <td colspan="25" class="empty-cell">
+                    <td colspan="32" class="empty-cell">
                             Belum ada data Content Log.
                         </td>
                     </tr>
@@ -246,7 +261,16 @@
                             Age25_34 = row.Age25_34,
                             Age35_44 = row.Age35_44,
                             Age45_54 = row.Age45_54,
-                            Age55Plus = row.Age55Plus
+                            Age55Plus = row.Age55Plus,
+                            // commerce/attribute metrics (verified from actual TikTok response)
+                            GmvAmount = row.GmvAmount,
+                            GmvCurrency = row.GmvCurrency,
+                            ItemsSold = row.ItemsSold,
+                            SkuOrders = row.SkuOrders,
+                            AvgCustomers = row.AvgCustomers,
+                            ClickThroughRate = row.ClickThroughRate,
+                            Hashtags = row.Hashtags,
+                            Products = row.Products
                         };
 
                         var prodName = row.ProductionMethodName ?? "Self Produce";
@@ -400,35 +424,81 @@
                             </td>
 
                             <td data-col="male">
-                                @(metric?.Male?.ToString("N0") ?? "—")
+                                @(metric?.Male is null ? "—" : (metric.Male.Value * 100).ToString("0.0") + "%")
                             </td>
 
                             <td data-col="female">
-                                @(metric?.Female?.ToString("N0") ?? "—")
+                                @(metric?.Female is null ? "—" : (metric.Female.Value * 100).ToString("0.0") + "%")
                             </td>
 
                             <td data-col="nongender">
-                                @(metric?.NonGender?.ToString("N0") ?? "—")
+                                @(metric?.NonGender is null ? "—" : (metric.NonGender.Value * 100).ToString("0.0") + "%")
                             </td>
 
                             <td data-col="age18">
-                                @(metric?.Age18_24?.ToString("N0") ?? "—")
+                                @(metric?.Age18_24 is null ? "—" : (metric.Age18_24.Value * 100).ToString("0.0") + "%")
                             </td>
 
                             <td data-col="age25">
-                                @(metric?.Age25_34?.ToString("N0") ?? "—")
+                                @(metric?.Age25_34 is null ? "—" : (metric.Age25_34.Value * 100).ToString("0.0") + "%")
                             </td>
 
                             <td data-col="age35">
-                                @(metric?.Age35_44?.ToString("N0") ?? "—")
+                                @(metric?.Age35_44 is null ? "—" : (metric.Age35_44.Value * 100).ToString("0.0") + "%")
                             </td>
 
                             <td data-col="age45">
-                                @(metric?.Age45_54?.ToString("N0") ?? "—")
+                                @(metric?.Age45_54 is null ? "—" : (metric.Age45_54.Value * 100).ToString("0.0") + "%")
                             </td>
 
                             <td data-col="age55">
-                                @(metric?.Age55Plus?.ToString("N0") ?? "—")
+                                @(metric?.Age55Plus is null ? "—" : (metric.Age55Plus.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="gmv">
+                                @(metric?.GmvAmount is null
+                                    ? "—"
+                                    : metric.GmvAmount.Value.ToString("N2") + (string.IsNullOrWhiteSpace(metric.GmvCurrency) ? "" : " " + metric.GmvCurrency))
+                            </td>
+
+                            <td data-col="items">
+                                @(metric?.ItemsSold?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="sku">
+                                @(metric?.SkuOrders?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="avgcust">
+                                @(metric?.AvgCustomers?.ToString("0.##") ?? "—")
+                            </td>
+
+                            <td data-col="ctr">
+                                @(metric?.ClickThroughRate is null
+                                    ? "—"
+                                    : (metric.ClickThroughRate.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="hashtags" class="cell-wrap">
+                                @(metric?.Hashtags is { Count: > 0 }
+                                    ? string.Join(" ", metric.Hashtags.Select(h => h.StartsWith("#") ? h : "#" + h))
+                                    : "—")
+                            </td>
+
+                            <td data-col="products" class="cell-wrap">
+                                @{
+                                    var productText = "—";
+                                    if (metric?.Products is { Count: 1 })
+                                    {
+                                        productText = metric.Products[0].Name ?? "—";
+                                    }
+                                    else if (metric?.Products is { Count: > 1 })
+                                    {
+                                        var first = metric.Products[0].Name ?? "—";
+                                        productText = first + " +" + (metric.Products.Count - 1) + " more";
+                                    }
+                                }
+                                @productText
                             </td>
                         </tr>
                     }

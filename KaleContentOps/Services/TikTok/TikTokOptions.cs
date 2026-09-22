@@ -24,6 +24,10 @@ public class TikTokOptions
     // Concurrency limit for Details calls (bounded). Default 1 to be conservative.
     public int DetailsConcurrency { get; set; } = 1;
 
+    // Max ContentLogs enriched per Details Sync run (per shop). Keeps routine runs bounded
+    // and rate-limit safe: 0 or negative disables details sync entirely.
+    public int DetailsSyncBatchSize { get; set; } = 20;
+
     // Request signing salt or other flags can be added later
     // OAuth configuration
     public string? ServiceId { get; set; }

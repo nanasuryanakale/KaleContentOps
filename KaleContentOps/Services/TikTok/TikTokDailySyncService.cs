@@ -13,11 +13,13 @@ public class TikTokDailySyncService : BackgroundService
 {
     private readonly ILogger<TikTokDailySyncService> _logger;
     private readonly IServiceProvider _services;
+    private readonly TikTokOptions _options;
 
-    public TikTokDailySyncService(ILogger<TikTokDailySyncService> logger, IServiceProvider services)
+    public TikTokDailySyncService(ILogger<TikTokDailySyncService> logger, IServiceProvider services, Microsoft.Extensions.Options.IOptions<TikTokOptions>? options = null)
     {
         _logger = logger;
         _services = services;
+        _options = options?.Value ?? new TikTokOptions();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -40,6 +42,22 @@ public class TikTokDailySyncService : BackgroundService
                     try
                     {
                         await videoSvc.FetchAndSaveVideoListAsync(s.ShopCipher ?? string.Empty, cancellationToken: stoppingToken);
+
+                        // Details enrichment runs as part of the same routine sync workflow, gated behind
+                        // TikTok:EnableDetails (existing flag for Details API calls) and a bounded batch size
+                        // (TikTok:DetailsSyncBatchSize). RunDetailsSyncAsync goes through the shared
+                        // TikTokGetWithRetryAsync path (Retry-After, exponential backoff with jitter,
+                        // business code 36009002 handling) and the DetailsSemaphore concurrency limiter,
+                        // so no additional retry/concurrency is introduced here.
+                        if (_options.EnableDetails && _options.DetailsSyncBatchSize > 0)
+                        {
+                            var detailsSvc = scope.ServiceProvider.GetRequiredService<TikTokDetailsSyncService>();
+                            var enriched = await detailsSvc.RunDetailsSyncAsync(
+                                s.ShopCipher ?? string.Empty,
+                                limit: _options.DetailsSyncBatchSize,
+                                cancellationToken: stoppingToken);
+                            _logger.LogInformation("Details sync for shop {ShopCipher} enriched {Processed} videos (batch size {BatchSize})", s.ShopCipher, enriched, _options.DetailsSyncBatchSize);
+                        }
                     }
                     catch (Exception ex)
                     {

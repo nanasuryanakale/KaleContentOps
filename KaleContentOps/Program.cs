@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using KaleContentOps.Services.TikTok;
 using KaleContentOps.Services;
 using KaleContentOps.Services.DailySummary;
+using KaleContentOps.Services.Targets;
 using System.IO;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -32,6 +33,8 @@ var dailySummaryTargets = builder.Configuration
     .Get<DailySummaryTargetOptions>() ?? new DailySummaryTargetOptions();
 builder.Services.AddSingleton(dailySummaryTargets);
 builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
+// Menu Targets persistence (versioned weekly targets for NON_KK / KK)
+builder.Services.AddScoped<ITargetService, TargetService>();
 
 // Register named HttpClients for TikTok API and Auth endpoints. Concrete services will be registered later.
 builder.Services.AddHttpClient("TikTokApi", client =>

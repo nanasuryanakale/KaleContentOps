@@ -89,6 +89,13 @@ public class TikTokVideoService : ITikTokVideoService
                 long sharesSum = 0;
                 long newFollowersSum = 0;
 
+                // Per-field presence flags: a field absent from traffic must stay null (0 = valid zero, missing = null)
+                bool viewsFound = false;
+                bool likesFound = false;
+                bool commentsFound = false;
+                bool sharesFound = false;
+                bool newFollowersFound = false;
+
                 decimal avgWatchSum = 0;
                 bool avgWatchFound = false;
                 decimal fullWatchSum = 0;
@@ -105,11 +112,11 @@ public class TikTokVideoService : ITikTokVideoService
 
                     trafficFound = true;
 
-                    var v = ReadLong(traffic, "views", "view_count"); if (v.HasValue) { viewsSum += v.Value; if (result.ViewsPath == null) result.ViewsPath = "data.performance.intervals[].traffic.views"; }
-                    var l = ReadLong(traffic, "likes", "like_count"); if (l.HasValue) { likesSum += l.Value; if (result.LikesPath == null) result.LikesPath = "data.performance.intervals[].traffic.likes"; }
-                    var c = ReadLong(traffic, "comments", "comment_count"); if (c.HasValue) { commentsSum += c.Value; if (result.CommentsPath == null) result.CommentsPath = "data.performance.intervals[].traffic.comments"; }
-                    var s = ReadLong(traffic, "shares", "share_count"); if (s.HasValue) { sharesSum += s.Value; if (result.SharesPath == null) result.SharesPath = "data.performance.intervals[].traffic.shares"; }
-                    var nf = ReadLong(traffic, "new_followers", "new_follower_count"); if (nf.HasValue) { newFollowersSum += nf.Value; if (result.NewFollowersPath == null) result.NewFollowersPath = "data.performance.intervals[].traffic.new_followers"; }
+                    var v = ReadLong(traffic, "views", "view_count"); if (v.HasValue) { viewsSum += v.Value; viewsFound = true; if (result.ViewsPath == null) result.ViewsPath = "data.performance.intervals[].traffic.views"; }
+                    var l = ReadLong(traffic, "likes", "like_count"); if (l.HasValue) { likesSum += l.Value; likesFound = true; if (result.LikesPath == null) result.LikesPath = "data.performance.intervals[].traffic.likes"; }
+                    var c = ReadLong(traffic, "comments", "comment_count"); if (c.HasValue) { commentsSum += c.Value; commentsFound = true; if (result.CommentsPath == null) result.CommentsPath = "data.performance.intervals[].traffic.comments"; }
+                    var s = ReadLong(traffic, "shares", "share_count"); if (s.HasValue) { sharesSum += s.Value; sharesFound = true; if (result.SharesPath == null) result.SharesPath = "data.performance.intervals[].traffic.shares"; }
+                    var nf = ReadLong(traffic, "new_followers", "new_follower_count"); if (nf.HasValue) { newFollowersSum += nf.Value; newFollowersFound = true; if (result.NewFollowersPath == null) result.NewFollowersPath = "data.performance.intervals[].traffic.new_followers"; }
 
                     var aw = ReadDecimal(traffic, "average_watch_time", "avg_watch_time_ms"); if (aw.HasValue) { avgWatchFound = true; avgWatchSum += aw.Value; if (result.AverageWatchPath == null) result.AverageWatchPath = "data.performance.intervals[].traffic.average_watch_time"; }
                     var fr = ReadDecimal(traffic, "full_watch_rate", "finish_rate"); if (fr.HasValue) { fullWatchFound = true; fullWatchSum += fr.Value; if (result.FullWatchRatePath == null) result.FullWatchRatePath = "data.performance.intervals[].traffic.full_watch_rate"; }
@@ -120,11 +127,11 @@ public class TikTokVideoService : ITikTokVideoService
                 // This preserves explicit zero values when traffic exists, and leaves fields null when traffic is absent.
                 if (trafficFound)
                 {
-                    result.Views = viewsSum;
-                    result.Likes = likesSum;
-                    result.Comments = commentsSum;
-                    result.Shares = sharesSum;
-                    result.NewFollowers = newFollowersSum;
+                    if (viewsFound) result.Views = viewsSum;
+                    if (likesFound) result.Likes = likesSum;
+                    if (commentsFound) result.Comments = commentsSum;
+                    if (sharesFound) result.Shares = sharesSum;
+                    if (newFollowersFound) result.NewFollowers = newFollowersSum;
 
                     if (avgWatchFound) result.AverageWatch = avgWatchSum; // sum of avg may not be meaningful; preserve presence
                     if (fullWatchFound) result.FullWatchRate = fullWatchSum;
@@ -1135,17 +1142,82 @@ public class TikTokVideoService : ITikTokVideoService
                         totalVideosWithViews++;
                     }
 
+                    // ---- Commerce/attribute fields verified from actual response (data.videos[]) ----
+                    // decimal helper: invariant culture, tolerant of string or number encoding
+                    static decimal? ReadDecimalElement(System.Text.Json.JsonElement parent, string name)
+                    {
+                        if (!parent.TryGetProperty(name, out var el)) return null;
+                        if (el.ValueKind == JsonValueKind.Number && el.TryGetDecimal(out var dn)) return dn;
+                        if (el.ValueKind == JsonValueKind.String && decimal.TryParse(el.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+                        return null;
+                    }
+
+                    decimal? gmvAmount = null;
+                    string? gmvCurrency = null;
+                    if (v.TryGetProperty("gmv", out var gmvElem) && gmvElem.ValueKind == JsonValueKind.Object)
+                    {
+                        gmvAmount = ReadDecimalElement(gmvElem, "amount");
+                        gmvCurrency = gmvElem.GetPropertyOrDefault("currency");
+                    }
+
+                    long? itemsSold = v.GetPropertyOrDefaultInt("items_sold");
+                    long? skuOrders = v.GetPropertyOrDefaultInt("sku_orders");
+                    decimal? avgCustomers = ReadDecimalElement(v, "avg_customers");
+
+                    // CTR source "0.0533" stored as 0..1 rate (same convention as FullWatchRate)
+                    decimal? clickThroughRate = ReadDecimalElement(v, "click_through_rate");
+
+                    string? hashtagsJson = null;
+                    if (v.TryGetProperty("hash_tags", out var tagsElem) && tagsElem.ValueKind == JsonValueKind.Array)
+                    {
+                        var tags = new List<string>();
+                        foreach (var t in tagsElem.EnumerateArray())
+                        {
+                            var s = t.ToString();
+                            if (!string.IsNullOrWhiteSpace(s)) tags.Add(s);
+                        }
+                        hashtagsJson = System.Text.Json.JsonSerializer.Serialize(tags);
+                    }
+
+                    string? productsJson = null;
+                    if (v.TryGetProperty("products", out var productsElem) && productsElem.ValueKind == JsonValueKind.Array)
+                    {
+                        var products = new List<object>();
+                        foreach (var p in productsElem.EnumerateArray())
+                        {
+                            if (p.ValueKind != JsonValueKind.Object) continue;
+                            products.Add(new
+                            {
+                                id = p.GetPropertyOrDefault("id"),
+                                name = p.GetPropertyOrDefault("name")
+                            });
+                        }
+                        productsJson = System.Text.Json.JsonSerializer.Serialize(products);
+                    }
+
+                    bool commercePresent = gmvAmount.HasValue || itemsSold.HasValue || skuOrders.HasValue
+                        || avgCustomers.HasValue || clickThroughRate.HasValue
+                        || hashtagsJson != null || productsJson != null;
+
                     if (targetLog != null)
                     {
                         totalVideosMatched++;
                         // create metric only once per video id per sync run; keep a reference for potential enrichment
                         ContentMetric? viewsMetric = null;
-                        if (views.HasValue && processedVideoIds.Add(videoId))
+                        if ((views.HasValue || commercePresent) && processedVideoIds.Add(videoId))
                         {
                             var metric = new ContentMetric
                             {
                                 ContentLog = targetLog,
                                 Views = views,
+                                GmvAmount = gmvAmount,
+                                GmvCurrency = gmvCurrency,
+                                ItemsSold = itemsSold,
+                                SkuOrders = skuOrders,
+                                AvgCustomers = avgCustomers,
+                                ClickThroughRate = clickThroughRate,
+                                HashtagsJson = hashtagsJson,
+                                ProductsJson = productsJson,
                                 MetricStartDate = effectiveStartDate,
                                 MetricEndDate = effectiveEndDate,
                                 CapturedAt = DateTime.UtcNow
@@ -1170,7 +1242,8 @@ public class TikTokVideoService : ITikTokVideoService
 
                 if (metricsToSave.Count > 0)
                 {
-                    if (_env.IsDevelopment())
+                    // null-safe: env may be null when the service is constructed directly in unit tests (pre-existing CS8604 site)
+                    if (_env is not null && _env.IsDevelopment())
                     {
                         _logger.LogInformation("ContentMetrics diagnostic: Videos received = {Received}, Videos matched = {Matched}, Videos with views = {WithViews}, Metrics queued = {Queued}",
                             totalVideosReceived,
