@@ -29,29 +29,45 @@ public class TargetService : ITargetService
     /// <inheritdoc />
     public async Task<IReadOnlyList<TargetCurrentItem>> GetCurrentTargetsAsync(CancellationToken cancellationToken = default)
     {
-        // Newest-first so that, in the unlikely case of corrupted data (multiple active rows),
-        // the latest version wins deterministically instead of depending on row order.
-        var rows = await _db.Targets.AsNoTracking()
+        // Fetch all targetable content types (NON_KK, KK)
+        var contentTypes = await _db.ContentTypes.AsNoTracking()
+            .Where(c => c.Code == NonKkCode || c.Code == KkCode)
+            .ToListAsync(cancellationToken);
+
+        // Fetch all active (current) target versions for these content types
+        var activeTargets = await _db.Targets.AsNoTracking()
             .Where(t => t.EffectiveTo == null
                 && (t.ContentType!.Code == NonKkCode || t.ContentType!.Code == KkCode))
             .OrderByDescending(t => t.EffectiveFrom)
             .ThenByDescending(t => t.Id)
-            .Select(t => new TargetCurrentItem
-            {
-                ContentTypeId = t.ContentTypeId,
-                ContentTypeCode = t.ContentType!.Code,
-                ContentTypeName = t.ContentType!.Name,
-                TargetUpload = t.TargetUpload,
-                TargetViews = t.TargetViews,
-                EffectiveFrom = t.EffectiveFrom,
-                EffectiveTo = t.EffectiveTo
-            })
             .ToListAsync(cancellationToken);
 
-        // NON_KK first, then KK (fixed display order for the Menu Targets UI).
-        return rows
-            .OrderByDescending(x => string.Equals(x.ContentTypeCode, NonKkCode, StringComparison.OrdinalIgnoreCase))
+        // Group active targets by ContentTypeId to handle potential data corruption (multiple active rows)
+        var targetsByContentTypeId = activeTargets
+            .GroupBy(t => t.ContentTypeId)
+            .ToDictionary(g => g.Key, g => g.First()); // Newest wins deterministically
+
+        // Build result: one row per targetable content type (NON_KK first, then KK)
+        // If no target record exists, use null/empty values so UI can show empty inputs
+        var result = contentTypes
+            .OrderByDescending(ct => string.Equals(ct.Code, NonKkCode, StringComparison.OrdinalIgnoreCase))
+            .Select(ct => 
+            {
+                var target = targetsByContentTypeId.TryGetValue(ct.Id, out var t) ? t : null;
+                return new TargetCurrentItem
+                {
+                    ContentTypeId = ct.Id,
+                    ContentTypeCode = ct.Code,
+                    ContentTypeName = ct.Name,
+                    TargetUpload = target?.TargetUpload ?? 0,
+                    TargetViews = target?.TargetViews ?? 0L,
+                    EffectiveFrom = target?.EffectiveFrom ?? default,
+                    EffectiveTo = target?.EffectiveTo
+                };
+            })
             .ToList();
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -161,6 +177,71 @@ public class TargetService : ITargetService
         _db.Targets.Add(newVersion);
         await SaveAsync(cancellationToken);
         return TargetSaveResult.Ok(newVersion, contentType.Code, createdNewVersion: true);
+    }
+
+    /// <inheritdoc />
+    public async Task<TargetActualItem?> GetActualAsync(int contentTypeId, DateOnly endDate, int days = 7, CancellationToken cancellationToken = default)
+    {
+        // Fetch ContentType first to get code + name
+        var contentType = await _db.ContentTypes.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == contentTypeId, cancellationToken);
+        if (contentType is null)
+            return null;
+
+        // Date range for rolling window: [endDate - days + 1, endDate]
+        var startDate = endDate.AddDays(-(days - 1));
+        var startDateTime = new DateTime(startDate.Year, startDate.Month, startDate.Day, 0, 0, 0, DateTimeKind.Utc);
+        var endDateTime = new DateTime(endDate.Year, endDate.Month, endDate.Day, 23, 59, 59, DateTimeKind.Utc);
+
+        // Fetch all ContentLogs in range for this content type (exclude archived).
+        var contentLogs = await _db.ContentLogs.AsNoTracking()
+            .Where(cl => cl.ContentTypeId == contentTypeId
+                && cl.VideoPostTime >= startDateTime
+                && cl.VideoPostTime <= endDateTime
+                && cl.IsArchived != true)
+            .Select(cl => new { cl.Id })
+            .ToListAsync(cancellationToken);
+
+        if (contentLogs.Count == 0)
+        {
+            // No content in range, return zero actuals
+            return new TargetActualItem
+            {
+                ContentTypeId = contentTypeId,
+                ContentTypeCode = contentType.Code,
+                ContentTypeName = contentType.Name,
+                ActualUpload = 0,
+                ActualViews = 0
+            };
+        }
+
+        var contentLogIds = contentLogs.Select(cl => cl.Id).ToArray();
+
+        // Fetch latest metric per content log (matching pattern from DailySummaryService)
+        var latestMetrics = await _db.ContentMetrics.AsNoTracking()
+            .Where(m => contentLogIds.Contains(m.ContentLogId))
+            .GroupBy(m => m.ContentLogId)
+            .Select(g => new
+            {
+                ContentLogId = g.Key,
+                Views = g
+                    .OrderByDescending(m => m.CapturedAt)
+                    .ThenByDescending(m => m.Id)
+                    .Select(m => m.Views)
+                    .FirstOrDefault() ?? 0L
+            })
+            .ToListAsync(cancellationToken);
+
+        var totalViews = latestMetrics.Sum(m => m.Views);
+
+        return new TargetActualItem
+        {
+            ContentTypeId = contentTypeId,
+            ContentTypeCode = contentType.Code,
+            ContentTypeName = contentType.Name,
+            ActualUpload = contentLogs.Count,
+            ActualViews = totalViews
+        };
     }
 
     /// <summary>

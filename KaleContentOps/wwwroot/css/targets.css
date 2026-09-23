@@ -1,0 +1,408 @@
+/* Targets Page — Menu Targets UI Styling */
+
+.targets-page {
+    padding: 20px 24px 120px;
+    max-width: 1500px;
+    margin: 0 auto;
+    color: #e7edf5;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ============ Header ============ */
+.targets-page .page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.targets-page .page-head h1 {
+    margin: 0 0 6px;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: #f4f7fb;
+}
+
+.targets-page .page-subtitle {
+    margin: 0;
+    font-size: 12.5px;
+    color: #8996a8;
+    line-height: 1.4;
+}
+
+/* ============ Sections ============ */
+.targets-section {
+    margin-bottom: 32px;
+}
+
+.card-container {
+    background: #1a2230;
+    border: 1px solid #2a3447;
+    border-radius: 11px;
+    overflow: hidden;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
+}
+
+.card-header {
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid #263043;
+    background: #151b27;
+}
+
+.card-header .section-title {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #8fa6df;
+    text-transform: uppercase;
+}
+
+/* ============ Table Styling ============ */
+.table-wrap {
+    background: #121824;
+    border: 1px solid #2a3447;
+    border-radius: 11px;
+    overflow: auto;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
+}
+
+
+.targets-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    background: #121824;
+}
+
+.targets-table thead {
+    background: #252d40;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.targets-table th {
+    padding: 12px;
+    color: #dfe5f1;
+    font-weight: 700;
+    font-size: 11px;
+    text-align: left;
+    letter-spacing: 0.25px;
+    border-bottom: 1px solid #263043;
+    white-space: nowrap;
+}
+
+.targets-table tbody tr {
+    border-bottom: 1px solid #263043;
+}
+
+.targets-table tbody tr:nth-child(even) {
+    background: #151b27;
+}
+
+.targets-table tbody tr:hover {
+    background: #1a2130;
+}
+
+.targets-table td {
+    padding: 12px;
+    text-align: left;
+}
+
+/* ============ Column Widths ============ */
+.targets-table th.col-type,
+.targets-table td:nth-child(1) { width: 180px; }
+
+.targets-table th.col-target,
+.targets-table td:nth-child(2) { width: 160px; }
+
+.targets-table th.col-actual,
+.targets-table td:nth-child(3) { width: 140px; }
+
+.targets-table th.col-diff,
+.targets-table td:nth-child(4) { width: 100px; }
+
+.targets-table th.col-status,
+.targets-table td:nth-child(5) { width: 140px; }
+
+/* ============ Type Cell — Content Type Badge ============ */
+.type-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    color: #e7edf5;
+}
+
+.type-badge {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.type-badge.non-kk {
+    background: #4d9fff;
+}
+
+.type-badge.kk {
+    background: #e8b83f;
+}
+
+/* ============ Input Cell — Target Input ============ */
+.target-input {
+    width: 100%;
+    max-width: 120px;
+    padding: 8px 10px;
+    background: #3a2d08;
+    border: 1px solid #6d5a1f;
+    border-radius: 6px;
+    color: #f3b91f;
+    font-weight: 600;
+    font-size: 11px;
+    text-align: center;
+    outline: none;
+}
+
+.target-input:focus {
+    border-color: #f5cb4f;
+    box-shadow: 0 0 8px rgba(243, 185, 31, 0.2);
+}
+
+.target-input::placeholder {
+    color: #8f7d4a;
+}
+
+/* ============ Actual Cell — Read-only Value ============ */
+.actual-cell {
+    font-weight: 500;
+    color: #cbd6e5;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============ Selisih Cell — Difference Display ============ */
+.selisih-cell {
+    font-weight: 600;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.selisih-cell.positive {
+    color: #45d483;
+}
+
+.selisih-cell.negative {
+    color: #f47777;
+}
+
+.selisih-cell.zero {
+    color: #45d483;
+}
+
+/* ============ Status Badge ============ */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.status-badge.above-target,
+.status-badge.target-met {
+    background: rgba(69, 212, 131, 0.15);
+    color: #45d483;
+}
+
+.status-badge.below-target {
+    background: rgba(244, 119, 119, 0.15);
+    color: #f47777;
+}
+
+.status-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-badge.above-target::before,
+.status-badge.target-met::before {
+    background: #45d483;
+}
+
+.status-badge.below-target::before {
+    background: #f47777;
+}
+
+/* ============ Footer Note ============ */
+.targets-footer {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 14px 16px;
+    background: #1b2231;
+    border: 1px solid #2a3347;
+    border-radius: 9px;
+    color: #8791aa;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.targets-footer .info-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: #5a7c99;
+}
+
+.targets-footer p {
+    margin: 0;
+}
+
+/* ============ Toast Notification ============ */
+.toast-notification {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 10px 16px;
+    background: #2a3d52;
+    border: 1px solid #3a5068;
+    border-radius: 6px;
+    color: #e0f0ff;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.toast-notification.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ============ Loading/Saving Indicator ============ */
+.input-saving {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.input-error {
+    background: #3a2a2a !important;
+    border-color: #6d3333 !important;
+    color: #f5a5a5 !important;
+}
+
+/* ============ Responsive ============ */
+@media (max-width: 1024px) {
+    .targets-page {
+        padding: 16px 20px 100px;
+    }
+
+    .targets-page .page-head h1 {
+        font-size: 20px;
+    }
+
+    .targets-table th,
+    .targets-table td {
+        padding: 10px 8px;
+        font-size: 11px;
+    }
+
+    .targets-table th.col-type,
+    .targets-table td:nth-child(1) { width: 140px; }
+
+    .targets-table th.col-target,
+    .targets-table td:nth-child(2) { width: 130px; }
+
+    .targets-table th.col-actual,
+    .targets-table td:nth-child(3) { width: 120px; }
+
+    .targets-table th.col-diff,
+    .targets-table td:nth-child(4) { width: 90px; }
+
+    .targets-table th.col-status,
+    .targets-table td:nth-child(5) { width: 120px; }
+
+    .target-input {
+        max-width: 100px;
+        font-size: 10px;
+        padding: 6px 8px;
+    }
+}
+
+@media (max-width: 768px) {
+    .targets-page {
+        padding: 12px 16px 80px;
+    }
+
+    .targets-page .page-head h1 {
+        font-size: 18px;
+    }
+
+    .targets-page .page-subtitle {
+        font-size: 11px;
+    }
+
+    .targets-section {
+        margin-bottom: 24px;
+    }
+
+    .targets-table th,
+    .targets-table td {
+        padding: 8px 6px;
+        font-size: 10px;
+    }
+
+    .targets-table th.col-type,
+    .targets-table td:nth-child(1) { width: 100px; }
+
+    .targets-table th.col-target,
+    .targets-table td:nth-child(2) { width: 110px; }
+
+    .targets-table th.col-actual,
+    .targets-table td:nth-child(3) { width: 100px; }
+
+    .targets-table th.col-diff,
+    .targets-table td:nth-child(4) { width: 80px; }
+
+    .targets-table th.col-status,
+    .targets-table td:nth-child(5) { width: 100px; }
+
+    .target-input {
+        max-width: 90px;
+        font-size: 9px;
+        padding: 5px 6px;
+    }
+
+    .status-badge {
+        font-size: 9px;
+        padding: 4px 8px;
+    }
+
+    .type-cell {
+        gap: 6px;
+    }
+
+    .targets-footer {
+        gap: 10px;
+        padding: 10px 12px;
+        font-size: 11px;
+    }
+
+    .toast-notification {
+        bottom: 16px;
+        right: 16px;
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+}

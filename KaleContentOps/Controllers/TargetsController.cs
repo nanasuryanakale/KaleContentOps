@@ -25,6 +25,15 @@ public class TargetsController : Controller
     }
 
     // ------------------------------------------------------------------
+    // GET /Targets - Menu Targets page view
+    // ------------------------------------------------------------------
+    [HttpGet]
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
+    {
+        return View();
+    }
+
+    // ------------------------------------------------------------------
     // GET targets/current - active configuration for the Menu Targets UI
     // ------------------------------------------------------------------
     [HttpGet("targets/current")]
@@ -32,6 +41,24 @@ public class TargetsController : Controller
     {
         var current = await _targetService.GetCurrentTargetsAsync(cancellationToken);
         return Ok(current);
+    }
+
+    // ------------------------------------------------------------------
+    // GET targets/actual - rolling 7-day actuals for Menu Targets UI
+    // Query parameter: contentTypeId (required)
+    // ------------------------------------------------------------------
+    [HttpGet("targets/actual")]
+    public async Task<IActionResult> Actual(int contentTypeId, CancellationToken cancellationToken)
+    {
+        var endDate = _shopTimeZone.Today();
+        var actual = await _targetService.GetActualAsync(contentTypeId, endDate, days: 7, cancellationToken);
+
+        if (actual is null)
+        {
+            return NotFound(new { error = "Content type tidak ditemukan." });
+        }
+
+        return Ok(actual);
     }
 
     // ------------------------------------------------------------------

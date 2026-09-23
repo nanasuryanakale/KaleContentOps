@@ -32,7 +32,7 @@
                             <path d="M8 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
                         </svg>
                     </span> <span class="nav-text">Daily Summary</span></a></li>
-            <li class="nav-item"><a class="nav-link" href="#"><span class="nav-icon" aria-hidden="true">
+            <li class="nav-item"><a class="nav-link @(ViewContext.RouteData.Values["controller"] as string == "Targets" ? "active" : "")" asp-controller="Targets" asp-action="Index"><span class="nav-icon" aria-hidden="true">
                         <!-- target icon -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.2" />

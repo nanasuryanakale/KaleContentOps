@@ -29,6 +29,15 @@ public interface ITargetService
     /// no active version simply creates the first one.
     /// </summary>
     Task<TargetSaveResult> SaveTargetAsync(TargetSaveRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Actual counts and views for Menu Targets UI (rolling N days from endDate).
+    /// Aggregates ContentLogs posted in [endDate - days + 1, endDate] for one content type,
+    /// retrieves latest metrics per log, and sums views + counts uploads.
+    /// Returns null if content type not found or no data in range.
+    /// Used by Menu Targets to display rolling 7-day actuals alongside targets (not for versioning).
+    /// </summary>
+    Task<TargetActualItem?> GetActualAsync(int contentTypeId, DateOnly endDate, int days = 7, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -43,6 +52,21 @@ public sealed class TargetCurrentItem
     public long TargetViews { get; init; }
     public DateOnly EffectiveFrom { get; init; }
     public DateOnly? EffectiveTo { get; init; }
+}
+
+/// <summary>
+/// Actual aggregated data for Menu Targets UI (rolling period actuals, not target configuration).
+/// Represents ContentLogs posted in the rolling N-day period, with latest metrics.
+/// </summary>
+public sealed class TargetActualItem
+{
+    public int ContentTypeId { get; init; }
+    public string ContentTypeCode { get; init; } = string.Empty;
+    public string ContentTypeName { get; init; } = string.Empty;
+    /// <summary>Count of ContentLogs in the rolling period.</summary>
+    public int ActualUpload { get; init; }
+    /// <summary>Sum of latest Views for each ContentLog in the rolling period.</summary>
+    public long ActualViews { get; init; }
 }
 
 /// <summary>Save request. Today is injected so tests are independent of the system clock.</summary>

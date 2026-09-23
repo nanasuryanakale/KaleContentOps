@@ -1,0 +1,82 @@
+@{
+    ViewData["Title"] = "Targets";
+}
+<link rel="stylesheet" href="~/css/targets.css" asp-append-version="true" />
+
+<div class="targets-page">
+    <!-- Header -->
+    <div class="page-head">
+        <div>
+            <h1>Targets</h1>
+            <p class="page-subtitle">Master target mingguan per jenis konten - "actual" dihitung dari 7 hari terakhir di Daily Summary</p>
+        </div>
+    </div>
+
+    <!-- Section 1: Target Upload / Jumlah Konten per Minggu -->
+    <div class="targets-section">
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">TARGET UPLOAD · JUMLAH KONTEN/MINGGU</h2>
+            </div>
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">JENIS KONTEN</th>
+                        <th class="col-target">TARGET UPLOAD/MINGGU</th>
+                        <th class="col-actual">ACTUAL (7 HARI TERAKHIR)</th>
+                        <th class="col-diff">SELISIH</th>
+                        <th class="col-status">STATUS</th>
+                    </tr>
+                </thead>
+                <tbody id="uploadTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 2: Target Views / Total Views per Minggu -->
+    <div class="targets-section">
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">TARGET VIEWS · TOTAL VIEWS/MINGGU</h2>
+            </div>
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">JENIS KONTEN</th>
+                        <th class="col-target">TARGET VIEWS/MINGGU</th>
+                        <th class="col-actual">ACTUAL (7 HARI TERAKHIR)</th>
+                        <th class="col-diff">SELISIH</th>
+                        <th class="col-status">STATUS</th>
+                    </tr>
+                </thead>
+                <tbody id="viewsTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Footer Note -->
+    <!-- <div class="targets-footer">
+        <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" />
+            <path d="M12 8v4M12 16h0.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <p>
+            Kotak target di kedua tabel ini input berenan — coba ganti angkanya, status di kanan (hijau/merah) langsung update. 
+            Warna kuning-pucat + teks biru senagai disemain sama konvensi "sel input" di file Excel kamu, jadi familiar.
+        </p>
+    </div> -->
+
+    <!-- Toast Notification -->
+    <div id="saveToast" class="toast-notification" role="alert" aria-live="polite" aria-atomic="true">
+        Tersimpan
+    </div>
+
+    <!-- Hidden antiforgery token input -->
+    @Html.AntiForgeryToken()
+</div>
+
+<script src="~/js/targets.js" asp-append-version="true"></script>
