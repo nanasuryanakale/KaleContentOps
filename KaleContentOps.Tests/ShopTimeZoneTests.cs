@@ -41,7 +41,10 @@ public class ShopTimeZoneTests
 
         var tz = CreateDefault();
         Assert.Equal(new DateOnly(2026, 9, 22), tz.GetShopLocalDate(instant));
-        Assert.Equal(new DateTime(2026, 9, 22), tz.TodayMidnight().Date); // same calendar date
+        // TodayMidnight() must be the midnight of the shop-local "today" (self-consistent),
+        // never a UTC-derived calendar date. Not hardcoded to a calendar date: the test
+        // must not break when it runs on a different day than it was written.
+        Assert.Equal(tz.ToDateTime(tz.Today()).Date, tz.TodayMidnight().Date);
     }
 
     [Fact]
@@ -119,7 +122,10 @@ public class ShopTimeZoneTests
 
         var sig = new TikTokSignatureService(Options.Create(new TikTokOptions { AppSecret = "SECRET" }));
         var auth = new StubAuthService();
-        var tz = CreateDefault();
+        // Frozen clock: the service reads TodayMidnight() inside its paging loop, so a real
+        // clock can straddle midnight between the request and the assertion and make this
+        // test flaky. Shop-local "today" is pinned to 2026-09-22 for the explicit edge below.
+        var tz = new FrozenShopTimeZone();
 
         var svc = new TikTokVideoService(
             clientFactory,
@@ -132,7 +138,7 @@ public class ShopTimeZoneTests
         Assert.NotNull(handler.LastRequest);
         var qs = System.Web.HttpUtility.ParseQueryString(handler.LastRequest!.RequestUri!.Query);
 
-        var expectedToday = tz.TodayMidnight();
+        var expectedToday = tz.TodayMidnight(); // frozen: 2026-09-22
         // end_date_lt must be shop-local tomorrow, not UTC tomorrow.
         Assert.Equal(expectedToday.AddDays(1).ToString("yyyy-MM-dd"), qs["end_date_lt"]);
         Assert.Equal(expectedToday.AddDays(-30).ToString("yyyy-MM-dd"), qs["start_date_ge"]);
@@ -168,6 +174,22 @@ public class ShopTimeZoneTests
             => Task.FromResult<TikTokTokenResponse?>(null);
         public Task<string?> GetValidAccessTokenAsync(long credentialId, CancellationToken cancellationToken = default)
             => Task.FromResult<string?>("ACCESSTOKEN");
+    }
+
+    /// <summary>
+    /// IShopTimeZone whose "today" is frozen at 2026-09-22 (shop-local), so tests that
+    /// assert absolute calendar dates never depend on the wall clock they run under.
+    /// </summary>
+    private sealed class FrozenShopTimeZone : IShopTimeZone
+    {
+        public static readonly DateOnly FrozenToday = new(2026, 9, 22);
+
+        public string TimeZoneId => ShopTimeZoneOptions.DefaultTimeZoneId;
+        public DateTimeOffset ToShopLocal(DateTimeOffset utcInstant) => utcInstant;
+        public DateOnly GetShopLocalDate(DateTimeOffset utcInstant) => DateOnly.FromDateTime(utcInstant.DateTime);
+        public DateOnly Today() => FrozenToday;
+        public DateTime ToDateTime(DateOnly shopLocalDate) => shopLocalDate.ToDateTime(TimeOnly.MinValue);
+        public DateTime TodayMidnight() => ToDateTime(FrozenToday);
     }
 
     // ============================================================
