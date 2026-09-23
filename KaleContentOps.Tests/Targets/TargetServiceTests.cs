@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using KaleContentOps.Data;
 using KaleContentOps.Models;
+using KaleContentOps.Services;
 using KaleContentOps.Services.Targets;
 using Xunit;
 
@@ -23,11 +24,12 @@ public class TargetServiceTests
 
     private static readonly DateOnly Today = new(2026, 9, 22);
 
-    private sealed class TestHost
+    private class TestHost
     {
         public string DatabaseName { get; } = Guid.NewGuid().ToString();
         public AppDbContext Db { get; }
         public TargetService Service { get; }
+        public StubShopTimeZone Clock { get; }
         public int NonKkId { get; }
         public int KkId { get; }
         public int AutoGmvId { get; }
@@ -49,7 +51,8 @@ public class TargetServiceTests
             KkId = Db.ContentTypes.Single(c => c.Code == Kk).Id;
             AutoGmvId = Db.ContentTypes.Single(c => c.Code == AutoGmv).Id;
 
-            Service = new TargetService(Db);
+            Clock = new StubShopTimeZone(Today);
+            Service = new TargetService(Db, Clock);
         }
 
         public AppDbContext NewContext() => new(
@@ -57,8 +60,31 @@ public class TargetServiceTests
                 .UseInMemoryDatabase(DatabaseName)
                 .Options);
 
-        public TargetSaveRequest Request(int contentTypeId, int upload, long views, DateOnly? today = null) =>
-            new() { ContentTypeId = contentTypeId, TargetUpload = upload, TargetViews = views, Today = today ?? Today };
+        public TargetSaveRequest Request(int contentTypeId, int upload, long views, DateOnly? today = null, DateOnly? effectiveDate = null, string? changedBy = null) =>
+            new()
+            {
+                ContentTypeId = contentTypeId,
+                TargetUpload = upload,
+                TargetViews = views,
+                Today = today ?? Today,
+                EffectiveDate = effectiveDate,
+                ChangedByUserId = changedBy
+            };
+    }
+
+    /// <summary>Injectable server clock so scheduled-version activation can be simulated.</summary>
+    private sealed class StubShopTimeZone : IShopTimeZone
+    {
+        public StubShopTimeZone(DateOnly today) => TodayValue = today;
+
+        public DateOnly TodayValue { get; set; }
+
+        public string TimeZoneId => "Asia/Jakarta";
+        public DateTimeOffset ToShopLocal(DateTimeOffset utcInstant) => utcInstant;
+        public DateOnly GetShopLocalDate(DateTimeOffset utcInstant) => DateOnly.FromDateTime(utcInstant.DateTime);
+        public DateOnly Today() => TodayValue;
+        public DateTime ToDateTime(DateOnly shopLocalDate) => shopLocalDate.ToDateTime(TimeOnly.MinValue);
+        public DateTime TodayMidnight() => ToDateTime(TodayValue);
     }
 
     // ============================================================
@@ -273,7 +299,7 @@ public class TargetServiceTests
 
     private sealed class FailingSaveService : TargetService
     {
-        public FailingSaveService(AppDbContext db) : base(db) { }
+        public FailingSaveService(AppDbContext db) : base(db, new StubShopTimeZone(Today)) { }
 
         protected override Task<int> SaveAsync(CancellationToken cancellationToken)
             => throw new InvalidOperationException("simulated store failure after staging");
@@ -331,13 +357,23 @@ public class TargetServiceTests
     }
 
     [Fact]
-    public async Task GetCurrentTargets_NoTargets_ReturnsEmptyList()
+    public async Task GetCurrentTargets_NoTargets_ReturnsTargetableTypesWithZeroValues()
     {
+        // Since Phase 4a the service returns one placeholder row per targetable
+        // content type (NON_KK/KK) so the UI can render empty inputs.
         var host = new TestHost();
 
         var current = await host.Service.GetCurrentTargetsAsync();
 
-        Assert.Empty(current);
+        Assert.Equal(2, current.Count);
+        Assert.All(current, x =>
+        {
+            Assert.Equal(0, x.TargetUpload);
+            Assert.Equal(0L, x.TargetViews);
+            Assert.Equal(default, x.EffectiveFrom);
+            Assert.Null(x.EffectiveTo);
+        });
+        Assert.DoesNotContain(current, x => x.ContentTypeCode == AutoGmv);
     }
 
     // ============================================================
@@ -360,5 +396,194 @@ public class TargetServiceTests
 
         Assert.Equal(1, host.Db.Targets.Count(t => t.EffectiveTo == null));
         Assert.Equal(1, host.Db.Targets.Count());
+    }
+
+    // ============================================================
+    // Phase 4b: Effective Date + ChangedBy
+    // ============================================================
+
+    [Fact]
+    public async Task SaveTarget_WithEffectiveDate_NewVersionCreated_OldVersionIntact()
+    {
+        var host = new TestHost();
+        var aug1 = new DateOnly(2026, 8, 1);
+        var sep1 = new DateOnly(2026, 9, 1);
+
+        await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 10, 20_000, effectiveDate: aug1, changedBy: "user-a"));
+        var result = await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 15, 30_000, effectiveDate: sep1, changedBy: "user-b"));
+
+        Assert.True(result.Success);
+        Assert.True(result.CreatedNewVersion);
+        Assert.Equal(2, host.Db.Targets.Count());
+
+        var aug = host.Db.Targets.Single(t => t.EffectiveFrom == aug1);
+        var sep = host.Db.Targets.Single(t => t.EffectiveFrom == sep1);
+
+        // Existing version unchanged (values + audit).
+        Assert.Equal(10, aug.TargetUpload);
+        Assert.Equal(20_000L, aug.TargetViews);
+        Assert.Equal("user-a", aug.ChangedByUserId);
+
+        // New version carries its own audit stamp.
+        Assert.Equal(15, sep.TargetUpload);
+        Assert.Equal(30_000L, sep.TargetViews);
+        Assert.Equal("user-b", sep.ChangedByUserId);
+        Assert.True(sep.UpdatedAt >= sep.CreatedAt);
+    }
+
+    [Fact]
+    public async Task Resolve_Aug15UsesAugTarget_Sep20UsesSepTarget()
+    {
+        var host = new TestHost();
+        var aug1 = new DateOnly(2026, 8, 1);
+        var sep1 = new DateOnly(2026, 9, 1);
+
+        await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 10, 20_000, effectiveDate: aug1));
+        await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 15, 30_000, effectiveDate: sep1));
+
+        var aug15 = await host.Service.GetTargetForDateAsync(host.NonKkId, new DateOnly(2026, 8, 15));
+        var sep20 = await host.Service.GetTargetForDateAsync(host.NonKkId, new DateOnly(2026, 9, 20));
+        var nov10 = await host.Service.GetTargetForDateAsync(host.NonKkId, new DateOnly(2026, 11, 10));
+
+        Assert.NotNull(aug15);
+        Assert.Equal(10, aug15!.TargetUpload);
+        Assert.Equal(20_000L, aug15.TargetViews);
+
+        Assert.NotNull(sep20);
+        Assert.Equal(15, sep20!.TargetUpload);
+        Assert.Equal(30_000L, sep20.TargetViews);
+
+        // After the last version: latest EffectiveFrom <= D wins (still the Sep version).
+        Assert.NotNull(nov10);
+        Assert.Equal(15, nov10!.TargetUpload);
+    }
+
+    [Fact]
+    public async Task SaveTarget_SameEffectiveDate_RevisesExistingVersion_NoDuplicate()
+    {
+        var host = new HostWithExistingTarget();
+
+        var result = await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 18, 36_000, effectiveDate: HostWithExistingTarget.EffectiveDate, changedBy: "user-revise"));
+
+        Assert.True(result.Success);
+        Assert.False(result.CreatedNewVersion);
+        Assert.Single(host.Db.Targets);
+        var version = host.Db.Targets.Single();
+        Assert.Equal(18, version.TargetUpload);
+        Assert.Equal(36_000L, version.TargetViews);
+        Assert.Equal("user-revise", version.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task SaveTarget_FutureEffectiveDate_IsScheduled_NotCurrent()
+    {
+        var host = new HostWithExistingTarget();
+        var future = HostWithExistingTarget.EffectiveDate.AddMonths(2); // e.g. 01 Nov while today is 22 Sep
+
+        var result = await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 20, 40_000, effectiveDate: future, changedBy: "user-sched"));
+
+        Assert.True(result.Success);
+        Assert.True(result.CreatedNewVersion);
+        Assert.True(result.IsScheduled);
+        Assert.Equal(2, host.Db.Targets.Count());
+
+        // The scheduled version must not become "current" before its date.
+        var current = await host.Service.GetCurrentTargetsAsync();
+        var nonKk = current.Single(x => x.ContentTypeCode == NonKk);
+        Assert.Equal(10, nonKk.TargetUpload);          // Sep version still current
+        Assert.Equal(HostWithExistingTarget.EffectiveDate, nonKk.EffectiveFrom);
+
+        // Scheduled listing exposes it with the future date.
+        var scheduled = await host.Service.GetScheduledTargetsAsync();
+        var row = scheduled.Single(x => x.ContentTypeId == host.NonKkId);
+        Assert.Equal(future, row.EffectiveFrom);
+        Assert.Equal(20, row.TargetUpload);
+
+        // Date-based resolution: before the future date -> Sep version; on/after -> scheduled values.
+        var dayBefore = await host.Service.GetTargetForDateAsync(host.NonKkId, future.AddDays(-1));
+        Assert.Equal(10, dayBefore!.TargetUpload);
+        var onDate = await host.Service.GetTargetForDateAsync(host.NonKkId, future);
+        Assert.Equal(20, onDate!.TargetUpload);
+    }
+    [Fact]
+    public async Task SaveTarget_BackdatedVersion_HistoricalPeriodsKeepOlderTarget()
+    {
+        var host = new HostWithExistingTarget();
+        var backdated = HostWithExistingTarget.EffectiveDate.AddMonths(-1); // e.g. 22 Aug while today is 22 Sep
+
+        var result = await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 5, 12_000, effectiveDate: backdated, changedBy: "user-back"));
+
+        Assert.True(result.Success);
+        Assert.True(result.CreatedNewVersion);
+
+        // Period before the backdated date keeps the "pre-target" null state? No target existed before,
+        // so dates before the backdated version have no target (null) - that is the historical truth.
+        var before = await host.Service.GetTargetForDateAsync(host.NonKkId, backdated.AddDays(-1));
+        Assert.Null(before);
+
+        // From the backdated date until the day before the existing version: new values.
+        var inBetween = await host.Service.GetTargetForDateAsync(host.NonKkId, backdated.AddDays(5));
+        Assert.NotNull(inBetween);
+        Assert.Equal(5, inBetween!.TargetUpload);
+        Assert.Equal(12_000L, inBetween.TargetViews);
+
+        // From the existing version onwards: Sep values unchanged.
+        var atExisting = await host.Service.GetTargetForDateAsync(host.NonKkId, HostWithExistingTarget.EffectiveDate);
+        Assert.Equal(10, atExisting!.TargetUpload);
+    }
+
+    [Fact]
+    public async Task GetTargetHistory_ReturnsAllVersions_EffectiveDateDescending()
+    {
+        var host = new TestHost();
+        var aug1 = new DateOnly(2026, 8, 1);
+        var sep1 = new DateOnly(2026, 9, 1);
+
+        await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 10, 20_000, effectiveDate: aug1, changedBy: "user-a"));
+        await host.Service.SaveTargetAsync(host.Request(host.NonKkId, 15, 30_000, effectiveDate: sep1, changedBy: "user-b"));
+
+        var history = await host.Service.GetTargetHistoryAsync(host.NonKkId);
+
+        Assert.Equal(2, history.Count);
+        Assert.Equal(sep1, history[0].EffectiveDate);   // newest first
+        Assert.Equal(aug1, history[1].EffectiveDate);
+        Assert.Equal("user-b", history[0].ChangedByUserId);
+        Assert.Equal("user-a", history[1].ChangedByUserId);
+        Assert.NotNull(history[0].ChangedAt);
+        Assert.False(history[0].IsScheduled);
+    }
+
+    [Fact]
+    public async Task GetTargetHistory_UnknownContentType_ReturnsEmpty()
+    {
+        var host = new TestHost();
+        var history = await host.Service.GetTargetHistoryAsync(contentTypeId: 9999);
+        Assert.Empty(history);
+    }
+
+    [Fact]
+    public async Task SaveTarget_ChangedBy_MatchesIdentityUserIdShape()
+    {
+        // ICurrentUser.UserId is the stable Identity user Id (GUID string). The service
+        // only persists what the controller resolved server-side - here proven with a
+        // GUID-shaped id (not a display name).
+        var host = new TestHost();
+        var identityUserId = Guid.NewGuid().ToString();
+
+        var result = await host.Service.SaveTargetAsync(host.Request(host.KkId, 8, 16_000, changedBy: identityUserId));
+
+        Assert.True(result.Success);
+        Assert.Equal(identityUserId, host.Db.Targets.Single().ChangedByUserId);
+    }
+
+    /// <summary>Host pre-seeded with one existing version at EffectiveDate (via the service save path).</summary>
+    private sealed class HostWithExistingTarget : TestHost
+    {
+        public static readonly DateOnly EffectiveDate = Today;
+
+        public HostWithExistingTarget()
+        {
+            Service.SaveTargetAsync(Request(NonKkId, 10, 20_000, effectiveDate: EffectiveDate)).GetAwaiter().GetResult();
+        }
     }
 }

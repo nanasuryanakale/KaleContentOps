@@ -1,17 +1,23 @@
+using System;
 using KaleContentOps.Services.Targets;
 
 namespace KaleContentOps.ViewModels;
 
 /// <summary>
-/// Phase 3 save-target request payload (Menu Targets auto-save).
-/// Deliberately contains NO EffectiveFrom / EffectiveTo / Today / CreatedAt / UpdatedAt:
-/// the effective date is decided by the service (TargetService) from the server clock.
+/// Phase 3 save-target request payload (Menu Targets auto-save) + Phase 4b Effective Date.
+/// Contains NO Today / CreatedAt / UpdatedAt / ChangedByUserId: "today" comes from the
+/// server clock (IShopTimeZone) and the audit user comes from ICurrentUser - the request
+/// body can never influence either. EffectiveDate is the user's "Berlaku Mulai";
+/// absent keeps the legacy behavior (effective from server today).
 /// </summary>
 public sealed class TargetSaveDto
 {
     public int ContentTypeId { get; set; }
     public int TargetUpload { get; set; }
     public long TargetViews { get; set; }
+
+    /// <summary>"Berlaku Mulai" (inclusive). ISO date (yyyy-MM-dd) via JSON binding.</summary>
+    public DateOnly? EffectiveDate { get; set; }
 }
 
 /// <summary>
@@ -28,4 +34,7 @@ public sealed class TargetSaveResponseDto
     public DateOnly EffectiveFrom { get; init; }
     public DateOnly? EffectiveTo { get; init; }
     public bool CreatedNewVersion { get; init; }
+
+    /// <summary>True when the persisted version is scheduled (Effective Date in the future).</summary>
+    public bool IsScheduled { get; init; }
 }

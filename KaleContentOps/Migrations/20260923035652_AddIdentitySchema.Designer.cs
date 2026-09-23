@@ -4,6 +4,7 @@ using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KaleContentOps.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923035652_AddIdentitySchema")]
+    partial class AddIdentitySchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -447,10 +450,6 @@ namespace KaleContentOps.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("ChangedByUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
                     b.Property<int>("ContentTypeId")
                         .HasColumnType("int");
 
@@ -474,16 +473,10 @@ namespace KaleContentOps.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ChangedByUserId");
-
                     b.HasIndex("ContentTypeId")
                         .IsUnique()
                         .HasDatabaseName("IX_Targets_ContentTypeId_Active")
                         .HasFilter("[EffectiveTo] IS NULL");
-
-                    b.HasIndex("ContentTypeId", "EffectiveFrom")
-                        .IsUnique()
-                        .HasDatabaseName("IX_Targets_ContentTypeId_EffectiveFrom_Unique");
 
                     b.HasIndex("ContentTypeId", "EffectiveFrom", "EffectiveTo")
                         .HasDatabaseName("IX_Targets_ContentTypeId_EffectiveFrom_EffectiveTo");
@@ -745,18 +738,11 @@ namespace KaleContentOps.Migrations
 
             modelBuilder.Entity("KaleContentOps.Models.Target", b =>
                 {
-                    b.HasOne("KaleContentOps.Models.ApplicationUser", "ChangedBy")
-                        .WithMany()
-                        .HasForeignKey("ChangedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("KaleContentOps.Models.ContentType", "ContentType")
                         .WithMany()
                         .HasForeignKey("ContentTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("ChangedBy");
 
                     b.Navigation("ContentType");
                 });

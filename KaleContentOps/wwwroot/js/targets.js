@@ -17,6 +17,8 @@
     // ========== Constants ==========
     const API_CURRENT = '/targets/current';
     const API_SAVE = '/targets/save';
+    const API_SCHEDULED = '/targets/scheduled';
+    const API_HISTORY = '/targets/history';
     const DEBOUNCE_MS = 300;
     const TOAST_DURATION_MS = 2500;
 
@@ -37,6 +39,8 @@
     const state = {
         currentTargets: {},  // { [contentTypeId]: { ...target } }
         actuals: {},         // { [contentTypeId]: { ...actual } }
+        scheduled: [],       // future (not yet active) versions
+        history: {},         // { [contentTypeId]: [ ...historyRows ] }
         pendingSave: {},     // { [contentTypeId]: { type: 'upload|views', value, ... } }
         lastSavedValues: {}  // Track what was last saved to prevent duplicate requests
     };
@@ -56,6 +60,10 @@
 
         // Load data
         await loadTargetsAndActuals();
+
+        // Phase 4b: scheduled (future) targets + change history
+        await loadScheduled();
+        setupHistory();
 
         // Attach event handlers (scoped to targets-page)
         attachEventHandlers();
@@ -147,10 +155,12 @@
         // Show empty input if target is 0 (no target set yet)
         const inputValue = targetValue > 0 ? targetValue : '';
 
+        const canEdit = window.targetsCanEdit === true;
+
         row.innerHTML = `
             <td class="type-cell">
                 <span class="type-badge ${target.contentTypeCode === 'NON_KK' ? 'non-kk' : 'kk'}"></span>
-                ${escapeHtml(target.contentTypeName)}
+                <span class="type-name-wrap">${escapeHtml(target.contentTypeName)}${target.effectiveFrom ? `<span class="type-effective">Berlaku mulai ${formatDate(target.effectiveFrom)}</span>` : ''}</span>
             </td>
             <td>
                 <input 
@@ -161,6 +171,7 @@
                     placeholder="0"
                     min="0"
                     data-last-saved="${targetValue}"
+                    ${canEdit ? '' : 'readonly'}
                 />
             </td>
             <td class="actual-cell">${formatNumber(actualForDisplay)}</td>
@@ -175,7 +186,9 @@
         `;
 
         const input = row.querySelector('.target-input');
-        attachInputHandlers(input, target.contentTypeId, metric);
+        if (canEdit) {
+            attachInputHandlers(input, target.contentTypeId, metric);
+        }
 
         return row;
     }
@@ -279,11 +292,13 @@
         const target = state.currentTargets[contentTypeId];
         if (!target) return;
 
-        // Build payload
+        // Build payload ("Berlaku Mulai" from the effective-date bar; absent = today)
+        const effectiveDateInput = document.getElementById('effectiveDateInput');
         const payload = {
             contentTypeId: contentTypeId,
             targetUpload: metric === 'upload' ? newValue : target.targetUpload,
-            targetViews: metric === 'views' ? newValue : target.targetViews
+            targetViews: metric === 'views' ? newValue : target.targetViews,
+            effectiveDate: effectiveDateInput && effectiveDateInput.value ? effectiveDateInput.value : null
         };
 
         // Show saving state
@@ -314,7 +329,8 @@
             state.currentTargets[contentTypeId] = {
                 ...target,
                 targetUpload: result.targetUpload,
-                targetViews: result.targetViews
+                targetViews: result.targetViews,
+                effectiveFrom: result.effectiveFrom
             };
             state.lastSavedValues[contentTypeId] = {
                 targetUpload: result.targetUpload,
@@ -324,11 +340,20 @@
             // Update input's data-last-saved
             inputElement.setAttribute('data-last-saved', newValue);
 
-            // Show success toast
-            showToast('Tersimpan');
+            // Show success toast (scheduled saves are called out explicitly)
+            showToast(result.isScheduled ? 'Target terjadwal tersimpan' : 'Tersimpan');
 
             // Update calculations
             updateRowCalculations(contentTypeId, metric);
+
+            // Refresh derived views: current targets changed (backdate/today save) or
+            // a new scheduled version was created (future date); history always changes.
+            if (result.isScheduled) {
+                await loadScheduled();
+            } else {
+                await refreshCurrentTargets();
+            }
+            await loadHistoryForSelect();
 
         } catch (error) {
             console.error('Save error:', error);
@@ -337,6 +362,139 @@
         } finally {
             inputElement.classList.remove('input-saving');
         }
+    }
+
+    // ========== Scheduled Targets (Phase 4b) ==========
+    async function loadScheduled() {
+        try {
+            const response = await fetch(API_SCHEDULED);
+            if (!response.ok) {
+                throw new Error(`Failed to load scheduled targets: ${response.status}`);
+            }
+            state.scheduled = await response.json();
+            renderScheduled();
+        } catch (err) {
+            console.warn('Failed to load scheduled targets:', err);
+            state.scheduled = [];
+            renderScheduled();
+        }
+    }
+
+    function renderScheduled() {
+        const section = document.getElementById('scheduledSection');
+        const body = document.getElementById('scheduledTableBody');
+        if (!section || !body) return;
+
+        body.innerHTML = '';
+        if (!state.scheduled || state.scheduled.length === 0) {
+            section.hidden = true;
+            return;
+        }
+
+        state.scheduled.forEach(s => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="type-cell">
+                    <span class="type-badge ${s.contentTypeCode === 'NON_KK' ? 'non-kk' : 'kk'}"></span>
+                    ${escapeHtml(s.contentTypeName)}
+                </td>
+                <td>${formatDate(s.effectiveFrom)}</td>
+                <td class="actual-cell">${formatNumber(s.targetUpload)}</td>
+                <td class="actual-cell">${formatNumber(s.targetViews)}</td>
+                <td>${escapeHtml(s.changedByName || '-')}</td>
+            `;
+            body.appendChild(row);
+        });
+
+        section.hidden = false;
+    }
+
+    // Re-fetch current targets after a non-scheduled save so the UI reflects the
+    // version that is effective today (backdated saves can change it).
+    async function refreshCurrentTargets() {
+        try {
+            const response = await fetch(API_CURRENT);
+            if (!response.ok) return;
+            const targets = await response.json();
+            targets.forEach(t => {
+                state.currentTargets[t.contentTypeId] = t;
+                state.lastSavedValues[t.contentTypeId] = {
+                    targetUpload: t.targetUpload,
+                    targetViews: t.targetViews
+                };
+            });
+            renderTables(targets);
+        } catch (err) {
+            console.warn('Failed to refresh current targets:', err);
+        }
+    }
+
+    // ========== Target History (Phase 4b, Target.History.View) ==========
+    function setupHistory() {
+        if (window.targetsCanViewHistory !== true) return;
+
+        const select = document.getElementById('historyContentTypeSelect');
+        if (!select) return;
+
+        // One option per targetable content type from the loaded current targets.
+        const seen = {};
+        Object.values(state.currentTargets).forEach(t => {
+            if (seen[t.contentTypeId]) return;
+            seen[t.contentTypeId] = true;
+            const option = document.createElement('option');
+            option.value = t.contentTypeId;
+            option.textContent = t.contentTypeName;
+            select.appendChild(option);
+        });
+
+        select.addEventListener('change', () => loadHistoryForSelect());
+        loadHistoryForSelect();
+    }
+
+    async function loadHistoryForSelect() {
+        if (window.targetsCanViewHistory !== true) return;
+
+        const select = document.getElementById('historyContentTypeSelect');
+        if (!select || !select.value) return;
+
+        await loadHistory(parseInt(select.value, 10));
+    }
+
+    async function loadHistory(contentTypeId) {
+        try {
+            const response = await fetch(`${API_HISTORY}?contentTypeId=${contentTypeId}`);
+            if (!response.ok) {
+                throw new Error(`Failed to load history: ${response.status}`);
+            }
+            state.history[contentTypeId] = await response.json();
+            renderHistory(contentTypeId);
+        } catch (err) {
+            console.warn(`Failed to load history for contentTypeId ${contentTypeId}:`, err);
+        }
+    }
+
+    function renderHistory(contentTypeId) {
+        const section = document.getElementById('historySection');
+        const body = document.getElementById('historyTableBody');
+        if (!section || !body) return;
+
+        const rows = state.history[contentTypeId] || [];
+        body.innerHTML = '';
+
+        rows.forEach(h => {
+            const row = document.createElement('tr');
+            const label = h.isScheduled ? ' (terjadwal)' : (h.isCurrent ? ' (berlaku)' : '');
+            row.innerHTML = `
+                <td class="type-cell">${formatDate(h.effectiveDate)}${label}</td>
+                <td class="actual-cell">${formatNumber(h.targetUpload)}</td>
+                <td class="actual-cell">${formatNumber(h.targetViews)}</td>
+                <td>${escapeHtml(h.changedByName || '-')}</td>
+                <td>${h.changedAt ? formatDateTime(h.changedAt) : '-'}</td>
+            `;
+            body.appendChild(row);
+        });
+
+        section.hidden = false;
     }
 
     // ========== Toast & Error Handling ==========
@@ -376,6 +534,23 @@
             "'": '&#039;'
         };
         return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function formatDate(value) {
+        if (!value) return '-';
+        // DateOnly serializes as yyyy-MM-dd; render day-first for the Indonesian UI.
+        const parts = String(value).split('-');
+        if (parts.length !== 3) return String(value);
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+
+    function formatDateTime(value) {
+        if (!value) return '-';
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return String(value);
+        // UTC-stamped server time shown in the viewer's local time.
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
 })();

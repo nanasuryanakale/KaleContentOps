@@ -1,17 +1,23 @@
 using KaleContentOps.Data;
 using KaleContentOps.Models;
+using KaleContentOps.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace KaleContentOps.Services.Targets;
 
 /// <summary>
-/// Domain service for Menu Targets persistence (Phase 2).
+/// Domain service for Menu Targets persistence (Phase 2 + Phase 4b).
 /// Business rules:
 /// - Only NON_KK and KK may have targets; validation uses ContentType.Code (never hardcoded ids).
-/// - Same-day edit updates the version whose EffectiveFrom equals that day (no new row).
-/// - New-day edit closes the previous active version (EffectiveTo = day before the new EffectiveFrom)
-///   and creates a new active version; close + create are committed in ONE SaveChangesAsync,
-///   i.e. a single atomic transaction on the relational provider (SQL Server).
+/// - Versions are keyed by (ContentTypeId, EffectiveFrom) - a save whose Effective Date equals an
+///   existing version REVISES that version in place (no duplicate effective dates, deterministic lookup).
+/// - A save with a new date inserts a version and trims the neighbours' coverage windows
+///   (previous.EffectiveTo = date - 1; new.EffectiveTo = next.EffectiveFrom - 1). This single rule
+///   covers backdating (historical period keeps the older version) and future scheduling
+///   (the version covering today stays active until the scheduled date arrives).
+/// - Close/trim + create are committed in ONE SaveChangesAsync, i.e. a single atomic transaction
+///   on the relational provider (SQL Server).
+/// - Current/scheduled/history reads resolve by DATE, never by "latest row wins".
 /// - AUTO_GMV_LIVE (or any other code) is rejected; unknown content type ids are rejected.
 /// </summary>
 public class TargetService : ITargetService
@@ -20,40 +26,46 @@ public class TargetService : ITargetService
     public const string KkCode = "KK";
 
     private readonly AppDbContext _db;
+    private readonly IShopTimeZone _shopTimeZone;
 
-    public TargetService(AppDbContext db)
+    public TargetService(AppDbContext db, IShopTimeZone shopTimeZone)
     {
         _db = db;
+        _shopTimeZone = shopTimeZone;
     }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<TargetCurrentItem>> GetCurrentTargetsAsync(CancellationToken cancellationToken = default)
     {
-        // Fetch all targetable content types (NON_KK, KK)
+        var today = _shopTimeZone.Today();
+
         var contentTypes = await _db.ContentTypes.AsNoTracking()
             .Where(c => c.Code == NonKkCode || c.Code == KkCode)
             .ToListAsync(cancellationToken);
 
-        // Fetch all active (current) target versions for these content types
-        var activeTargets = await _db.Targets.AsNoTracking()
-            .Where(t => t.EffectiveTo == null
-                && (t.ContentType!.Code == NonKkCode || t.ContentType!.Code == KkCode))
+        var allVersions = await _db.Targets.AsNoTracking()
+            .Where(t => (t.ContentType!.Code == NonKkCode || t.ContentType!.Code == KkCode)
+                && t.EffectiveFrom <= today
+                && (t.EffectiveTo == null || t.EffectiveTo >= today))
             .OrderByDescending(t => t.EffectiveFrom)
             .ThenByDescending(t => t.Id)
             .ToListAsync(cancellationToken);
 
-        // Group active targets by ContentTypeId to handle potential data corruption (multiple active rows)
-        var targetsByContentTypeId = activeTargets
+        // Group by content type: corrupted overlapping history must not be resolved randomly -
+        // newest EffectiveFrom (then highest Id) wins deterministically.
+        var currentByContentTypeId = allVersions
             .GroupBy(t => t.ContentTypeId)
-            .ToDictionary(g => g.Key, g => g.First()); // Newest wins deterministically
+            .ToDictionary(g => g.Key, g => g.First());
 
-        // Build result: one row per targetable content type (NON_KK first, then KK)
-        // If no target record exists, use null/empty values so UI can show empty inputs
+        var changedByNames = await ResolveUserNamesAsync(
+            currentByContentTypeId.Values.Select(t => t.ChangedByUserId), cancellationToken);
+
+        // One row per targetable content type (NON_KK first, then KK). Missing target -> zeros placeholder.
         var result = contentTypes
             .OrderByDescending(ct => string.Equals(ct.Code, NonKkCode, StringComparison.OrdinalIgnoreCase))
-            .Select(ct => 
+            .Select(ct =>
             {
-                var target = targetsByContentTypeId.TryGetValue(ct.Id, out var t) ? t : null;
+                currentByContentTypeId.TryGetValue(ct.Id, out var target);
                 return new TargetCurrentItem
                 {
                     ContentTypeId = ct.Id,
@@ -62,7 +74,10 @@ public class TargetService : ITargetService
                     TargetUpload = target?.TargetUpload ?? 0,
                     TargetViews = target?.TargetViews ?? 0L,
                     EffectiveFrom = target?.EffectiveFrom ?? default,
-                    EffectiveTo = target?.EffectiveTo
+                    EffectiveTo = target?.EffectiveTo,
+                    ChangedByUserId = target?.ChangedByUserId,
+                    ChangedByName = target?.ChangedByUserId is null ? null : changedByNames.GetValueOrDefault(target.ChangedByUserId),
+                    ChangedAt = target?.UpdatedAt
                 };
             })
             .ToList();
@@ -71,11 +86,56 @@ public class TargetService : ITargetService
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<TargetCurrentItem>> GetScheduledTargetsAsync(CancellationToken cancellationToken = default)
+    {
+        var today = _shopTimeZone.Today();
+
+        var contentTypes = await _db.ContentTypes.AsNoTracking()
+            .Where(c => c.Code == NonKkCode || c.Code == KkCode)
+            .ToListAsync(cancellationToken);
+
+        var scheduled = await _db.Targets.AsNoTracking()
+            .Where(t => (t.ContentType!.Code == NonKkCode || t.ContentType!.Code == KkCode)
+                && t.EffectiveFrom > today)
+            .OrderBy(t => t.EffectiveFrom)
+            .ThenBy(t => t.Id)
+            .ToListAsync(cancellationToken);
+
+        var changedByNames = await ResolveUserNamesAsync(scheduled.Select(t => t.ChangedByUserId), cancellationToken);
+
+        // NON_KK first, then KK; within a content type by Effective Date ascending.
+        var orderById = contentTypes
+            .OrderByDescending(ct => string.Equals(ct.Code, NonKkCode, StringComparison.OrdinalIgnoreCase))
+            .Select((ct, index) => (ct.Id, index))
+            .ToDictionary(x => x.Id, x => x.index);
+
+        return scheduled
+            .OrderBy(t => orderById.GetValueOrDefault(t.ContentTypeId, int.MaxValue))
+            .ThenBy(t => t.EffectiveFrom)
+            .Select(t => new TargetCurrentItem
+            {
+                ContentTypeId = t.ContentTypeId,
+                ContentTypeCode = contentTypes.FirstOrDefault(c => c.Id == t.ContentTypeId)?.Code ?? string.Empty,
+                ContentTypeName = contentTypes.FirstOrDefault(c => c.Id == t.ContentTypeId)?.Name ?? string.Empty,
+                TargetUpload = t.TargetUpload,
+                TargetViews = t.TargetViews,
+                EffectiveFrom = t.EffectiveFrom,
+                EffectiveTo = t.EffectiveTo,
+                ChangedByUserId = t.ChangedByUserId,
+                ChangedByName = t.ChangedByUserId is null ? null : changedByNames.GetValueOrDefault(t.ChangedByUserId),
+                ChangedAt = t.UpdatedAt
+            })
+            .ToList();
+    }
+
+    /// <inheritdoc />
     public async Task<Target?> GetTargetForDateAsync(int contentTypeId, DateOnly reportDate, CancellationToken cancellationToken = default)
     {
         // Corrupted overlapping history must not be resolved randomly: newest EffectiveFrom
         // (then highest Id) wins deterministically - same tiebreak style as the latest-metric
         // query in DailySummaryService (OrderByDescending CapturedAt, ThenByDescending Id).
+        // Scheduled future versions never match dates before their EffectiveFrom; historical
+        // periods resolve to the version that was effective on that date (Phase 5 readiness).
         return await _db.Targets.AsNoTracking()
             .Where(t => t.ContentTypeId == contentTypeId
                 && t.EffectiveFrom <= reportDate
@@ -83,6 +143,45 @@ public class TargetService : ITargetService
             .OrderByDescending(t => t.EffectiveFrom)
             .ThenByDescending(t => t.Id)
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TargetHistoryItem>> GetTargetHistoryAsync(int contentTypeId, int maxRows = 50, CancellationToken cancellationToken = default)
+    {
+        var today = _shopTimeZone.Today();
+
+        var contentType = await _db.ContentTypes.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == contentTypeId, cancellationToken);
+        if (contentType is null)
+        {
+            return Array.Empty<TargetHistoryItem>();
+        }
+
+        var versions = await _db.Targets.AsNoTracking()
+            .Where(t => t.ContentTypeId == contentTypeId)
+            .OrderByDescending(t => t.EffectiveFrom)
+            .ThenByDescending(t => t.Id)
+            .Take(Math.Clamp(maxRows, 1, 500))
+            .ToListAsync(cancellationToken);
+
+        var changedByNames = await ResolveUserNamesAsync(versions.Select(t => t.ChangedByUserId), cancellationToken);
+
+        return versions
+            .Select(t => new TargetHistoryItem
+            {
+                ContentTypeId = t.ContentTypeId,
+                ContentTypeCode = contentType.Code,
+                EffectiveDate = t.EffectiveFrom,
+                EffectiveUntil = t.EffectiveTo,
+                TargetUpload = t.TargetUpload,
+                TargetViews = t.TargetViews,
+                ChangedByUserId = t.ChangedByUserId,
+                ChangedByName = t.ChangedByUserId is null ? null : changedByNames.GetValueOrDefault(t.ChangedByUserId),
+                ChangedAt = t.UpdatedAt,
+                IsScheduled = t.EffectiveFrom > today,
+                IsCurrent = t.EffectiveFrom <= today && (t.EffectiveTo == null || t.EffectiveTo >= today)
+            })
+            .ToList();
     }
 
     /// <inheritdoc />
@@ -120,63 +219,85 @@ public class TargetService : ITargetService
                 $"Content type '{contentType.Code}' tidak boleh memiliki target. Hanya NON_KK dan KK yang diizinkan.");
         }
 
-        var active = await _db.Targets
-            .Where(t => t.ContentTypeId == request.ContentTypeId && t.EffectiveTo == null)
-            .OrderByDescending(t => t.EffectiveFrom)
-            .ThenByDescending(t => t.Id)
-            .FirstOrDefaultAsync(cancellationToken);
+        // "Berlaku Mulai": user-provided effective date; absent -> server date (legacy auto-save).
+        var effectiveDate = request.EffectiveDate ?? request.Today;
 
-        // Scenario: initial target - no active version yet.
-        if (active is null)
+        // Load the full version chain once (tracked - trims and inserts share one SaveChangesAsync).
+        var versions = await _db.Targets
+            .Where(t => t.ContentTypeId == request.ContentTypeId)
+            .OrderBy(t => t.EffectiveFrom)
+            .ThenBy(t => t.Id)
+            .ToListAsync(cancellationToken);
+
+        var now = DateTime.UtcNow;
+
+        // --------------------------------------------------------------
+        // Case A: no versions at all -> create the first one.
+        // --------------------------------------------------------------
+        if (versions.Count == 0)
         {
             var created = new Target
             {
                 ContentTypeId = request.ContentTypeId,
                 TargetUpload = request.TargetUpload,
                 TargetViews = request.TargetViews,
-                EffectiveFrom = request.Today,
-                EffectiveTo = null
+                EffectiveFrom = effectiveDate,
+                EffectiveTo = null,
+                ChangedByUserId = request.ChangedByUserId,
+                CreatedAt = now,
+                UpdatedAt = now
             };
             _db.Targets.Add(created);
             await SaveAsync(cancellationToken);
-            return TargetSaveResult.Ok(created, contentType.Code, createdNewVersion: true);
+            return TargetSaveResult.Ok(created, contentType.Code, createdNewVersion: true, isScheduled: effectiveDate > request.Today);
         }
 
-        // Defensive: an active version starting in the future is a data anomaly; saving would
-        // create a second active row and violate the unique filtered index. Fail loudly instead.
-        if (active.EffectiveFrom > request.Today)
+        // --------------------------------------------------------------
+        // Case B: a version with exactly this Effective Date exists -> REVISE it in place.
+        // Never a duplicate effective date (unique index backs this up); values + audit are updated.
+        // --------------------------------------------------------------
+        var sameDate = versions.LastOrDefault(v => v.EffectiveFrom == effectiveDate);
+        if (sameDate is not null)
         {
-            return TargetSaveResult.Fail(
-                TargetSaveErrorCodes.ActiveVersionAnomaly,
-                $"Versi target aktif dimulai {active.EffectiveFrom:yyyy-MM-dd}, setelah tanggal hari ini ({request.Today:yyyy-MM-dd}). Perbaiki data sebelum menyimpan.");
-        }
-
-        // Scenario A: same-day edit - update in place, never create a new version.
-        if (active.EffectiveFrom == request.Today)
-        {
-            active.TargetUpload = request.TargetUpload;
-            active.TargetViews = request.TargetViews;
-            active.UpdatedAt = DateTime.UtcNow;
+            sameDate.TargetUpload = request.TargetUpload;
+            sameDate.TargetViews = request.TargetViews;
+            sameDate.UpdatedAt = now;
+            sameDate.ChangedByUserId = request.ChangedByUserId;
             await SaveAsync(cancellationToken);
-            return TargetSaveResult.Ok(active, contentType.Code, createdNewVersion: false);
+            return TargetSaveResult.Ok(sameDate, contentType.Code, createdNewVersion: false, isScheduled: effectiveDate > request.Today);
         }
 
-        // Scenario B: new-day version - close old + create new, committed in one batch so the
-        // close is rolled back automatically if the insert fails (single implicit transaction).
-        active.EffectiveTo = request.Today.AddDays(-1);
-        active.UpdatedAt = DateTime.UtcNow;
+        // --------------------------------------------------------------
+        // Case C: new Effective Date -> insert + trim neighbours (one atomic save).
+        // previous.EffectiveTo = effectiveDate - 1 and new.EffectiveTo = next.EffectiveFrom - 1
+        // keep coverage windows non-overlapping and gapless between surviving versions,
+        // whether the new date is backdated, today, or in the future (scheduled).
+        // --------------------------------------------------------------
+        var previous = versions.LastOrDefault(v => v.EffectiveFrom < effectiveDate);
+        var next = versions.FirstOrDefault(v => v.EffectiveFrom > effectiveDate);
+
+        // Trim the previous version's coverage. Its VALUES are untouched: ChangedByUserId/UpdatedAt
+        // keep describing the last content change of that version (audit is per-version, not per-trim).
+        if (previous is not null)
+        {
+            previous.EffectiveTo = effectiveDate.AddDays(-1);
+        }
 
         var newVersion = new Target
         {
             ContentTypeId = request.ContentTypeId,
             TargetUpload = request.TargetUpload,
             TargetViews = request.TargetViews,
-            EffectiveFrom = request.Today,
-            EffectiveTo = null
+            EffectiveFrom = effectiveDate,
+            // Scheduled chain: a later version keeps the null window; this one ends where the next begins.
+            EffectiveTo = next is null ? null : next.EffectiveFrom.AddDays(-1),
+            ChangedByUserId = request.ChangedByUserId,
+            CreatedAt = now,
+            UpdatedAt = now
         };
         _db.Targets.Add(newVersion);
         await SaveAsync(cancellationToken);
-        return TargetSaveResult.Ok(newVersion, contentType.Code, createdNewVersion: true);
+        return TargetSaveResult.Ok(newVersion, contentType.Code, createdNewVersion: true, isScheduled: effectiveDate > request.Today);
     }
 
     /// <inheritdoc />
@@ -245,20 +366,38 @@ public class TargetService : ITargetService
     }
 
     /// <summary>
+    /// Resolves stable Identity user ids to display names for audit columns
+    /// (DisplayName falling back to UserName), server-side only.
+    /// </summary>
+    private async Task<Dictionary<string, string>> ResolveUserNamesAsync(
+        IEnumerable<string?> userIds, CancellationToken cancellationToken)
+    {
+        var ids = userIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+        {
+            return new Dictionary<string, string>();
+        }
+
+        var users = await _db.Users.AsNoTracking()
+            .Where(u => ids.Contains(u.Id))
+            .Select(u => new { u.Id, u.UserName, u.DisplayName })
+            .ToListAsync(cancellationToken);
+
+        return users.ToDictionary(
+            u => u.Id,
+            u => string.IsNullOrWhiteSpace(u.DisplayName) ? (u.UserName ?? u.Id) : u.DisplayName);
+    }
+
+    /// <summary>
     /// Persistence seam: every save path goes through exactly one SaveChangesAsync call
     /// (one implicit transaction on SQL Server). Virtual for testing (rollback simulation);
     /// the class is therefore not sealed, unlike some other services.
     /// </summary>
     protected virtual Task<int> SaveAsync(CancellationToken cancellationToken) =>
         _db.SaveChangesAsync(cancellationToken);
-}
-
-/// <summary>Stable validation error codes returned by <see cref="ITargetService.SaveTargetAsync"/>.</summary>
-public static class TargetSaveErrorCodes
-{
-    public const string TargetUploadNegative = "TARGET_UPLOAD_NEGATIVE";
-    public const string TargetViewsNegative = "TARGET_VIEWS_NEGATIVE";
-    public const string ContentTypeNotFound = "CONTENT_TYPE_NOT_FOUND";
-    public const string ContentTypeNotTargetable = "CONTENT_TYPE_NOT_TARGETABLE";
-    public const string ActiveVersionAnomaly = "ACTIVE_VERSION_ANOMALY";
 }

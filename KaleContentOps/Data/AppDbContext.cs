@@ -1,9 +1,15 @@
 ﻿using KaleContentOps.Models;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace KaleContentOps.Data;
 
-public class AppDbContext : DbContext
+/// <summary>
+/// Application DbContext. Inherits the ASP.NET Core Identity schema
+/// (users/roles/claims/logins) with custom ApplicationUser/ApplicationRole;
+/// all pre-existing business entities are unchanged.
+/// </summary>
+public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, string>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options)
         : base(options)

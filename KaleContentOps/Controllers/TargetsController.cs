@@ -1,15 +1,18 @@
 using System;
+using KaleContentOps.Security;
 using KaleContentOps.Services;
 using KaleContentOps.Services.Targets;
 using KaleContentOps.ViewModels;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace KaleContentOps.Controllers;
 
 /// <summary>
-/// Phase 3 API endpoints for Menu Targets (auto-save backend).
+/// Phase 3 API endpoints for Menu Targets (auto-save backend) + Phase 4b
+/// (Effective Date, scheduled targets, history, ChangedBy audit).
 /// Thin transport layer only: all business rules (ContentType.Code validation,
-/// AUTO_GMV_LIVE rejection, same-day vs new-day versioning, EffectiveFrom/To
+/// AUTO_GMV_LIVE rejection, same-date revise vs new-version insert, EffectiveFrom/To
 /// calculation, transaction, negative-value validation) live in ITargetService.
 /// Routes follow the existing lowercase convention (cf. internal/tiktok).
 /// </summary>
@@ -17,26 +20,30 @@ public class TargetsController : Controller
 {
     private readonly ITargetService _targetService;
     private readonly IShopTimeZone _shopTimeZone;
+    private readonly ICurrentUser _currentUser;
 
-    public TargetsController(ITargetService targetService, IShopTimeZone shopTimeZone)
+    public TargetsController(ITargetService targetService, IShopTimeZone shopTimeZone, ICurrentUser currentUser)
     {
         _targetService = targetService;
         _shopTimeZone = shopTimeZone;
+        _currentUser = currentUser;
     }
 
     // ------------------------------------------------------------------
     // GET /Targets - Menu Targets page view
     // ------------------------------------------------------------------
     [HttpGet]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetView)]
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
         return View();
     }
 
     // ------------------------------------------------------------------
-    // GET targets/current - active configuration for the Menu Targets UI
+    // GET targets/current - target effective today for the Menu Targets UI
     // ------------------------------------------------------------------
     [HttpGet("targets/current")]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetView)]
     public async Task<IActionResult> Current(CancellationToken cancellationToken)
     {
         var current = await _targetService.GetCurrentTargetsAsync(cancellationToken);
@@ -44,10 +51,35 @@ public class TargetsController : Controller
     }
 
     // ------------------------------------------------------------------
+    // GET targets/scheduled - future (not yet active) target versions
+    // ------------------------------------------------------------------
+    [HttpGet("targets/scheduled")]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetView)]
+    public async Task<IActionResult> Scheduled(CancellationToken cancellationToken)
+    {
+        var scheduled = await _targetService.GetScheduledTargetsAsync(cancellationToken);
+        return Ok(scheduled);
+    }
+
+    // ------------------------------------------------------------------
+    // GET targets/history - persisted version chain for one content type,
+    // Effective Date descending. Requires Target.History.View (backend gate).
+    // ------------------------------------------------------------------
+    [HttpGet("targets/history")]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetHistoryView)]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetView)]
+    public async Task<IActionResult> History(int contentTypeId, CancellationToken cancellationToken)
+    {
+        var history = await _targetService.GetTargetHistoryAsync(contentTypeId, maxRows: 50, cancellationToken);
+        return Ok(history);
+    }
+
+    // ------------------------------------------------------------------
     // GET targets/actual - rolling 7-day actuals for Menu Targets UI
     // Query parameter: contentTypeId (required)
     // ------------------------------------------------------------------
     [HttpGet("targets/actual")]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetView)]
     public async Task<IActionResult> Actual(int contentTypeId, CancellationToken cancellationToken)
     {
         var endDate = _shopTimeZone.Today();
@@ -68,6 +100,7 @@ public class TargetsController : Controller
     // the JSON body clean.
     // ------------------------------------------------------------------
     [HttpPost("targets/save")]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetEdit)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Save([FromBody] TargetSaveDto dto, CancellationToken cancellationToken)
     {
@@ -77,13 +110,18 @@ public class TargetsController : Controller
         }
 
         // Server date only (Phase 2 mechanism: shop reporting timezone, Asia/Jakarta).
-        // The browser never gets a say in what "today" is.
+        // The browser never gets a say in what "today" is. EffectiveDate ("Berlaku Mulai")
+        // is user input, but the versioning decision always compares it against server today.
         var request = new TargetSaveRequest
         {
             ContentTypeId = dto.ContentTypeId,
             TargetUpload = dto.TargetUpload,
             TargetViews = dto.TargetViews,
-            Today = _shopTimeZone.Today()
+            Today = _shopTimeZone.Today(),
+            EffectiveDate = dto.EffectiveDate,
+            // Audit: stable Identity user id resolved server-side from the authenticated
+            // principal (ICurrentUser) - never taken from the request body.
+            ChangedByUserId = _currentUser.UserId
         };
 
         try
@@ -105,7 +143,8 @@ public class TargetsController : Controller
                 TargetViews = saved.TargetViews,
                 EffectiveFrom = saved.EffectiveFrom,
                 EffectiveTo = saved.EffectiveTo,
-                CreatedNewVersion = result.CreatedNewVersion
+                CreatedNewVersion = result.CreatedNewVersion,
+                IsScheduled = result.IsScheduled
             });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

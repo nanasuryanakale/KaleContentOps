@@ -10,11 +10,18 @@ namespace KaleContentOps.Services.Targets;
 public interface ITargetService
 {
     /// <summary>
-    /// Active (EffectiveTo == null) targets for NON_KK and KK with content type code + name,
-    /// ordered NON_KK first. AUTO_GMV_LIVE never appears. At most one item per code even if
-    /// corrupted data contains multiple active rows (newest wins deterministically).
+    /// Target version effective today for NON_KK and KK with content type code + name,
+    /// ordered NON_KK first. AUTO_GMV_LIVE never appears. A scheduled future version does
+    /// NOT become "current" before its EffectiveFrom date - today's version wins
+    /// (date-based resolution, never "latest row wins").
     /// </summary>
     Task<IReadOnlyList<TargetCurrentItem>> GetCurrentTargetsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Scheduled (future) target versions: EffectiveFrom &gt; today, still inactive.
+    /// Same shape as current items so the UI can render them consistently.
+    /// </summary>
+    Task<IReadOnlyList<TargetCurrentItem>> GetScheduledTargetsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Target version effective on a report date for one content type
@@ -23,10 +30,21 @@ public interface ITargetService
     Task<Target?> GetTargetForDateAsync(int contentTypeId, DateOnly reportDate, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Persisted target versions for one content type, EffectiveDate descending (newest first).
+    /// Phase 5 readiness: historical calculations resolve targets via
+    /// <see cref="GetTargetForDateAsync"/>, never via the current/latest version.
+    /// </summary>
+    Task<IReadOnlyList<TargetHistoryItem>> GetTargetHistoryAsync(int contentTypeId, int maxRows = 50, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Validates the payload and persists the versioning outcome:
-    /// same-day edit updates the version whose EffectiveFrom == today;
-    /// a new-day edit closes the previous active version (EffectiveTo = today - 1) and creates a new active version;
-    /// no active version simply creates the first one.
+    /// - save with EffectiveDate == an existing version's date: that version is REVISED in place (no duplicate date);
+    /// - save with a new (past or today) date: the versions overlapping the new date are trimmed
+    ///   (re-opened/closed) and the new version becomes effective from that date;
+    /// - save with a future date: a SCHEDULED version is stored; the version covering today stays active
+    ///   until the scheduled date arrives (no active-row anomaly);
+    /// - no versions at all: creates the first one.
+    /// ChangedByUserId/ChangedAt are stamped on the version whose values were last written.
     /// </summary>
     Task<TargetSaveResult> SaveTargetAsync(TargetSaveRequest request, CancellationToken cancellationToken = default);
 
@@ -41,7 +59,7 @@ public interface ITargetService
 }
 
 /// <summary>
-/// Read model for one active target version (API/UI facing).
+/// Read model for the target version effective today (API/UI facing).
 /// </summary>
 public sealed class TargetCurrentItem
 {
@@ -52,6 +70,15 @@ public sealed class TargetCurrentItem
     public long TargetViews { get; init; }
     public DateOnly EffectiveFrom { get; init; }
     public DateOnly? EffectiveTo { get; init; }
+
+    /// <summary>Stable Identity user id of the last value change (null for pre-audit rows).</summary>
+    public string? ChangedByUserId { get; init; }
+
+    /// <summary>Display name resolved server-side for UI display (never from request body).</summary>
+    public string? ChangedByName { get; init; }
+
+    /// <summary>When the values of this version were last written (UtcNow).</summary>
+    public DateTime? ChangedAt { get; init; }
 }
 
 /// <summary>
@@ -69,7 +96,33 @@ public sealed class TargetActualItem
     public long ActualViews { get; init; }
 }
 
-/// <summary>Save request. Today is injected so tests are independent of the system clock.</summary>
+/// <summary>
+/// One row of the target change history (Riwayat Perubahan Target):
+/// version EffectiveFrom, values, and who changed them. Ordered EffectiveFrom descending.
+/// </summary>
+public sealed class TargetHistoryItem
+{
+    public int ContentTypeId { get; init; }
+    public string ContentTypeCode { get; init; } = string.Empty;
+    public DateOnly EffectiveDate { get; init; }
+    public DateOnly? EffectiveUntil { get; init; }
+    public int TargetUpload { get; init; }
+    public long TargetViews { get; init; }
+    public string? ChangedByUserId { get; init; }
+    public string? ChangedByName { get; init; }
+    public DateTime? ChangedAt { get; init; }
+    /// <summary>True when this version is scheduled (EffectiveFrom in the future, not yet active).</summary>
+    public bool IsScheduled { get; init; }
+    /// <summary>True when this version is the one effective today.</summary>
+    public bool IsCurrent { get; init; }
+}
+
+/// <summary>
+/// Save request. Today is injected so tests are independent of the system clock;
+/// EffectiveDate is the user-provided "Berlaku Mulai" (defaults to Today when absent,
+/// preserving the legacy same-day auto-save behavior). ChangedByUserId is resolved
+/// server-side from ICurrentUser by the controller - never from the request body.
+/// </summary>
 public sealed class TargetSaveRequest
 {
     public int ContentTypeId { get; set; }
@@ -78,6 +131,16 @@ public sealed class TargetSaveRequest
 
     /// <summary>Application date used for versioning decisions (injectable for tests).</summary>
     public DateOnly Today { get; set; }
+
+    /// <summary>
+    /// "Berlaku Mulai" for the save. Null/absent keeps the legacy behavior (Today).
+    /// May be past (backdate: historical period keeps the older version before it),
+    /// today (same-day revise rule), or future (scheduled version).
+    /// </summary>
+    public DateOnly? EffectiveDate { get; set; }
+
+    /// <summary>Stable Identity user id of the authenticated user (server-side only).</summary>
+    public string? ChangedByUserId { get; set; }
 }
 
 /// <summary>
@@ -101,12 +164,26 @@ public sealed class TargetSaveResult
     /// <summary>Code of the target content type (from the validated ContentType row).</summary>
     public string? ContentTypeCode { get; init; }
 
-    /// <summary>True when SaveTargetAsync created a new version instead of updating the same-day one.</summary>
+    /// <summary>True when SaveTargetAsync created a new version instead of revising an existing date.</summary>
     public bool CreatedNewVersion { get; init; }
 
-    public static TargetSaveResult Ok(Target target, string contentTypeCode, bool createdNewVersion) =>
-        new() { Success = true, Target = target, ContentTypeCode = contentTypeCode, CreatedNewVersion = createdNewVersion };
+    /// <summary>True when the persisted version is scheduled (EffectiveFrom in the future).</summary>
+    public bool IsScheduled { get; init; }
+
+    public static TargetSaveResult Ok(Target target, string contentTypeCode, bool createdNewVersion, bool isScheduled = false) =>
+        new() { Success = true, Target = target, ContentTypeCode = contentTypeCode, CreatedNewVersion = createdNewVersion, IsScheduled = isScheduled };
 
     public static TargetSaveResult Fail(string errorCode, string errorMessage) =>
         new() { Success = false, ErrorCode = errorCode, ErrorMessage = errorMessage };
+}
+
+/// <summary>Stable validation error codes returned by <see cref="ITargetService.SaveTargetAsync"/>.</summary>
+public static class TargetSaveErrorCodes
+{
+    public const string TargetUploadNegative = "TARGET_UPLOAD_NEGATIVE";
+    public const string TargetViewsNegative = "TARGET_VIEWS_NEGATIVE";
+    public const string ContentTypeNotFound = "CONTENT_TYPE_NOT_FOUND";
+    public const string ContentTypeNotTargetable = "CONTENT_TYPE_NOT_TARGETABLE";
+    public const string ActiveVersionAnomaly = "ACTIVE_VERSION_ANOMALY";
+    public const string EffectiveDateBeforeFirst = "EFFECTIVE_DATE_BEFORE_FIRST";
 }

@@ -45,6 +45,24 @@ public class TargetConfiguration : IEntityTypeConfiguration<Target>
         builder.Property(x => x.EffectiveTo)
             .HasColumnType("date");
 
+        // Audit (Phase 4b): stable Identity user id of the last value change.
+        // Nullable - target rows created before this column existed stay valid.
+        builder.Property(x => x.ChangedByUserId)
+            .HasMaxLength(450);
+
+        builder.HasOne(x => x.ChangedBy)
+            .WithMany()
+            .HasForeignKey(x => x.ChangedByUserId)
+            .OnDelete(DeleteBehavior.Restrict); // audit rows must survive user removal
+
+        // One version per content type per effective date: a same-date save must
+        // revise the existing version (service-layer rule), so duplicate EffectiveFrom
+        // rows would be ambiguous for date-based historical lookup. Backed by the
+        // covering lookup index below; this one enforces the invariant.
+        builder.HasIndex(x => new { x.ContentTypeId, x.EffectiveFrom })
+            .IsUnique()
+            .HasDatabaseName("IX_Targets_ContentTypeId_EffectiveFrom_Unique");
+
         // At most one active (unclosed) target version per content type
         builder.HasIndex(x => x.ContentTypeId)
             .IsUnique()

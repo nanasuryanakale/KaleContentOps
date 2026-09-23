@@ -1,0 +1,36 @@
+@{
+    Layout = null;
+    ViewData["Title"] = "Akses ditolak - KaleContentOps";
+}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/login.css" asp-append-version="true" />
+</head>
+<body class="auth-body">
+    <main class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-brand">
+                <div class="brand-icon">K</div>
+                <div class="brand-text">
+                    <div class="title">KALE Content Ops</div>
+                    <div class="subtitle">TikTok &middot; Content Log</div>
+                </div>
+            </div>
+
+            <h1 class="auth-title">Akses ditolak</h1>
+            <p class="auth-denied-text">
+                Anda tidak memiliki izin untuk mengakses halaman ini.
+                Hubungi administrator jika Anda merasa ini adalah kekeliruan.
+            </p>
+            <a class="auth-button auth-button-link" asp-controller="Home" asp-action="Index">Kembali ke Dashboard</a>
+        </div>
+        <p class="auth-footer">&copy; 2026 - KaleContentOps</p>
+    </main>
+</body>
+</html>

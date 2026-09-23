@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using KaleContentOps.Controllers;
 using KaleContentOps.Models;
+using KaleContentOps.Security;
 using KaleContentOps.Services;
 using KaleContentOps.Services.Targets;
 using KaleContentOps.ViewModels;
@@ -44,8 +45,18 @@ public class TargetsControllerTests
         public Task<IReadOnlyList<TargetCurrentItem>> GetCurrentTargetsAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(CurrentItems);
 
+        public Task<IReadOnlyList<TargetCurrentItem>> GetScheduledTargetsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<TargetCurrentItem>>(Array.Empty<TargetCurrentItem>());
+
+        public Task<IReadOnlyList<TargetHistoryItem>> GetTargetHistoryAsync(int contentTypeId, int maxRows = 50, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<TargetHistoryItem>>(Array.Empty<TargetHistoryItem>());
+
         public Task<Target?> GetTargetForDateAsync(int contentTypeId, DateOnly reportDate, CancellationToken cancellationToken = default)
             => Task.FromResult<Target?>(null);
+
+        // Compile fix (pre-existing): interface member added in Phase 4a but never stubbed here.
+        public Task<TargetActualItem?> GetActualAsync(int contentTypeId, DateOnly endDate, int days = 7, CancellationToken cancellationToken = default)
+            => Task.FromResult<TargetActualItem?>(null);
 
         public Task<TargetSaveResult> SaveTargetAsync(TargetSaveRequest request, CancellationToken cancellationToken = default)
         {
@@ -71,10 +82,21 @@ public class TargetsControllerTests
     private static TargetsController CreateController(
         StubTargetService service,
         IShopTimeZone? timeZone = null)
-        => new(service, timeZone ?? new StubShopTimeZone());
+        => new(service, timeZone ?? new StubShopTimeZone(), new StubCurrentUser());
 
-    private static TargetSaveDto Dto(int contentTypeId = 2, int upload = 10, long views = 100_000) =>
-        new() { ContentTypeId = contentTypeId, TargetUpload = upload, TargetViews = views };
+    /// <summary>Authenticated principal stub resolving a stable Identity user id server-side.</summary>
+    private sealed class StubCurrentUser : ICurrentUser
+    {
+        public string? UserId { get; set; } = "8f0c2d64-6f2e-4a2b-9a3f-0d5c1e7b9a11"; // stable Identity user id shape
+        public string? UserName { get; set; } = "nana";
+        public string? DisplayName { get; set; } = "Nana";
+        public bool IsAuthenticated => UserId is not null;
+
+        public bool HasPermission(string permission) => false; // controller relies on [Authorize] policies, not this
+    }
+
+    private static TargetSaveDto Dto(int contentTypeId = 2, int upload = 10, long views = 100_000, DateOnly? effectiveDate = null) =>
+        new() { ContentTypeId = contentTypeId, TargetUpload = upload, TargetViews = views, EffectiveDate = effectiveDate };
 
     private static Target SavedTarget(int contentTypeId, int upload = 10, long views = 100_000) => new()
     {
@@ -282,12 +304,97 @@ public class TargetsControllerTests
         };
         var controller = CreateController(service);
 
-        // The DTO has no date fields at all: only ContentTypeId/TargetUpload/TargetViews
-        // reach the service, and Today is set by the controller from IShopTimeZone.
+        // No EffectiveDate in the payload: Today is set by the controller from IShopTimeZone.
         await controller.Save(Dto(), CancellationToken.None);
 
         var captured = Assert.IsType<TargetSaveRequest>(service.CapturedRequest);
         Assert.Equal(Today, captured.Today);
+        Assert.Null(captured.EffectiveDate);
+    }
+
+    [Fact]
+    public async Task Save_WithEffectiveDate_PassesThroughToService()
+    {
+        var service = new StubTargetService
+        {
+            NextSaveResult = TargetSaveResult.Ok(SavedTarget(contentTypeId: 2), NonKk, createdNewVersion: true)
+        };
+        var controller = CreateController(service);
+        var effectiveDate = new DateOnly(2026, 11, 1); // future date is allowed (scheduled)
+
+        await controller.Save(Dto(effectiveDate: effectiveDate), CancellationToken.None);
+
+        var captured = Assert.IsType<TargetSaveRequest>(service.CapturedRequest);
+        Assert.Equal(effectiveDate, captured.EffectiveDate);
+        Assert.Equal(Today, captured.Today); // server clock still supplies "today"
+    }
+
+    [Fact]
+    public async Task Save_ChangedByUserId_AlwaysFromServerSidePrincipal()
+    {
+        var service = new StubTargetService
+        {
+            NextSaveResult = TargetSaveResult.Ok(SavedTarget(contentTypeId: 2), NonKk, createdNewVersion: true)
+        };
+        var controller = CreateController(service);
+
+        await controller.Save(Dto(), CancellationToken.None);
+
+        var captured = Assert.IsType<TargetSaveRequest>(service.CapturedRequest);
+        // Resolved from ICurrentUser (server-side), never from the request body.
+        Assert.Equal("8f0c2d64-6f2e-4a2b-9a3f-0d5c1e7b9a11", captured.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task Save_AnonymousRequest_ChangedByUserIdIsNull()
+    {
+        // (Save requires Target.Edit so this cannot happen in production; defensive check.)
+        // Simulate an unauthenticated context via a principal-less stub.
+        var service = new StubTargetService
+        {
+            NextSaveResult = TargetSaveResult.Ok(SavedTarget(contentTypeId: 2), NonKk, createdNewVersion: true)
+        };
+        var controller = new TargetsController(service, new StubShopTimeZone(), new StubCurrentUser { UserId = null });
+
+        await controller.Save(Dto(), CancellationToken.None);
+
+        Assert.Null(service.CapturedRequest!.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task Save_ScheduledResult_MapsIsScheduledToResponse()
+    {
+        var service = new StubTargetService
+        {
+            NextSaveResult = TargetSaveResult.Ok(
+                new Target { ContentTypeId = 2, TargetUpload = 20, TargetViews = 40_000, EffectiveFrom = new DateOnly(2026, 11, 1) },
+                NonKk, createdNewVersion: true, isScheduled: true)
+        };
+        var controller = CreateController(service);
+
+        var actionResult = await controller.Save(Dto(effectiveDate: new DateOnly(2026, 11, 1)), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(actionResult);
+        var response = Assert.IsType<TargetSaveResponseDto>(ok.Value);
+        Assert.True(response.IsScheduled);
+        Assert.Equal(new DateOnly(2026, 11, 1), response.EffectiveFrom);
+    }
+
+    // ==================================================================
+    // GET targets/history - authorization + passthrough (Phase 4b)
+    // ==================================================================
+
+    [Fact]
+    public async Task History_ReturnsServiceRows()
+    {
+        var service = new StubTargetService();
+        var controller = CreateController(service);
+
+        // Stub returns an empty list; the endpoint must still return Ok with a list.
+        var actionResult = await controller.History(contentTypeId: 2, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(actionResult);
+        Assert.IsAssignableFrom<IEnumerable<TargetHistoryItem>>(ok.Value);
     }
 
     // ==================================================================

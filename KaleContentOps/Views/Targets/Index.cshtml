@@ -1,7 +1,17 @@
 @{
     ViewData["Title"] = "Targets";
+    // UI-level gate only: backend /targets/save re-checks the permission server-side.
+    var canEditTarget = User.HasClaim(KaleContentOps.Security.AuthConstants.PermissionClaimType, KaleContentOps.Security.AuthConstants.Permissions.TargetEdit);
+    // History gate (Phase 4b): the backend /targets/history enforces this server-side too.
+    var canViewHistory = User.HasClaim(KaleContentOps.Security.AuthConstants.PermissionClaimType, KaleContentOps.Security.AuthConstants.Permissions.TargetHistoryView);
 }
 <link rel="stylesheet" href="~/css/targets.css" asp-append-version="true" />
+<script>
+    // Exposed for targets.js: when false, target inputs render read-only.
+    window.targetsCanEdit = @canEditTarget.ToString().ToLowerInvariant();
+    // Exposed for targets.js: history section loads only when permitted.
+    window.targetsCanViewHistory = @canViewHistory.ToString().ToLowerInvariant();
+</script>
 
 <div class="targets-page">
     <!-- Header -->
@@ -11,6 +21,21 @@
             <p class="page-subtitle">Master target mingguan per jenis konten - "actual" dihitung dari 7 hari terakhir di Daily Summary</p>
         </div>
     </div>
+
+    @if (!canEditTarget)
+    {
+        <div class="targets-readonly-note">Anda hanya memiliki akses lihat untuk Target.</div>
+    }
+
+    <!-- Effective Date (Berlaku Mulai) - versioning input for target saves -->
+    @if (canEditTarget)
+    {
+        <div class="targets-effective-bar">
+            <label for="effectiveDateInput">Berlaku Mulai</label>
+            <input type="date" id="effectiveDateInput" class="effective-date-input" />
+            <span class="effective-hint">Kosongkan untuk mengubah target hari ini. Isi tanggal masa depan untuk menjadwalkan target.</span>
+        </div>
+    }
 
     <!-- Section 1: Target Upload / Jumlah Konten per Minggu -->
     <div class="targets-section">
@@ -52,6 +77,56 @@
                     </tr>
                 </thead>
                 <tbody id="viewsTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 3: Scheduled (future) targets - not yet active -->
+    <div class="targets-section" id="scheduledSection" hidden>
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">TARGET TERJADWAL · BELUM BERLAKU</h2>
+            </div>
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">JENIS KONTEN</th>
+                        <th class="col-target">BERLAKU MULAI</th>
+                        <th class="col-actual">TARGET UPLOAD/MINGGU</th>
+                        <th class="col-diff">TARGET VIEWS/MINGGU</th>
+                        <th class="col-status">DIUBAH OLEH</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduledTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 4: Riwayat Perubahan Target (Target.History.View) -->
+    <div class="targets-section" id="historySection" hidden>
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">RIWAYAT PERUBAHAN TARGET</h2>
+            </div>
+            <div class="history-filter">
+                <label for="historyContentTypeSelect">Jenis konten</label>
+                <select id="historyContentTypeSelect" class="history-select"></select>
+            </div>
+            <table class="targets-table history-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">BERLAKU MULAI</th>
+                        <th class="col-target">TARGET UPLOAD</th>
+                        <th class="col-actual">TARGET VIEWS</th>
+                        <th class="col-diff">DIUBAH OLEH</th>
+                        <th class="col-status">DIUBAH PADA</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody">
                     <!-- Populated by JavaScript -->
                 </tbody>
             </table>

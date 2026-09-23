@@ -1,4 +1,14 @@
 @* Reusable sidebar partial *@
+@using KaleContentOps.Security
+@{
+    // Hide menu items the current user has no permission for.
+    bool HasPermission(string permission) =>
+        User.HasClaim(AuthConstants.PermissionClaimType, permission);
+
+    var canViewTarget = HasPermission(AuthConstants.Permissions.TargetView);
+    var canViewHistory = HasPermission(AuthConstants.Permissions.TargetHistoryView);
+    var canViewContentLog = canViewTarget || canViewHistory;
+}
 <aside class="app-sidebar">
     <div class="brand">
         <div class="brand-icon">K</div>
@@ -11,6 +21,8 @@
     <nav class="menu">
         <div class="menu-section">TIKTOK CONTENT</div>
         <ul class="nav flex-column">
+            @if (canViewContentLog)
+            {
             <li class="nav-item">
                 <a class="nav-link @(ViewContext.RouteData.Values["controller"] as string == "ContentLog" ? "active" : "")" asp-controller="ContentLog" asp-action="Index">
                     <span class="nav-icon" aria-hidden="true">
@@ -24,6 +36,7 @@
                     <span class="nav-text">Content Log</span>
                 </a>
             </li>
+            }
             <li class="nav-item"><a class="nav-link @(ViewContext.RouteData.Values["controller"] as string == "DailySummary" ? "active" : "")" asp-controller="DailySummary" asp-action="Index"><span class="nav-icon" aria-hidden="true">
                         <!-- calendar icon -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -32,6 +45,8 @@
                             <path d="M8 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
                         </svg>
                     </span> <span class="nav-text">Daily Summary</span></a></li>
+            @if (canViewTarget)
+            {
             <li class="nav-item"><a class="nav-link @(ViewContext.RouteData.Values["controller"] as string == "Targets" ? "active" : "")" asp-controller="Targets" asp-action="Index"><span class="nav-icon" aria-hidden="true">
                         <!-- target icon -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -39,6 +54,7 @@
                             <circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.2" />
                         </svg>
                     </span> <span class="nav-text">Targets</span></a></li>
+            }
             <li class="nav-item"><a class="nav-link" href="#"><span class="nav-icon" aria-hidden="true">
                         <!-- star / trophy icon -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

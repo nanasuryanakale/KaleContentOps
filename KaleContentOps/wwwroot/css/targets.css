@@ -406,3 +406,140 @@
         font-size: 11px;
     }
 }
+
+/* Read-only indicator for users without Target.Edit */
+.target-input[readonly] {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text);
+    cursor: default;
+    pointer-events: none;
+}
+
+.targets-readonly-note {
+    background: rgba(91, 127, 255, 0.06);
+    border: 1px solid rgba(91, 127, 255, 0.12);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* ============ Phase 4b: Effective Date bar (Berlaku Mulai) ============ */
+.targets-effective-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: #1a2230;
+    border: 1px solid #2a3447;
+    border-radius: 11px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+}
+
+.targets-effective-bar label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #8fa6df;
+    text-transform: uppercase;
+}
+
+.effective-date-input {
+    padding: 8px 10px;
+    background: #121824;
+    border: 1px solid #2a3447;
+    border-radius: 6px;
+    color: #e7edf5;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+
+.effective-date-input:focus {
+    border-color: #8fa6df;
+    box-shadow: 0 0 8px rgba(143, 166, 223, 0.2);
+}
+
+.effective-date-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+    cursor: pointer;
+}
+
+.effective-hint {
+    font-size: 11px;
+    color: #8996a8;
+    line-height: 1.4;
+}
+
+/* "Berlaku mulai" caption under the content-type name in the current table */
+.type-name-wrap {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.type-effective {
+    font-size: 10px;
+    font-weight: 400;
+    color: #8996a8;
+    white-space: nowrap;
+}
+
+/* ============ Phase 4b: History (Riwayat Perubahan Target) ============ */
+.history-filter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #263043;
+}
+
+.history-filter label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #8996a8;
+}
+
+.history-select {
+    padding: 7px 10px;
+    background: #121824;
+    border: 1px solid #2a3447;
+    border-radius: 6px;
+    color: #e7edf5;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+
+.history-select:focus {
+    border-color: #8fa6df;
+}
+
+.history-table td {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============ Phase 4b responsive ============ */
+@media (max-width: 768px) {
+    .targets-effective-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 10px 12px;
+    }
+
+    .effective-hint {
+        font-size: 10px;
+    }
+
+    .history-filter {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 10px 12px;
+    }
+}
