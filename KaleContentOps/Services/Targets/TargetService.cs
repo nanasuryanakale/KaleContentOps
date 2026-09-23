@@ -27,7 +27,7 @@ public class TargetService : ITargetService
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyDictionary<string, Target>> GetCurrentTargetsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TargetCurrentItem>> GetCurrentTargetsAsync(CancellationToken cancellationToken = default)
     {
         // Newest-first so that, in the unlikely case of corrupted data (multiple active rows),
         // the latest version wins deterministically instead of depending on row order.
@@ -36,16 +36,22 @@ public class TargetService : ITargetService
                 && (t.ContentType!.Code == NonKkCode || t.ContentType!.Code == KkCode))
             .OrderByDescending(t => t.EffectiveFrom)
             .ThenByDescending(t => t.Id)
-            .Select(t => new { Target = t, Code = t.ContentType!.Code })
+            .Select(t => new TargetCurrentItem
+            {
+                ContentTypeId = t.ContentTypeId,
+                ContentTypeCode = t.ContentType!.Code,
+                ContentTypeName = t.ContentType!.Name,
+                TargetUpload = t.TargetUpload,
+                TargetViews = t.TargetViews,
+                EffectiveFrom = t.EffectiveFrom,
+                EffectiveTo = t.EffectiveTo
+            })
             .ToListAsync(cancellationToken);
 
-        var result = new Dictionary<string, Target>(StringComparer.OrdinalIgnoreCase);
-        foreach (var row in rows)
-        {
-            result[row.Code] = row.Target;
-        }
-
-        return result;
+        // NON_KK first, then KK (fixed display order for the Menu Targets UI).
+        return rows
+            .OrderByDescending(x => string.Equals(x.ContentTypeCode, NonKkCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     /// <inheritdoc />
@@ -117,7 +123,7 @@ public class TargetService : ITargetService
             };
             _db.Targets.Add(created);
             await SaveAsync(cancellationToken);
-            return TargetSaveResult.Ok(created, createdNewVersion: true);
+            return TargetSaveResult.Ok(created, contentType.Code, createdNewVersion: true);
         }
 
         // Defensive: an active version starting in the future is a data anomaly; saving would
@@ -136,7 +142,7 @@ public class TargetService : ITargetService
             active.TargetViews = request.TargetViews;
             active.UpdatedAt = DateTime.UtcNow;
             await SaveAsync(cancellationToken);
-            return TargetSaveResult.Ok(active, createdNewVersion: false);
+            return TargetSaveResult.Ok(active, contentType.Code, createdNewVersion: false);
         }
 
         // Scenario B: new-day version - close old + create new, committed in one batch so the
@@ -154,7 +160,7 @@ public class TargetService : ITargetService
         };
         _db.Targets.Add(newVersion);
         await SaveAsync(cancellationToken);
-        return TargetSaveResult.Ok(newVersion, createdNewVersion: true);
+        return TargetSaveResult.Ok(newVersion, contentType.Code, createdNewVersion: true);
     }
 
     /// <summary>
