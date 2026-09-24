@@ -115,10 +115,6 @@ builder.Services.Configure<TikTokOptions>(builder.Configuration.GetSection("TikT
 // and TikTok API start_date_ge/end_date_lt boundaries (Issue B)
 builder.Services.Configure<ShopTimeZoneOptions>(builder.Configuration.GetSection(ShopTimeZoneOptions.SectionName));
 builder.Services.AddSingleton<IShopTimeZone, ShopTimeZone>();
-var dailySummaryTargets = builder.Configuration
-    .GetSection(DailySummaryTargetOptions.SectionName)
-    .Get<DailySummaryTargetOptions>() ?? new DailySummaryTargetOptions();
-builder.Services.AddSingleton(dailySummaryTargets);
 builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
 // Menu Targets persistence (versioned weekly targets for NON_KK / KK)
 builder.Services.AddScoped<ITargetService, TargetService>();

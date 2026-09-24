@@ -503,8 +503,18 @@
     text-transform: uppercase;
 }
 
+/* Anchor for the shared calendar popup (calendar-popup.css) — popup positions
+   against this box, flipping to the right edge on narrow windows. */
+.effective-date-anchor {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Readonly trigger input: opening it shows the shared dark calendar popup
+   (same component as Daily Summary) instead of the native browser date picker. */
 .effective-date-input {
-    padding: 8px 10px;
+    padding: 8px 28px 8px 10px;
     background: #121824;
     border: 1px solid #2a3447;
     border-radius: 6px;
@@ -512,6 +522,8 @@
     font-size: 12px;
     font-family: inherit;
     outline: none;
+    cursor: pointer;
+    min-width: 132px;
 }
 
 .effective-date-input:focus {
@@ -519,9 +531,12 @@
     box-shadow: 0 0 8px rgba(143, 166, 223, 0.2);
 }
 
-.effective-date-input::-webkit-calendar-picker-indicator {
-    filter: invert(0.7);
-    cursor: pointer;
+.effective-calendar-icon {
+    position: absolute;
+    right: 9px;
+    color: #8996a8;
+    font-size: 11px;
+    pointer-events: none;
 }
 
 .effective-hint {

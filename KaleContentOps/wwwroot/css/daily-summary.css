@@ -83,22 +83,9 @@
 .preset-list button:hover { color: white; border-color: var(--summary-blue); background: rgba(77, 159, 255, .08); }
 
 .calendar-area { flex: 1 1 auto; min-width: 0; }
-.calendar-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.calendar-toolbar strong { color: #edf2f7; font-size: 13px; }
-.calendar-toolbar button { width: 28px; height: 28px; color: #aab7c7; background: transparent; border: 1px solid var(--summary-line); border-radius: 6px; font-size: 15px; line-height: 1; cursor: pointer; }
-.calendar-toolbar button:hover { color: white; border-color: #52657e; }
 
-.calendar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.calendar-month > strong { display: block; margin-bottom: 8px; color: #d4deea; font-size: 12px; text-align: center; }
-.weekday-row { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
-.weekday-row span { color: #6d7c92; font-size: 10px; font-weight: 600; text-align: center; }
-.days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.calendar-day { display: flex; align-items: center; justify-content: center; min-width: 0; height: 28px; padding: 0; color: #c6d1e0; font-size: 11.5px; background: transparent; border: 0; border-radius: 6px; cursor: pointer; font-variant-numeric: tabular-nums; }
-.calendar-day:hover { background: rgba(255, 255, 255, .07); color: white; }
-.calendar-day.in-range { color: #dcebff; background: rgba(77, 159, 255, .16); border-radius: 0; }
-.calendar-day.selected { color: white; font-weight: 700; background: #356fc0; border-radius: 6px; }
-.days-grid .calendar-day.in-range:first-child, .days-grid .calendar-day.in-range:last-child { border-radius: 6px; }
-.empty-day { height: 28px; }
+/* Calendar month grid / day cells live in the shared calendar-popup.css so the same
+   styles also drive the Targets "Berlaku Mulai" single-date popup. */
 
 .date-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--summary-line-soft); }
 .date-picker-selected { color: #cbd6e5; font-size: 12px; }
@@ -449,7 +436,6 @@
     .date-picker-body { flex-direction: column; }
     .preset-list { flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; padding-right: 0; border-right: 0; border-bottom: 1px solid var(--summary-line-soft); padding-bottom: 12px; }
     .preset-title { width: 100%; }
-    .calendar-grid { grid-template-columns: 1fr; gap: 15px; }
 }
 @media (max-width: 700px) {
     .summary-header { align-items: flex-start; flex-direction: column; gap: 12px; }

@@ -6,6 +6,7 @@
     var canViewHistory = User.HasClaim(KaleContentOps.Security.AuthConstants.PermissionClaimType, KaleContentOps.Security.AuthConstants.Permissions.TargetHistoryView);
 }
 <link rel="stylesheet" href="~/css/targets.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/calendar-popup.css" />
 <script>
     // Exposed for targets.js: when false, target inputs render read-only.
     window.targetsCanEdit = @canEditTarget.ToString().ToLowerInvariant();
@@ -31,8 +32,12 @@
     @if (canEditTarget)
     {
         <div class="targets-effective-bar">
-            <label for="effectiveDateInput">Berlaku Mulai</label>
-            <input type="date" id="effectiveDateInput" class="effective-date-input" />
+            <div class="effective-date-anchor">
+                <label for="effectiveDateInput">Berlaku Mulai</label>
+                <input type="text" id="effectiveDateInput" class="effective-date-input" placeholder="dd-mm-yyyy" readonly aria-haspopup="dialog" aria-expanded="false" />
+                <span class="effective-calendar-icon" aria-hidden="true">▾</span>
+                <!-- Popup kalender dibuat oleh calendar-popup.js (shared dengan Daily Summary) -->
+            </div>
             <span class="effective-hint">Kosongkan untuk mengubah target hari ini. Isi tanggal masa depan untuk menjadwalkan target.</span>
         </div>
     }
@@ -162,4 +167,5 @@
     @Html.AntiForgeryToken()
 </div>
 
+<script src="~/js/calendar-popup.js"></script>
 <script src="~/js/targets.js" asp-append-version="true"></script>

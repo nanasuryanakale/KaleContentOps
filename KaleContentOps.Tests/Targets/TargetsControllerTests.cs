@@ -76,6 +76,14 @@ public class TargetsControllerTests
             CapturedRequest = request;
             return Task.FromResult(NextSaveResult);
         }
+
+        // Phase 6: Daily Summary target series (stubbed - covered by DailySummary tests).
+        public Task<DailyTargetSeries> GetDailyTargetSeriesAsync(DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
+            => Task.FromResult(new DailyTargetSeries
+            {
+                StartDate = startDate,
+                EndDate = endDate
+            });
     }
 
     private sealed class StubShopTimeZone : IShopTimeZone

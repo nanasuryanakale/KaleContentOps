@@ -58,6 +58,19 @@ public interface ITargetService
     Task<TargetActualItem?> GetActualAsync(int contentTypeId, DateOnly endDate, int days = 7, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Phase 6: Daily Summary target series, PER CONTENT TYPE (NON_KK and KK separately -
+    /// each type's Upload and Views always come from the same target version for that
+    /// date). For every calendar date in the inclusive range, resolves the target version
+    /// effective on THAT date (SCD-2 date-based resolution, never "latest row wins";
+    /// future versions never match before their EffectiveFrom) and derives daily targets
+    /// as WeeklyTarget / 7 (docs/daily-summary-spec.md sections 10 and 12; 7 converts
+    /// weekly to daily). Dates before the first version get zeros (missing target
+    /// convention, same as Menu Targets).
+    /// SET-BASED: one bulk query for all versions that overlap the range, zero per-day lookups.
+    /// </summary>
+    Task<DailyTargetSeries> GetDailyTargetSeriesAsync(DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Phase 5 read model for the Menu Targets page: per targetable content type (NON_KK, KK,
     /// NON_KK first), the target effective on endDate resolved by date (never "latest row wins"),
     /// the rolling N-day actuals (same pipeline as GetActualAsync), and the derived selisih
@@ -82,6 +95,57 @@ public static class TargetActualStatus
 
     public static string Resolve(int actualUpload, int targetUpload, long actualViews, long targetViews) =>
         actualUpload >= targetUpload && actualViews >= targetViews ? Achieved : NotAchieved;
+}
+
+/// <summary>
+/// Phase 6: per-day target read model for Daily Summary (weekly -> daily derived values).
+/// Indexers align with a calendar day list built from the same inclusive range
+/// (Enumerable.Range(0, (end - start).Days + 1).Select(i => start.AddDays(i)));
+/// indexer i corresponds to start.AddDays(i).
+/// </summary>
+public sealed class DailyTargetSeries
+{
+    public DateOnly StartDate { get; init; }
+    public DateOnly EndDate { get; init; }
+
+    /// <summary>Per-date daily targets for NON_KK. Indexer i = StartDate.AddDays(i).</summary>
+    public PerTypeSeries NonKk { get; init; } = new();
+
+    /// <summary>Per-date daily targets for KK. Indexer i = StartDate.AddDays(i).</summary>
+    public PerTypeSeries Kk { get; init; } = new();
+
+    /// <summary>
+    /// Per-content-type daily target values for one date range. Daily values are the
+    /// WeeklyTarget / 7 derivation (docs/daily-summary-spec.md sections 10 and 12);
+    /// Upload and Views ALWAYS come from the same target version per content type/date.
+    /// </summary>
+    public sealed class PerTypeSeries
+    {
+        private readonly List<decimal> _upload = new();
+        private readonly List<decimal> _views = new();
+
+        /// <summary>Daily upload target (WeeklyTargetUpload / 7) for the i-th calendar day.</summary>
+        public decimal UploadByDayIndex(int i) => _upload[i];
+
+        /// <summary>Daily views target (WeeklyTargetViews / 7) for the i-th calendar day.</summary>
+        public decimal ViewsByDayIndex(int i) => _views[i];
+
+        /// <summary>
+        /// Exact period target: (sum of the raw weekly values of every day) / 7 - a single
+        /// division, so divisible weekly values sum back exactly (13/week over 7 days = 13,
+        /// never 12.9997 from accumulating rounded dailies).
+        /// </summary>
+        public decimal UploadPeriodTarget { get; internal set; }
+
+        /// <summary>Same derivation as <see cref="UploadPeriodTarget"/> for views.</summary>
+        public decimal ViewsPeriodTarget { get; internal set; }
+
+        internal void AddDay(decimal upload, decimal views)
+        {
+            _upload.Add(upload);
+            _views.Add(views);
+        }
+    }
 }
 
 /// <summary>

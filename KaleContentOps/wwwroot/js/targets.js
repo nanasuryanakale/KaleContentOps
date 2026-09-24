@@ -78,6 +78,10 @@
 
         // Attach event handlers (scoped to targets-page)
         attachEventHandlers();
+
+        // Shared calendar popup (calendar-popup.js) replaces the native <input type="date">
+        // picker so "Berlaku Mulai" looks and behaves like the Daily Summary date range calendar.
+        setupEffectiveDatePicker();
     });
 
     // ========== Data Loading ==========
@@ -345,18 +349,44 @@
         return 'above';
     }
 
+    // ========== Effective Date (Berlaku Mulai) — shared calendar popup ==========
+    // UI only: the stored value remains an ISO yyyy-MM-dd string exactly like the native
+    // date input produced before, so the save payload and server semantics are unchanged.
+    // "Kosongkan" (empty) keeps the existing meaning: absent effectiveDate = today.
+    function setupEffectiveDatePicker() {
+        const input = document.getElementById('effectiveDateInput');
+        if (!input || typeof CalendarPopup === 'undefined') return;
+
+        const picker = CalendarPopup.createSingleDatePicker({
+            trigger: input,
+            ariaLabel: 'Pilih tanggal berlaku mulai',
+            onSelect: iso => { input.value = formatDisplayDate(iso); input.dataset.isoValue = iso; },
+            onClear: () => { input.value = ''; delete input.dataset.isoValue; }
+        });
+
+        window.targetsEffectiveDatePicker = picker;
+    }
+
+    // yyyy-MM-dd -> dd-mm-yyyy for the display input (the picker popup formats itself).
+    function formatDisplayDate(iso) {
+        const parts = String(iso).split('-');
+        return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : String(iso);
+    }
+
     // ========== Save Logic ==========
     async function triggerSave(contentTypeId, metric, newValue, inputElement) {
         const target = state.currentTargets[contentTypeId];
         if (!target) return;
 
-        // Build payload ("Berlaku Mulai" from the effective-date bar; absent = today)
+        // Build payload ("Berlaku Mulai" from the shared calendar popup; absent = today).
+        // dataset.isoValue always holds the ISO yyyy-MM-dd value to send, unchanged format.
         const effectiveDateInput = document.getElementById('effectiveDateInput');
+        const effectiveIso = effectiveDateInput && effectiveDateInput.dataset.isoValue ? effectiveDateInput.dataset.isoValue : null;
         const payload = {
             contentTypeId: contentTypeId,
             targetUpload: metric === 'upload' ? newValue : target.targetUpload,
             targetViews: metric === 'views' ? newValue : target.targetViews,
-            effectiveDate: effectiveDateInput && effectiveDateInput.value ? effectiveDateInput.value : null
+            effectiveDate: effectiveIso
         };
 
         // Show saving state

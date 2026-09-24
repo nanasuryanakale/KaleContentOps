@@ -21,10 +21,8 @@ public class DailySummaryViewModel
 
     public int CalendarDays => (EndDate.Date - StartDate.Date).Days + 1;
 
-    // Combined daily targets (sum of Non-KK and Keranjang Kuning daily targets)
-    // Used by client-side to evaluate TOTAL status without requiring a reload.
-    public decimal TotalDailyContentTarget { get; set; }
-    public decimal TotalDailyViewsTarget { get; set; }
+    // Phase 6: targets come from Menu Targets (TargetService) per date. Page-level config
+    // values (TotalDaily*Target) are gone; see per-row TotalContentTarget/TotalViewsTarget.
 }
 
 public class DailySummaryRowViewModel
@@ -36,6 +34,12 @@ public class DailySummaryRowViewModel
 
     public string TotalContentStatus { get; set; } = string.Empty;
     public string TotalViewsStatus { get; set; } = string.Empty;
+
+    // Phase 6: combined daily target for THIS date, resolved by TargetService versioning
+    // (weekly / 7). Used by client-side to re-evaluate the TOTAL status on the Include
+    // Auto GMV toggle without a reload - the same targets the server used.
+    public decimal TotalContentTarget { get; set; }
+    public decimal TotalViewsTarget { get; set; }
 
     public int NonKkCount { get; set; }
     public long NonKkViews { get; set; }

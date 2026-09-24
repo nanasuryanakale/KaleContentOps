@@ -394,6 +394,99 @@ public class TargetService : ITargetService
         };
     }
 
+    /// <inheritdoc />
+    public async Task<DailyTargetSeries> GetDailyTargetSeriesAsync(DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
+    {
+        if (endDate < startDate)
+        {
+            (startDate, endDate) = (endDate, startDate);
+        }
+
+        var dayCount = endDate.DayNumber - startDate.DayNumber + 1;
+        var series = new DailyTargetSeries { StartDate = startDate, EndDate = endDate };
+        var nonKkUploadWeekSum = 0m;
+        var nonKkViewsWeekSum = 0m;
+        var kkUploadWeekSum = 0m;
+        var kkViewsWeekSum = 0m;
+
+        var contentTypes = await _db.ContentTypes.AsNoTracking()
+            .Where(c => c.Code == NonKkCode || c.Code == KkCode)
+            .ToListAsync(cancellationToken);
+        // The caller indexes one entry per calendar day, so the series is ALWAYS filled
+        // with dayCount entries (zeros when the content types or versions are missing).
+        // The Contains query on an empty id set simply matches nothing.
+        if (dayCount <= 0)
+        {
+            return series;
+        }
+
+        // PER CONTENT TYPE: each type resolves its OWN version per date and derives BOTH
+        // its upload and views targets from that same version. No cross-type mixing:
+        // NON_KK views come from the NON_KK version, KK views from the KK version
+        // (Phase 6 UAT fix - the previous implementation mapped views to KK for every type).
+        var nonKkId = contentTypes.FirstOrDefault(ct => string.Equals(ct.Code, NonKkCode, StringComparison.OrdinalIgnoreCase))?.Id ?? 0;
+        var kkId = contentTypes.FirstOrDefault(ct => string.Equals(ct.Code, KkCode, StringComparison.OrdinalIgnoreCase))?.Id ?? 0;
+        var typeIds = new[] { nonKkId, kkId }.Where(id => id != 0).Distinct().ToArray();
+
+        // Bulk fetch: every version that overlaps [startDate, endDate] - ONE query for the
+        // whole range, never a lookup per day (no N+1).
+        var versions = await _db.Targets.AsNoTracking()
+            .Where(t => typeIds.Contains(t.ContentTypeId)
+                && t.EffectiveFrom <= endDate
+                && (t.EffectiveTo == null || t.EffectiveTo >= startDate))
+            .Select(t => new { t.Id, t.ContentTypeId, t.TargetUpload, t.TargetViews, t.EffectiveFrom, t.EffectiveTo })
+            .ToListAsync(cancellationToken);
+
+        // Order once (newest EffectiveFrom, then highest Id): the first version matching a
+        // date is exactly what GetTargetForDateAsync resolves for that date - same
+        // deterministic date-based rule, future versions never match before their EffectiveFrom.
+        var ordered = versions
+            .OrderByDescending(v => v.EffectiveFrom)
+            .ThenByDescending(v => v.Id)
+            .ToList();
+
+        // Weekly -> daily derivation (docs/daily-summary-spec.md sections 10 and 12):
+        // seven is ONLY the weekly-to-daily conversion factor; the per-date daily target is
+        // then multiplied by the calendar days of the range downstream. 4 decimal places keep
+        // integer averages lossless (e.g. 20/week -> 2.8571428571... rounded once per day,
+        // so a 7-day period sums back to exactly 20 without a new rounding rule).
+        for (var i = 0; i < dayCount; i++)
+        {
+            var date = startDate.AddDays(i);
+
+            var nonKkVersion = ordered.FirstOrDefault(v =>
+                v.ContentTypeId == nonKkId
+                && v.EffectiveFrom <= date
+                && (v.EffectiveTo == null || v.EffectiveTo >= date));
+            var kkVersion = ordered.FirstOrDefault(v =>
+                v.ContentTypeId == kkId
+                && v.EffectiveFrom <= date
+                && (v.EffectiveTo == null || v.EffectiveTo >= date));
+
+            // Upload AND views always derive from the SAME version of the SAME content type.
+            series.NonKk.AddDay(
+                nonKkVersion is null ? 0m : Math.Round(nonKkVersion.TargetUpload / 7m, 4, MidpointRounding.AwayFromZero),
+                nonKkVersion is null ? 0m : Math.Round(nonKkVersion.TargetViews / 7m, 4, MidpointRounding.AwayFromZero));
+            series.Kk.AddDay(
+                kkVersion is null ? 0m : Math.Round(kkVersion.TargetUpload / 7m, 4, MidpointRounding.AwayFromZero),
+                kkVersion is null ? 0m : Math.Round(kkVersion.TargetViews / 7m, 4, MidpointRounding.AwayFromZero));
+
+            // Exact period accumulation: raw weekly values, one division by 7 at the end
+            // (accumulating the rounded dailies could drift from the exact value).
+            nonKkUploadWeekSum += nonKkVersion?.TargetUpload ?? 0;
+            nonKkViewsWeekSum += nonKkVersion?.TargetViews ?? 0;
+            kkUploadWeekSum += kkVersion?.TargetUpload ?? 0;
+            kkViewsWeekSum += kkVersion?.TargetViews ?? 0;
+        }
+
+        series.NonKk.UploadPeriodTarget = Math.Round(nonKkUploadWeekSum / 7m, 4, MidpointRounding.AwayFromZero);
+        series.NonKk.ViewsPeriodTarget = Math.Round(nonKkViewsWeekSum / 7m, 4, MidpointRounding.AwayFromZero);
+        series.Kk.UploadPeriodTarget = Math.Round(kkUploadWeekSum / 7m, 4, MidpointRounding.AwayFromZero);
+        series.Kk.ViewsPeriodTarget = Math.Round(kkViewsWeekSum / 7m, 4, MidpointRounding.AwayFromZero);
+
+        return series;
+    }
+
     /// <summary>
     /// Rolling calendar window: [endDate - days + 1, endDate], exactly `days` calendar days
     /// (never 7x24h, never Monday-Sunday, never 8 dates). Returns the inclusive start and the
