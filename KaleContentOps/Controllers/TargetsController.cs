@@ -94,6 +94,22 @@ public class TargetsController : Controller
     }
 
     // ------------------------------------------------------------------
+    // GET targets/actuals - Phase 5 summary for the Menu Targets page:
+    // per targetable content type, target effective today (GMT+7), rolling 7-day
+    // actuals, selisih and combined status. All business calculation stays in
+    // ITargetService; this endpoint only authorizes (Target.View), resolves the
+    // shop-local "today" and returns the read model. Legacy /targets/actual is kept.
+    // ------------------------------------------------------------------
+    [HttpGet("targets/actuals")]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TargetView)]
+    public async Task<IActionResult> Actuals(CancellationToken cancellationToken)
+    {
+        var endDate = _shopTimeZone.Today();
+        var summary = await _targetService.GetActualsSummaryAsync(endDate, days: 7, cancellationToken);
+        return Ok(summary);
+    }
+
+    // ------------------------------------------------------------------
     // POST targets/save - auto-save endpoint
     // Antiforgery follows the existing MVC convention (TikTokAdminController
     // uses [ValidateAntiForgeryToken] on POST actions); header-based to keep

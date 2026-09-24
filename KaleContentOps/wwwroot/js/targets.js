@@ -19,10 +19,13 @@
     const API_SAVE = '/targets/save';
     const API_SCHEDULED = '/targets/scheduled';
     const API_HISTORY = '/targets/history';
+    // Phase 5: combined target+actual+selisih+status summary in ONE request
+    // (server-computed rolling window, selisih, and combined status per content type).
+    const API_ACTUALS = '/targets/actuals';
     const DEBOUNCE_MS = 300;
     const TOAST_DURATION_MS = 2500;
 
-    // Status labels and colors (per business rule)
+    // Per-metric status labels/classes (Phase 3 style, unchanged)
     const STATUS_LABELS = {
         above: 'Di atas target',
         met: 'Mencapai target',
@@ -35,10 +38,18 @@
         below: 'below-target'
     };
 
+    // Phase 5 combined status (Tercapai / Belum Tercapai) shown as a small badge
+    // in the Jenis Konten cell. Values come from the server (TargetActualItem.status).
+    const COMBINED_STATUS_CLASSES = {
+        'Tercapai': 'combined-achieved',
+        'Belum Tercapai': 'combined-not-achieved'
+    };
+
     // ========== State ==========
     const state = {
         currentTargets: {},  // { [contentTypeId]: { ...target } }
         actuals: {},         // { [contentTypeId]: { ...actual } }
+        actualPeriod: null,  // Phase 5: { startDate, endDate, days, timeZoneId, items[] }
         scheduled: [],       // future (not yet active) versions
         history: {},         // { [contentTypeId]: [ ...historyRows ] }
         pendingSave: {},     // { [contentTypeId]: { type: 'upload|views', value, ... } }
@@ -79,6 +90,10 @@
             }
             const targets = await targetsResponse.json();
 
+            // Phase 5: one summary request provides actuals (+ targets effective today,
+            // selisih, combined status) for all content types in a single round trip.
+            const summary = await loadActualsSummary();
+
             // Store targets by contentTypeId
             targets.forEach(t => {
                 state.currentTargets[t.contentTypeId] = t;
@@ -88,27 +103,59 @@
                 };
             });
 
-            // Fetch actuals for each content type
-            for (const target of targets) {
-                try {
-                    // Call new GetActualAsync endpoint (via GET /targets/actual?contentTypeId=X)
-                    const actualResponse = await fetch(`/targets/actual?contentTypeId=${target.contentTypeId}`);
-                    if (actualResponse.ok) {
-                        const actual = await actualResponse.json();
-                        state.actuals[target.contentTypeId] = actual;
-                    }
-                } catch (err) {
-                    console.warn(`Failed to load actual for contentTypeId ${target.contentTypeId}:`, err);
-                    // Continue anyway - UI will show zero actuals or placeholder
-                }
-            }
-
             // Render tables
             renderTables(targets);
         } catch (error) {
             console.error('Error loading targets and actuals:', error);
             showError('Gagal memuat data. Silakan refresh halaman.');
         }
+    }
+
+    // Loads GET /targets/actuals, stores per-type actuals and renders the period bar.
+    // Falls back to the legacy per-type endpoint when the summary endpoint is unavailable.
+    async function loadActualsSummary() {
+        try {
+            const response = await fetch(API_ACTUALS);
+            if (!response.ok) throw new Error(`actuals summary ${response.status}`);
+            const summary = await response.json();
+
+            state.actualPeriod = summary;
+            renderActualPeriodBar(summary);
+
+            (summary.items || []).forEach(item => {
+                state.actuals[item.contentTypeId] = item;
+            });
+            return summary;
+        } catch (err) {
+            console.warn('Actuals summary unavailable, falling back to legacy endpoint:', err);
+
+            const targetsResponse = await fetch(API_CURRENT);
+            const targets = targetsResponse.ok ? await targetsResponse.json() : [];
+
+            for (const target of targets) {
+                try {
+                    const actualResponse = await fetch(`/targets/actual?contentTypeId=${target.contentTypeId}`);
+                    if (actualResponse.ok) {
+                        state.actuals[target.contentTypeId] = await actualResponse.json();
+                    }
+                } catch (err2) {
+                    console.warn(`Failed to load actual for contentTypeId ${target.contentTypeId}:`, err2);
+                }
+            }
+            return null;
+        }
+    }
+
+    // Phase 5 period bar: "ACTUAL 7 HARI TERAKHIR · 18/09/2026 - 24/09/2026 (GMT+7)"
+    function renderActualPeriodBar(summary) {
+        const bar = document.getElementById('actualPeriodBar');
+        const range = document.getElementById('actualPeriodRange');
+        const tz = document.getElementById('actualPeriodTz');
+        if (!bar || !summary) return;
+
+        if (range) range.textContent = `${formatDate(summary.startDate)} - ${formatDate(summary.endDate)}`;
+        if (tz) tz.textContent = summary.timeZoneId ? `(${summary.timeZoneId})` : '';
+        bar.hidden = false;
     }
 
     // ========== Rendering ==========
@@ -149,6 +196,8 @@
         row.setAttribute('data-content-type-id', target.contentTypeId);
         row.setAttribute('data-metric', metric);
 
+        // Selisih and per-metric status are derived from server-computed actuals and the
+        // effective target; negatives are preserved (never absolute).
         const selisih = actualForDisplay - targetValue;
         const status = calculateStatus(selisih);
 
@@ -160,7 +209,7 @@
         row.innerHTML = `
             <td class="type-cell">
                 <span class="type-badge ${target.contentTypeCode === 'NON_KK' ? 'non-kk' : 'kk'}"></span>
-                <span class="type-name-wrap">${escapeHtml(target.contentTypeName)}${target.effectiveFrom ? `<span class="type-effective">Berlaku mulai ${formatDate(target.effectiveFrom)}</span>` : ''}</span>
+                <span class="type-name-wrap">${escapeHtml(target.contentTypeName)}${renderCombinedStatusBadge(target.contentTypeId)}${target.effectiveFrom ? `<span class="type-effective">Berlaku mulai ${formatDate(target.effectiveFrom)}</span>` : ''}</span>
             </td>
             <td>
                 <input 
@@ -191,6 +240,15 @@
         }
 
         return row;
+    }
+
+    // Phase 5: combined Tercapai/Belum Tercapai badge in the Jenis Konten cell
+    // (server-computed from Actual Upload >= Target Upload AND Actual Views >= Target Views).
+    function renderCombinedStatusBadge(contentTypeId) {
+        const actual = state.actuals[contentTypeId];
+        if (!actual || !actual.status) return '';
+        const cls = COMBINED_STATUS_CLASSES[actual.status] || 'combined-not-achieved';
+        return `<span class="combined-status-badge ${cls}">${escapeHtml(actual.status)}</span>`;
     }
 
     // ========== Event Handlers ==========

@@ -426,6 +426,62 @@
     color: var(--muted);
 }
 
+/* ============ Phase 5: Actual period bar + combined status badge ============ */
+.targets-actual-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: #1a2230;
+    border: 1px solid #2a3447;
+    border-radius: 11px;
+    padding: 10px 16px;
+    margin-bottom: 20px;
+}
+
+.targets-actual-bar .actual-period-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #8fa6df;
+    text-transform: uppercase;
+}
+
+.targets-actual-bar .actual-period-range {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e7edf5;
+    font-variant-numeric: tabular-nums;
+}
+
+.targets-actual-bar .actual-period-tz {
+    font-size: 11px;
+    color: #8996a8;
+}
+
+/* Small combined-status badge inside the Jenis Konten cell (does not change table structure) */
+.combined-status-badge {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.combined-status-badge.combined-achieved {
+    background: rgba(69, 212, 131, 0.15);
+    color: #45d483;
+}
+
+.combined-status-badge.combined-not-achieved {
+    background: rgba(244, 119, 119, 0.15);
+    color: #f47777;
+}
+
 /* ============ Phase 4b: Effective Date bar (Berlaku Mulai) ============ */
 .targets-effective-bar {
     display: flex;

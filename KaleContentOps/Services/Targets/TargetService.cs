@@ -309,60 +309,159 @@ public class TargetService : ITargetService
         if (contentType is null)
             return null;
 
-        // Date range for rolling window: [endDate - days + 1, endDate]
-        var startDate = endDate.AddDays(-(days - 1));
-        var startDateTime = new DateTime(startDate.Year, startDate.Month, startDate.Day, 0, 0, 0, DateTimeKind.Utc);
-        var endDateTime = new DateTime(endDate.Year, endDate.Month, endDate.Day, 23, 59, 59, DateTimeKind.Utc);
+        // Phase 5 boundary fix: half-open window [start, endExclusive) exactly as DailySummaryService
+        // filters VideoPostTime, so the last day keeps its full 24h (the previous 23:59:59
+        // end-of-day cut dropped late-day content). VideoPostTime is stored as naive shop-local
+        // wall time by the TikTok sync, so shop-local dates compare directly (no UTC shift).
+        var (startDate, endExclusive) = RollingWindow(endDate, days);
+        var startDateTime = startDate.ToDateTime(TimeOnly.MinValue);
+        var endExclusiveDateTime = endExclusive.ToDateTime(TimeOnly.MinValue);
 
-        // Fetch all ContentLogs in range for this content type (exclude archived).
-        var contentLogs = await _db.ContentLogs.AsNoTracking()
-            .Where(cl => cl.ContentTypeId == contentTypeId
-                && cl.VideoPostTime >= startDateTime
-                && cl.VideoPostTime <= endDateTime
-                && cl.IsArchived != true)
-            .Select(cl => new { cl.Id })
-            .ToListAsync(cancellationToken);
-
-        if (contentLogs.Count == 0)
-        {
-            // No content in range, return zero actuals
-            return new TargetActualItem
-            {
-                ContentTypeId = contentTypeId,
-                ContentTypeCode = contentType.Code,
-                ContentTypeName = contentType.Name,
-                ActualUpload = 0,
-                ActualViews = 0
-            };
-        }
-
-        var contentLogIds = contentLogs.Select(cl => cl.Id).ToArray();
-
-        // Fetch latest metric per content log (matching pattern from DailySummaryService)
-        var latestMetrics = await _db.ContentMetrics.AsNoTracking()
-            .Where(m => contentLogIds.Contains(m.ContentLogId))
-            .GroupBy(m => m.ContentLogId)
-            .Select(g => new
-            {
-                ContentLogId = g.Key,
-                Views = g
-                    .OrderByDescending(m => m.CapturedAt)
-                    .ThenByDescending(m => m.Id)
-                    .Select(m => m.Views)
-                    .FirstOrDefault() ?? 0L
-            })
-            .ToListAsync(cancellationToken);
-
-        var totalViews = latestMetrics.Sum(m => m.Views);
+        var (uploadCounts, totalViews) = await AggregateActualsAsync(
+            new[] { contentTypeId }, startDateTime, endExclusiveDateTime, cancellationToken);
 
         return new TargetActualItem
         {
             ContentTypeId = contentTypeId,
             ContentTypeCode = contentType.Code,
             ContentTypeName = contentType.Name,
-            ActualUpload = contentLogs.Count,
-            ActualViews = totalViews
+            ActualUpload = uploadCounts.GetValueOrDefault(contentTypeId),
+            ActualViews = totalViews.GetValueOrDefault(contentTypeId)
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<TargetActualsSummary> GetActualsSummaryAsync(DateOnly endDate, int days = 7, CancellationToken cancellationToken = default)
+    {
+        // Same targetable set + ordering as GetCurrentTargetsAsync (NON_KK first, then KK);
+        // AUTO_GMV_LIVE and other codes never appear on the Menu Targets page.
+        var contentTypes = await _db.ContentTypes.AsNoTracking()
+            .Where(c => c.Code == NonKkCode || c.Code == KkCode)
+            .ToListAsync(cancellationToken);
+        var orderedTypes = contentTypes
+            .OrderByDescending(ct => string.Equals(ct.Code, NonKkCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var typeIds = orderedTypes.Select(ct => ct.Id).ToArray();
+
+        // Target effective on the period END date: date-based resolution via the existing
+        // versioning rule (EffectiveFrom <= endDate <= EffectiveTo), never "latest row wins";
+        // scheduled future versions never match before their EffectiveFrom.
+        var targets = await _db.Targets.AsNoTracking()
+            .Where(t => typeIds.Contains(t.ContentTypeId)
+                && t.EffectiveFrom <= endDate
+                && (t.EffectiveTo == null || t.EffectiveTo >= endDate))
+            .OrderByDescending(t => t.EffectiveFrom)
+            .ThenByDescending(t => t.Id)
+            .ToListAsync(cancellationToken);
+        var targetByTypeId = targets
+            .GroupBy(t => t.ContentTypeId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        // Rolling window: exactly `days` calendar days, [endDate - days + 1, endDate] inclusive.
+        var (startDate, endExclusive) = RollingWindow(endDate, days);
+        var startDateTime = startDate.ToDateTime(TimeOnly.MinValue);
+        var endExclusiveDateTime = endExclusive.ToDateTime(TimeOnly.MinValue);
+
+        var (uploadCounts, totalViews) = await AggregateActualsAsync(
+            typeIds, startDateTime, endExclusiveDateTime, cancellationToken);
+
+        var items = orderedTypes
+            .Select(ct =>
+            {
+                targetByTypeId.TryGetValue(ct.Id, out var target);
+                return new TargetActualItem
+                {
+                    ContentTypeId = ct.Id,
+                    ContentTypeCode = ct.Code,
+                    ContentTypeName = ct.Name,
+                    ActualUpload = uploadCounts.GetValueOrDefault(ct.Id),
+                    ActualViews = totalViews.GetValueOrDefault(ct.Id),
+                    TargetUpload = target?.TargetUpload ?? 0,
+                    TargetViews = target?.TargetViews ?? 0L,
+                    TargetEffectiveFrom = target?.EffectiveFrom
+                };
+            })
+            .ToList();
+
+        return new TargetActualsSummary
+        {
+            StartDate = startDate,
+            EndDate = endDate,
+            Days = days,
+            TimeZoneId = _shopTimeZone.TimeZoneId,
+            Items = items
+        };
+    }
+
+    /// <summary>
+    /// Rolling calendar window: [endDate - days + 1, endDate], exactly `days` calendar days
+    /// (never 7x24h, never Monday-Sunday, never 8 dates). Returns the inclusive start and the
+    /// exclusive end (start of the day after endDate) for half-open filtering.
+    /// </summary>
+    private static (DateOnly Start, DateOnly EndExclusive) RollingWindow(DateOnly endDate, int days)
+    {
+        var clamped = Math.Max(1, days);
+        return (endDate.AddDays(-(clamped - 1)), endDate.AddDays(1));
+    }
+
+    /// <summary>
+    /// Set-based actual aggregation shared by GetActualAsync and GetActualsSummaryAsync
+    /// (same conventions as DailySummaryService):
+    /// - uploads = COUNT of ContentLogs with a classified ContentTypeId in the window
+    ///   (unclassified ContentLogs never leak into a bucket); archived excluded (IsArchived != true);
+    /// - views = SUM over logs of the LATEST metric (CapturedAt DESC, Id DESC tiebreak);
+    ///   logs without metrics contribute 0 and never fail or duplicate the query.
+    /// Two bulk queries total - never one lookup per ContentLog (no N+1).
+    /// Returns per-type dictionaries keyed by ContentTypeId.
+    /// </summary>
+    private async Task<(Dictionary<int, int> UploadCounts, Dictionary<int, long> TotalViews)> AggregateActualsAsync(
+        IReadOnlyCollection<int> contentTypeIds, DateTime startInclusive, DateTime endExclusive, CancellationToken cancellationToken)
+    {
+        var contentRows = await _db.ContentLogs.AsNoTracking()
+            .Where(cl => cl.VideoPostTime != null
+                && cl.VideoPostTime >= startInclusive
+                && cl.VideoPostTime < endExclusive
+                && cl.ContentTypeId != null
+                && contentTypeIds.Contains(cl.ContentTypeId.Value)
+                && cl.IsArchived != true)
+            .Select(cl => new { cl.Id, cl.ContentTypeId })
+            .ToListAsync(cancellationToken);
+
+        var contentIds = contentRows.Select(x => x.Id).ToArray();
+        var metricRows = contentIds.Length == 0
+            ? new List<MetricSnapshot>()
+            : await _db.ContentMetrics.AsNoTracking()
+                .Where(m => contentIds.Contains(m.ContentLogId))
+                .Select(m => new MetricSnapshot { ContentLogId = m.ContentLogId, CapturedAt = m.CapturedAt, Id = m.Id, Views = m.Views })
+                .ToListAsync(cancellationToken);
+
+        var latestViewsByContentId = metricRows
+            .GroupBy(m => m.ContentLogId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(m => m.CapturedAt).ThenByDescending(m => m.Id).First().Views ?? 0L);
+
+        var uploadCounts = contentRows
+            .GroupBy(x => x.ContentTypeId!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var totalViews = contentRows
+            .GroupBy(x => x.ContentTypeId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Sum(x => latestViewsByContentId.GetValueOrDefault(x.Id, 0L)));
+
+        return (uploadCounts, totalViews);
+    }
+
+    /// <summary>Client-side projection row for the latest-metric selection (mirrors DailySummaryService.MetricRow).</summary>
+    private sealed class MetricSnapshot
+    {
+        public long ContentLogId { get; set; }
+        public DateTime CapturedAt { get; set; }
+        public long Id { get; set; }
+        public long? Views { get; set; }
     }
 
     /// <summary>

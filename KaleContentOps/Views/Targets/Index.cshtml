@@ -37,6 +37,14 @@
         </div>
     }
 
+    <!-- Phase 5: Actual period (rolling 7 calendar days incl. today, shop timezone GMT+7).
+         Populated by targets.js from GET /targets/actuals (server-computed window). -->
+    <div class="targets-actual-bar" id="actualPeriodBar" hidden>
+        <span class="actual-period-label">ACTUAL 7 HARI TERAKHIR</span>
+        <span class="actual-period-range" id="actualPeriodRange"></span>
+        <span class="actual-period-tz" id="actualPeriodTz"></span>
+    </div>
+
     <!-- Section 1: Target Upload / Jumlah Konten per Minggu -->
     <div class="targets-section">
         <div class="card-container">

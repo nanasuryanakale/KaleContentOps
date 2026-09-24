@@ -58,6 +58,18 @@ public class TargetsControllerTests
         public Task<TargetActualItem?> GetActualAsync(int contentTypeId, DateOnly endDate, int days = 7, CancellationToken cancellationToken = default)
             => Task.FromResult<TargetActualItem?>(null);
 
+        // Phase 5: controller-level contract only (authorization + passthrough); the
+        // business calculation itself is covered by TargetActualsPhase5Tests.
+        public Task<TargetActualsSummary> GetActualsSummaryAsync(DateOnly endDate, int days = 7, CancellationToken cancellationToken = default)
+            => Task.FromResult(new TargetActualsSummary
+            {
+                StartDate = endDate.AddDays(-(days - 1)),
+                EndDate = endDate,
+                Days = days,
+                TimeZoneId = ShopTimeZoneOptions.DefaultTimeZoneId,
+                Items = Array.Empty<TargetActualItem>()
+            });
+
         public Task<TargetSaveResult> SaveTargetAsync(TargetSaveRequest request, CancellationToken cancellationToken = default)
         {
             if (ThrowOnSave is not null) throw ThrowOnSave;

@@ -56,6 +56,45 @@ public interface ITargetService
     /// Used by Menu Targets to display rolling 7-day actuals alongside targets (not for versioning).
     /// </summary>
     Task<TargetActualItem?> GetActualAsync(int contentTypeId, DateOnly endDate, int days = 7, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 5 read model for the Menu Targets page: per targetable content type (NON_KK, KK,
+    /// NON_KK first), the target effective on endDate resolved by date (never "latest row wins"),
+    /// the rolling N-day actuals (same pipeline as GetActualAsync), and the derived selisih
+    /// (actual - target, negatives kept) plus the combined status. Missing target -> zeros
+    /// (no target configured yet), so the UI can still show actuals.
+    /// Set-based: two bulk queries total (content logs + all latest metrics), never per-log lookups.
+    /// </summary>
+    Task<TargetActualsSummary> GetActualsSummaryAsync(DateOnly endDate, int days = 7, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Combined Status rule (Phase 5): <c>Tercapai</c> only when ActualUpload &gt;= TargetUpload
+/// AND ActualViews &gt;= TargetViews; otherwise <c>Belum Tercapai</c>. The rule is applied
+/// literally: with no configured target (zeros) and zero actuals, 0 &gt;= 0 holds on both
+/// metrics -> Tercapai, matching the existing per-metric convention (selisih 0 = "Mencapai
+/// target") in the Phase 3 UI.
+/// </summary>
+public static class TargetActualStatus
+{
+    public const string Achieved = "Tercapai";
+    public const string NotAchieved = "Belum Tercapai";
+
+    public static string Resolve(int actualUpload, int targetUpload, long actualViews, long targetViews) =>
+        actualUpload >= targetUpload && actualViews >= targetViews ? Achieved : NotAchieved;
+}
+
+/// <summary>
+/// Phase 5 read model: rolling N-day actuals summary for the Menu Targets page.
+/// StartDate is inclusive, EndDate is inclusive (exactly N calendar days).
+/// </summary>
+public sealed class TargetActualsSummary
+{
+    public DateOnly StartDate { get; init; }
+    public DateOnly EndDate { get; init; }
+    public int Days { get; init; }
+    public string TimeZoneId { get; init; } = string.Empty;
+    public IReadOnlyList<TargetActualItem> Items { get; init; } = Array.Empty<TargetActualItem>();
 }
 
 /// <summary>
@@ -84,6 +123,8 @@ public sealed class TargetCurrentItem
 /// <summary>
 /// Actual aggregated data for Menu Targets UI (rolling period actuals, not target configuration).
 /// Represents ContentLogs posted in the rolling N-day period, with latest metrics.
+/// Phase 5: carries the date-resolved target for the same period end date plus the derived
+/// selisih (actual - target, negatives preserved) and the combined Tercapai/Belum Tercapai status.
 /// </summary>
 public sealed class TargetActualItem
 {
@@ -94,6 +135,21 @@ public sealed class TargetActualItem
     public int ActualUpload { get; init; }
     /// <summary>Sum of latest Views for each ContentLog in the rolling period.</summary>
     public long ActualViews { get; init; }
+
+    /// <summary>Target version effective on the period end date (zeros when none is configured yet).</summary>
+    public int TargetUpload { get; init; }
+    public long TargetViews { get; init; }
+    /// <summary>EffectiveFrom of the resolved target version (null when no target is configured yet).</summary>
+    public DateOnly? TargetEffectiveFrom { get; init; }
+
+    /// <summary>ActualUpload - TargetUpload (negative when below target; never absolute).</summary>
+    public int SelisihUpload => ActualUpload - TargetUpload;
+
+    /// <summary>ActualViews - TargetViews (negative when below target; never absolute).</summary>
+    public long SelisihViews => ActualViews - TargetViews;
+
+    /// <summary>Combined Tercapai/Belum Tercapai status per the Phase 5 rule.</summary>
+    public string Status => TargetActualStatus.Resolve(ActualUpload, TargetUpload, ActualViews, TargetViews);
 }
 
 /// <summary>
