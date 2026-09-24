@@ -79,6 +79,11 @@ public class AccountController : Controller
 
         if (result.Succeeded)
         {
+            // Admin Management MVP: record last successful login for the Master User screen.
+            // Set via UserManager only - never written from user input.
+            user.LastLoginAt = DateTime.UtcNow;
+            await _userManager.UpdateAsync(user);
+
             _logger.LogInformation("User {UserName} logged in.", user.UserName);
             return RedirectToLocal(returnUrl);
         }

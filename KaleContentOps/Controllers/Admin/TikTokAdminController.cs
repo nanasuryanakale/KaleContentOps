@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using KaleContentOps.Security;
 using KaleContentOps.Services.TikTok;
 using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 namespace KaleContentOps.Controllers.Admin
 {
     [Route("Admin/TikTok")]
+    [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TikTokAdminView)]
     public class TikTokAdminController : Controller
     {
     private readonly ITikTokShopService _shopService;

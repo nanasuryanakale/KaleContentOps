@@ -20,7 +20,36 @@ public static class AuthConstants
         public const string TargetView = "Target.View";
         public const string TargetEdit = "Target.Edit";
         public const string TargetHistoryView = "Target.History.View";
+
+        // Admin Management MVP: Master User / Master Role & Permission.
+        // View-only permission lets managers inspect users without mutating them.
+        public const string UserView = "User.View";
+        public const string UserManage = "User.Manage";
+        public const string RolePermissionManage = "RolePermission.Manage";
+
+        // Admin TikTok (existing screen, now grouped under the ADMIN sidebar section).
+        // Introduced so the section is genuinely admin-only; previously every
+        // authenticated user could open /Admin/TikTok (fallback policy only).
+        public const string TikTokAdminView = "TikTokAdmin.View";
     }
+
+    /// <summary>
+    /// The full set of known permission values. Single source of truth used by:
+    /// - AdminSeeder (Administrator always receives all of them),
+    /// - the Role &amp; Permission UI (permission checkboxes come from here only,
+    ///   never free-text input),
+    /// - validation when a permission is assigned to a role.
+    /// </summary>
+    public static IReadOnlyList<string> AllKnownPermissions => new[]
+    {
+        Permissions.TargetView,
+        Permissions.TargetEdit,
+        Permissions.TargetHistoryView,
+        Permissions.UserView,
+        Permissions.UserManage,
+        Permissions.RolePermissionManage,
+        Permissions.TikTokAdminView
+    };
 
     // ------------------------------------------------------------------
     // Built-in role names (MVP).
@@ -51,5 +80,9 @@ public static class AuthConstants
             Permissions.TargetView,
             Permissions.TargetHistoryView
         }
+        // Note: User.View / User.Manage / RolePermission.Manage / TikTokAdmin.View are
+        // intentionally NOT seeded onto Manager/Viewer - the ADMIN sidebar section and
+        // its screens are visible to Administrators only (all known permissions are
+        // granted to Administrator automatically).
     };
 }

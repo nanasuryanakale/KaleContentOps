@@ -83,6 +83,10 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddHttpContextAccessor();
 
+// Admin Management MVP: Master User + Master Role & Permission operations
+// (UserManager-based, last-admin safeguards enforced server-side).
+builder.Services.AddScoped<KaleContentOps.Services.Admin.AdminUserAccessService>();
+
 // Permission-based authorization: policies named "Permission:<X>" resolve
 // dynamically from permission claims, so endpoints never hard-code roles.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();

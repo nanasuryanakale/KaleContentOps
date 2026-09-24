@@ -37,11 +37,9 @@ public static class AdminSeeder
         // --------------------------------------------------------------
         // 1. Roles
         // --------------------------------------------------------------
-        var allPermissions = AuthConstants.DefaultRolePermissions
-            .Values.SelectMany(p => p)
-            .Concat(new[] { AuthConstants.Permissions.TargetView })
-            .Distinct()
-            .ToArray();
+        // Full known set (Target.*, User.*, RolePermission.*) - Administrator always gets
+        // everything so newly introduced permissions are picked up on reseed automatically.
+        var allPermissions = AuthConstants.AllKnownPermissions.ToArray();
 
         var adminPermissions = allPermissions; // Administrator always gets the full set
 

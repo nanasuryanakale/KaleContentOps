@@ -77,11 +77,9 @@ public sealed class AuthTestFactory : WebApplicationFactory<Program>
             .Select(c => c.Value)
             .ToHashSet(StringComparer.Ordinal);
 
+        // Mirrors AdminSeeder: Administrator -> full known set; other built-in roles -> defaults.
         var desired = role == AuthConstants.Roles.Administrator
-            ? AuthConstants.DefaultRolePermissions.Values.SelectMany(p => p)
-                .Concat(new[] { AuthConstants.Permissions.TargetView })
-                .Distinct()
-                .ToArray()
+            ? AuthConstants.AllKnownPermissions.ToArray()
             : AuthConstants.DefaultRolePermissions.TryGetValue(role, out var perms)
                 ? perms
                 : Array.Empty<string>();

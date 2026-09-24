@@ -20,4 +20,8 @@ public class ApplicationUser : IdentityUser
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    // Admin Management MVP: last successful login, stamped by the login flow via
+    // UserManager (never written by user input). Nullable - null means never logged in.
+    public DateTime? LastLoginAt { get; set; }
 }
