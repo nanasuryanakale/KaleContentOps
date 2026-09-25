@@ -1,14 +1,106 @@
 using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using KaleContentOps.Models;
 using KaleContentOps.Services.TikTok;
 using KaleContentOps.Services;
 using KaleContentOps.Services.DailySummary;
+using KaleContentOps.Services.Targets;
+using KaleContentOps.Security;
 using System.IO;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+
+// ------------------------------------------------------------------
+// Authentication & Access Foundation (ASP.NET Core Identity + cookie auth)
+// ------------------------------------------------------------------
+builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
+    {
+        // MVP-sane password policy; kept explicit so it is a deliberate choice.
+        options.Password.RequiredLength = 10;
+        options.Password.RequireDigit = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireNonAlphanumeric = true;
+        options.Password.RequiredUniqueChars = 4;
+
+        options.User.RequireUniqueEmail = false; // login is username-based; email optional
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10);
+    })
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+
+// Authentication cookie: sliding session. Kept in sync with the pre-existing
+// 15 min session timeout used for TikTok OAuth state.
+// (In .NET 10 the cookie options live outside IdentityOptions - ConfigureApplicationCookie
+// must be called AFTER AddIdentity.)
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.ExpireTimeSpan = TimeSpan.FromHours(12);
+    options.SlidingExpiration = true;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+    options.Cookie.IsEssential = true;
+    options.LoginPath = "/Account/Login";
+    options.AccessDeniedPath = "/Account/AccessDenied";
+
+    // API/JSON endpoints (e.g. POST /targets/save from targets.js) must receive
+    // 401/403, never an HTML redirect. Browser navigations (Accept: text/html)
+    // are redirected to Login/AccessDenied as usual.
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        if (IsApiRequest(ctx.Request))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        }
+        else
+        {
+            ctx.Response.Redirect(ctx.RedirectUri);
+        }
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (IsApiRequest(ctx.Request))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+        }
+        else
+        {
+            ctx.Response.Redirect(ctx.RedirectUri);
+        }
+        return Task.CompletedTask;
+    };
+});
+
+builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+builder.Services.AddHttpContextAccessor();
+
+// Admin Management MVP: Master User + Master Role & Permission operations
+// (UserManager-based, last-admin safeguards enforced server-side).
+builder.Services.AddScoped<KaleContentOps.Services.Admin.AdminUserAccessService>();
+
+// Permission-based authorization: policies named "Permission:<X>" resolve
+// dynamically from permission claims, so endpoints never hard-code roles.
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddAuthorization(options =>
+{
+    // Every endpoint requires authentication unless marked [AllowAnonymous].
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
+// First-admin bootstrap configuration (values come from env vars/user secrets, never from source control).
+builder.Services.Configure<AdminSeedOptions>(builder.Configuration.GetSection(AdminSeedOptions.SectionName));
+// ------------------------------------------------------------------
 
 // Session (used for OAuth state) 
 builder.Services.AddDistributedMemoryCache();
@@ -27,11 +119,9 @@ builder.Services.Configure<TikTokOptions>(builder.Configuration.GetSection("TikT
 // and TikTok API start_date_ge/end_date_lt boundaries (Issue B)
 builder.Services.Configure<ShopTimeZoneOptions>(builder.Configuration.GetSection(ShopTimeZoneOptions.SectionName));
 builder.Services.AddSingleton<IShopTimeZone, ShopTimeZone>();
-var dailySummaryTargets = builder.Configuration
-    .GetSection(DailySummaryTargetOptions.SectionName)
-    .Get<DailySummaryTargetOptions>() ?? new DailySummaryTargetOptions();
-builder.Services.AddSingleton(dailySummaryTargets);
 builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
+// Menu Targets persistence (versioned weekly targets for NON_KK / KK)
+builder.Services.AddScoped<ITargetService, TargetService>();
 
 // Register named HttpClients for TikTok API and Auth endpoints. Concrete services will be registered later.
 builder.Services.AddHttpClient("TikTokApi", client =>
@@ -83,9 +173,10 @@ if (builder.Environment.IsDevelopment())
         throw new InvalidOperationException("Development connection string 'DefaultConnection' is not configured. Set it in appsettings.Development.json or User Secrets.");
     }
 }
-else
+else if (!builder.Environment.IsEnvironment("Testing"))
 {
     // In production, require a connection string to be set via environment variables on the host.
+    // (The "Testing" environment is used by the integration test host, which swaps in InMemory.)
     if (string.IsNullOrWhiteSpace(defaultConnection))
     {
         throw new InvalidOperationException("Production connection string 'DefaultConnection' is not configured. Set environment variable 'ConnectionStrings__DefaultConnection' on the host.");
@@ -93,7 +184,7 @@ else
 }
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(defaultConnection));
+    options.UseSqlServer(defaultConnection ?? "Server=(localdb)\\mssqllocaldb;Database=UnusedInTesting;Trusted_Connection=True;"));
 
 var app = builder.Build();
 
@@ -346,6 +437,8 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
+app.UseAuthentication();
+
 app.UseSession();
 
 app.UseAuthorization();
@@ -357,7 +450,66 @@ app.MapControllerRoute(
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    dbContext.Database.Migrate();
+
+    // Relational providers get migrations applied at startup (existing behavior).
+    // InMemory (tests / tooling) skips both migrate and seeding.
+    if (dbContext.Database.IsRelational())
+    {
+        dbContext.Database.Migrate();
+    }
+
+    // Identity bootstrap: roles + permission claims + first administrator.
+    // Idempotent - safe on every startup, never duplicates users/roles.
+    // Runs only on relational stores; can be disabled via configuration
+    // (Identity:SeedOnStartup=false) - the integration test host does this.
+    var seedOnStartup = dbContext.Database.IsRelational()
+        && builder.Configuration.GetValue<bool?>("Identity:SeedOnStartup") != false
+        && !args.Contains("--skip-seed");
+
+    if (seedOnStartup)
+    {
+        var seedOptions = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AdminSeedOptions>>().Value;
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+        var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+        var seedLogger = loggerFactory.CreateLogger("KaleContentOps.AdminSeeder");
+
+        var seedResult = AdminSeeder.SeedAsync(dbContext, userManager, roleManager, seedOptions).GetAwaiter().GetResult();
+
+        if (seedResult.Disabled)
+        {
+            seedLogger.LogInformation("Admin seeding disabled by configuration (InitialAdmin:Enabled=false).");
+        }
+        else if (seedResult.Errors.Count > 0)
+        {
+            foreach (var error in seedResult.Errors)
+            {
+                seedLogger.LogError("Admin seeding error: {Error}", error);
+            }
+        }
+        else
+        {
+            seedLogger.LogInformation(
+                "Admin seeding done. RolesCreated={RolesCreated} RolesPresent={RolesPresent} ClaimsAdded={ClaimsAdded} AdminCreated={AdminCreated} AdminAlreadyExists={AdminExists}",
+                seedResult.RolesCreated, seedResult.RolesAlreadyPresent, seedResult.RoleClaimsAdded, seedResult.AdminCreated, seedResult.AdminAlreadyExists);
+        }
+    }
+}
+
+// Helper used by the cookie auth redirect handlers above: a request is treated
+// as an API call when it posts a JSON body or does not ask for an HTML document.
+static bool IsApiRequest(HttpRequest request)
+{
+    var contentType = request.ContentType ?? string.Empty;
+    var semicolonIndex = contentType.IndexOf(';');
+    var mediaType = semicolonIndex >= 0 ? contentType[..semicolonIndex] : contentType;
+    if (string.Equals(mediaType.Trim(), "application/json", StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    var accept = request.Headers.Accept.ToString();
+    return !accept.Contains("text/html", StringComparison.OrdinalIgnoreCase);
 }
 
     // Development-only: details sync CLI

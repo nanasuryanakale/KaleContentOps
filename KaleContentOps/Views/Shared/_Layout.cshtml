@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/layout.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/auth-ui.css" asp-append-version="true" />
     @await RenderSectionAsync("Styles", required: false)
 </head>
 <body>
@@ -15,10 +16,18 @@
         <div class="topbar-left">
             <span class="app-title">KALE Content Ops</span>
         </div>
-        @* <div class="topbar-right">
-            <button class="btn btn-sm btn-outline-secondary">Share</button>
-            <button class="btn btn-sm btn-outline-secondary">Sign in</button>
-        </div> *@
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            var displayName = User.FindFirst(KaleContentOps.Security.AuthConstants.DisplayNameClaimType)?.Value;
+            if (string.IsNullOrWhiteSpace(displayName)) { displayName = User.Identity?.Name; }
+            <div class="topbar-right topbar-user">
+                <span class="topbar-username">@displayName</span>
+                <form asp-controller="Account" asp-action="Logout" method="post" class="topbar-logout-form">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-sm btn-outline-light topbar-logout">Logout</button>
+                </form>
+            </div>
+        }
     </div>
 
     @await Html.PartialAsync("_Sidebar")

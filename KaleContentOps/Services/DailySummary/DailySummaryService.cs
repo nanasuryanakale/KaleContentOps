@@ -1,4 +1,5 @@
 using KaleContentOps.Data;
+using KaleContentOps.Services.Targets;
 using KaleContentOps.ViewModels;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,12 +12,14 @@ public sealed class DailySummaryService : IDailySummaryService
     private const string AutoGmvCode = "AUTO_GMV_LIVE";
 
     private readonly AppDbContext _db;
-    private readonly DailySummaryTargetOptions _targets;
+    // Phase 6: the Menu Targets table (via ITargetService) is the single source of truth
+    // for targets - no appsettings/daily-summary target config, no duplicate versioning.
+    private readonly ITargetService _targetService;
 
-    public DailySummaryService(AppDbContext db, DailySummaryTargetOptions targets)
+    public DailySummaryService(AppDbContext db, ITargetService targetService)
     {
         _db = db;
-        _targets = targets;
+        _targetService = targetService;
     }
 
     public async Task<DailySummaryPageModel> BuildAsync(DailySummaryFilter filter, CancellationToken cancellationToken = default)
@@ -95,13 +98,27 @@ public sealed class DailySummaryService : IDailySummaryService
             .Select(offset => start.AddDays(offset))
             .ToList();
 
-        var rows = days.Select(day =>
+        // Phase 6: per-day targets resolved by the TargetService versioning rule
+        // (EffectiveFrom <= date <= EffectiveTo; never the current/latest version for
+        // historical dates; future versions never match before their EffectiveFrom).
+        // Weekly targets are derived to daily via WeeklyTarget / 7 (docs/daily-summary-spec.md
+        // sections 10 and 12). One bulk call for the whole range - no N+1.
+        var targetSeries = await _targetService.GetDailyTargetSeriesAsync(
+            DateOnly.FromDateTime(start), DateOnly.FromDateTime(end), cancellationToken);
+
+        var rows = days.Select((day, dayIndex) =>
         {
             var values = grouped.Where(x => x.Date == day)
                 .ToDictionary(x => x.ContentTypeId, x => new AggregatedValues(x.Count, x.TotalViews));
             var nonKk = GetValues(values, idByCode, NonKkCode);
             var kk = GetValues(values, idByCode, KkCode);
             var autoGmv = GetValues(values, idByCode, AutoGmvCode);
+            // Phase 6 UAT fix: per-content-type daily targets - each type's upload and
+            // views statuses compare against ITS OWN target version for this date.
+            var nonKkUploadTarget = targetSeries.NonKk.UploadByDayIndex(dayIndex);
+            var nonKkViewsTarget = targetSeries.NonKk.ViewsByDayIndex(dayIndex);
+            var kkUploadTarget = targetSeries.Kk.UploadByDayIndex(dayIndex);
+            var kkViewsTarget = targetSeries.Kk.ViewsByDayIndex(dayIndex);
 
             return new DailySummaryRowViewModel
             {
@@ -114,18 +131,22 @@ public sealed class DailySummaryService : IDailySummaryService
                 AutoGmvViews = autoGmv.Views,
                 TotalCount = nonKk.Count + kk.Count + (filter.IncludeAutoGmvInTotal ? autoGmv.Count : 0),
                 TotalViews = nonKk.Views + kk.Views + (filter.IncludeAutoGmvInTotal ? autoGmv.Views : 0),
-                NonKkContentStatus = GetStatus(nonKk.Count, _targets.NonKk.DailyContentTarget),
-                NonKkViewsStatus = GetStatus(nonKk.Views, _targets.NonKk.DailyViewsTarget),
-                KkContentStatus = GetStatus(kk.Count, _targets.KeranjangKuning.DailyContentTarget),
-                KkViewsStatus = GetStatus(kk.Views, _targets.KeranjangKuning.DailyViewsTarget)
-                ,
-                // Total status is derived from Non-KK + Keranjang Kuning targets (Auto GMV has no target)
+                NonKkContentStatus = GetStatus(nonKk.Count, nonKkUploadTarget),
+                NonKkViewsStatus = GetStatus(nonKk.Views, nonKkViewsTarget),
+                KkContentStatus = GetStatus(kk.Count, kkUploadTarget),
+                KkViewsStatus = GetStatus(kk.Views, kkViewsTarget),
+                // TOTAL status: actual includes Auto GMV per the existing toggle, but the target
+                // stays NON-KK + KK (Auto GMV has no target - spec sections 16/17).
                 TotalContentStatus = GetStatus(
                     nonKk.Count + kk.Count + (filter.IncludeAutoGmvInTotal ? autoGmv.Count : 0),
-                    _targets.NonKk.DailyContentTarget + _targets.KeranjangKuning.DailyContentTarget),
+                    nonKkUploadTarget + kkUploadTarget),
                 TotalViewsStatus = GetStatus(
                     nonKk.Views + kk.Views + (filter.IncludeAutoGmvInTotal ? autoGmv.Views : 0),
-                    _targets.NonKk.DailyViewsTarget + _targets.KeranjangKuning.DailyViewsTarget)
+                    nonKkViewsTarget + kkViewsTarget),
+                // Per-row daily targets: the client-side Include Auto GMV toggle re-evaluates the
+                // TOTAL status without a reload and must see the same targets the server used.
+                TotalContentTarget = nonKkUploadTarget + kkUploadTarget,
+                TotalViewsTarget = nonKkViewsTarget + kkViewsTarget
             };
         }).ToList();
 
@@ -156,7 +177,14 @@ public sealed class DailySummaryService : IDailySummaryService
             Percentage = totalContent == 0 ? 0 : Math.Round((decimal)summary.TotalCount / totalContent * 100, 2)
         }).ToList();
 
-        var targetAchievements = BuildTargetAchievements(summaries, days.Count);
+        // Pencapaian vs Target: per content type, the period target is the exact sum of
+        // that type's per-date weekly values / 7. With a single target version this equals
+        // DailyTarget * days (spec section 12); across an Effective Date change each day
+        // keeps its own version. Upload and Views come from the same per-type versions.
+        var targetAchievements = BuildTargetAchievements(
+            summaries,
+            targetSeries.NonKk,
+            targetSeries.Kk);
         return new DailySummaryPageModel
         {
             Data = new DailySummaryViewModel
@@ -169,10 +197,7 @@ public sealed class DailySummaryService : IDailySummaryService
                 IncludeAutoGmvInTotal = filter.IncludeAutoGmvInTotal,
                 ShowNonKkColumns = filter.ShowNonKkColumns,
                 ShowKkColumns = filter.ShowKkColumns,
-                ShowAutoGmvColumns = filter.ShowAutoGmvColumns,
-                // Expose total daily targets (sum of Non-KK and KK targets) for client-side status calculation
-                TotalDailyContentTarget = _targets.NonKk.DailyContentTarget + _targets.KeranjangKuning.DailyContentTarget,
-                TotalDailyViewsTarget = _targets.NonKk.DailyViewsTarget + _targets.KeranjangKuning.DailyViewsTarget
+                ShowAutoGmvColumns = filter.ShowAutoGmvColumns
             },
             TypeSummaries = summaries,
             Composition = composition,
@@ -185,22 +210,18 @@ public sealed class DailySummaryService : IDailySummaryService
 
     private List<DailySummaryTargetAchievement> BuildTargetAchievements(
         IReadOnlyCollection<DailySummaryContentTypeSummary> summaries,
-        int days)
+        DailyTargetSeries.PerTypeSeries nonKkTargets,
+        DailyTargetSeries.PerTypeSeries kkTargets)
     {
-        var targets = new[]
-        {
-            (Code: NonKkCode, Target: _targets.NonKk),
-            (Code: KkCode, Target: _targets.KeranjangKuning)
-        };
         var achievements = new List<DailySummaryTargetAchievement>();
-        foreach (var target in targets)
-        {
-            var summary = summaries.Single(x => x.Code == target.Code);
-            var contentTarget = target.Target.DailyContentTarget * days;
-            var viewsTarget = target.Target.DailyViewsTarget * days;
-            achievements.Add(CreateAchievement(target.Code, summary.Name, "Jumlah Konten", contentTarget, summary.TotalCount));
-            achievements.Add(CreateAchievement(target.Code, summary.Name, "Total Views", viewsTarget, summary.TotalViews));
-        }
+
+        var nonKkSummary = summaries.Single(x => x.Code == NonKkCode);
+        achievements.Add(CreateAchievement(NonKkCode, nonKkSummary.Name, "Jumlah Konten", nonKkTargets.UploadPeriodTarget, nonKkSummary.TotalCount));
+        achievements.Add(CreateAchievement(NonKkCode, nonKkSummary.Name, "Total Views", nonKkTargets.ViewsPeriodTarget, nonKkSummary.TotalViews));
+
+        var kkSummary = summaries.Single(x => x.Code == KkCode);
+        achievements.Add(CreateAchievement(KkCode, kkSummary.Name, "Jumlah Konten", kkTargets.UploadPeriodTarget, kkSummary.TotalCount));
+        achievements.Add(CreateAchievement(KkCode, kkSummary.Name, "Total Views", kkTargets.ViewsPeriodTarget, kkSummary.TotalViews));
 
         return achievements;
     }

@@ -99,10 +99,105 @@ public class ContentLogController : Controller
                 Comments = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Comments).FirstOrDefault(),
                 Shares = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Shares).FirstOrDefault(),
                 NewFollowers = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.NewFollowers).FirstOrDefault(),
+                // Latest-metric demographics JSON, parsed into display fields after materialization below
+                DemographicsJson = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.DemographicsJson).FirstOrDefault(),
+                // Commerce/attribute metrics (verified from actual TikTok response)
+                GmvAmount = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.GmvAmount).FirstOrDefault(),
+                GmvCurrency = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.GmvCurrency).FirstOrDefault(),
+                ItemsSold = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.ItemsSold).FirstOrDefault(),
+                SkuOrders = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.SkuOrders).FirstOrDefault(),
+                AvgCustomers = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.AvgCustomers).FirstOrDefault(),
+                ClickThroughRate = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.ClickThroughRate).FirstOrDefault(),
+                HashtagsJson = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.HashtagsJson).FirstOrDefault(),
+                ProductsJson = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.ProductsJson).FirstOrDefault(),
                 LatestMetricCapturedAt = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (DateTime?)m.CapturedAt).FirstOrDefault()
             })
             .AsNoTracking()
             .ToListAsync();
+
+        // Parse the latest metric's DemographicsJson into display fields (0..1 viewer shares).
+        // Done after materialization to keep the query translatable to SQL (no client-eval in projection).
+        foreach (var item in items)
+        {
+            if (!string.IsNullOrWhiteSpace(item.DemographicsJson))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(item.DemographicsJson);
+                    var root = doc.RootElement;
+
+                    static decimal? ReadPerc(System.Text.Json.JsonElement el, string key)
+                    {
+                        if (el.ValueKind != System.Text.Json.JsonValueKind.Object || !el.TryGetProperty(key, out var prop)) return null;
+                        if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDecimal(out var d)) return d;
+                        if (prop.ValueKind == System.Text.Json.JsonValueKind.String && decimal.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+                        return null;
+                    }
+
+                    item.Male = ReadPerc(root, "male");
+                    item.Female = ReadPerc(root, "female");
+                    item.NonGender = ReadPerc(root, "no_gender");
+
+                    if (root.TryGetProperty("ages", out var ages) && ages.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        item.Age18_24 = ReadPerc(ages, "18-24");
+                        item.Age25_34 = ReadPerc(ages, "25-34");
+                        item.Age35_44 = ReadPerc(ages, "35-44");
+                        item.Age45_54 = ReadPerc(ages, "45-54");
+                        item.Age55Plus = ReadPerc(ages, "55+");
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Corrupt/unknown demographics JSON: leave demographic fields null (UI shows "—")
+                }
+            }
+
+            // Hashtags: JSON array of strings
+            if (!string.IsNullOrWhiteSpace(item.HashtagsJson))
+            {
+                try
+                {
+                    using var tagsDoc = System.Text.Json.JsonDocument.Parse(item.HashtagsJson);
+                    if (tagsDoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        item.Hashtags = tagsDoc.RootElement.EnumerateArray()
+                            .Select(t => t.GetString())
+                            .Where(t => !string.IsNullOrWhiteSpace(t))
+                            .Select(t => t!)
+                            .ToList();
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // leave null
+                }
+            }
+
+            // Products: JSON array of { id, name }
+            if (!string.IsNullOrWhiteSpace(item.ProductsJson))
+            {
+                try
+                {
+                    using var prodDoc = System.Text.Json.JsonDocument.Parse(item.ProductsJson);
+                    if (prodDoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        item.Products = prodDoc.RootElement.EnumerateArray()
+                            .Where(p => p.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            .Select(p => new ContentLogProductItem
+                            {
+                                Id = p.TryGetProperty("id", out var pid) && pid.ValueKind == System.Text.Json.JsonValueKind.String ? pid.GetString() : null,
+                                Name = p.TryGetProperty("name", out var pname) && pname.ValueKind == System.Text.Json.JsonValueKind.String ? pname.GetString() : null
+                            })
+                            .ToList();
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // leave null
+                }
+            }
+        }
 
         var contentTypes = await _db.ContentTypes.Where(ct => ct.IsActive).OrderBy(ct => ct.Name).ToListAsync();
         var masterPics = await _db.MasterPics.Where(p => p.IsActive).OrderBy(p => p.Name).ToListAsync();

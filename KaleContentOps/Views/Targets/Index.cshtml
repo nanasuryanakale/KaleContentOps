@@ -1,0 +1,171 @@
+@{
+    ViewData["Title"] = "Targets";
+    // UI-level gate only: backend /targets/save re-checks the permission server-side.
+    var canEditTarget = User.HasClaim(KaleContentOps.Security.AuthConstants.PermissionClaimType, KaleContentOps.Security.AuthConstants.Permissions.TargetEdit);
+    // History gate (Phase 4b): the backend /targets/history enforces this server-side too.
+    var canViewHistory = User.HasClaim(KaleContentOps.Security.AuthConstants.PermissionClaimType, KaleContentOps.Security.AuthConstants.Permissions.TargetHistoryView);
+}
+<link rel="stylesheet" href="~/css/targets.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/calendar-popup.css" />
+<script>
+    // Exposed for targets.js: when false, target inputs render read-only.
+    window.targetsCanEdit = @canEditTarget.ToString().ToLowerInvariant();
+    // Exposed for targets.js: history section loads only when permitted.
+    window.targetsCanViewHistory = @canViewHistory.ToString().ToLowerInvariant();
+</script>
+
+<div class="targets-page">
+    <!-- Header -->
+    <div class="page-head">
+        <div>
+            <h1>Targets</h1>
+            <p class="page-subtitle">Master target mingguan per jenis konten - "actual" dihitung dari 7 hari terakhir di Daily Summary</p>
+        </div>
+    </div>
+
+    @if (!canEditTarget)
+    {
+        <div class="targets-readonly-note">Anda hanya memiliki akses lihat untuk Target.</div>
+    }
+
+    <!-- Effective Date (Berlaku Mulai) - versioning input for target saves -->
+    @if (canEditTarget)
+    {
+        <div class="targets-effective-bar">
+            <div class="effective-date-anchor">
+                <label for="effectiveDateInput">Berlaku Mulai</label>
+                <input type="text" id="effectiveDateInput" class="effective-date-input" placeholder="dd-mm-yyyy" readonly aria-haspopup="dialog" aria-expanded="false" />
+                <span class="effective-calendar-icon" aria-hidden="true">▾</span>
+                <!-- Popup kalender dibuat oleh calendar-popup.js (shared dengan Daily Summary) -->
+            </div>
+            <span class="effective-hint">Kosongkan untuk mengubah target hari ini. Isi tanggal masa depan untuk menjadwalkan target.</span>
+        </div>
+    }
+
+    <!-- Phase 5: Actual period (rolling 7 calendar days incl. today, shop timezone GMT+7).
+         Populated by targets.js from GET /targets/actuals (server-computed window). -->
+    <div class="targets-actual-bar" id="actualPeriodBar" hidden>
+        <span class="actual-period-label">ACTUAL 7 HARI TERAKHIR</span>
+        <span class="actual-period-range" id="actualPeriodRange"></span>
+        <span class="actual-period-tz" id="actualPeriodTz"></span>
+    </div>
+
+    <!-- Section 1: Target Upload / Jumlah Konten per Minggu -->
+    <div class="targets-section">
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">TARGET UPLOAD · JUMLAH KONTEN/MINGGU</h2>
+            </div>
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">JENIS KONTEN</th>
+                        <th class="col-target">TARGET UPLOAD/MINGGU</th>
+                        <th class="col-actual">ACTUAL (7 HARI TERAKHIR)</th>
+                        <th class="col-diff">SELISIH</th>
+                        <th class="col-status">STATUS</th>
+                    </tr>
+                </thead>
+                <tbody id="uploadTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 2: Target Views / Total Views per Minggu -->
+    <div class="targets-section">
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">TARGET VIEWS · TOTAL VIEWS/MINGGU</h2>
+            </div>
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">JENIS KONTEN</th>
+                        <th class="col-target">TARGET VIEWS/MINGGU</th>
+                        <th class="col-actual">ACTUAL (7 HARI TERAKHIR)</th>
+                        <th class="col-diff">SELISIH</th>
+                        <th class="col-status">STATUS</th>
+                    </tr>
+                </thead>
+                <tbody id="viewsTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 3: Scheduled (future) targets - not yet active -->
+    <div class="targets-section" id="scheduledSection" hidden>
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">TARGET TERJADWAL · BELUM BERLAKU</h2>
+            </div>
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">JENIS KONTEN</th>
+                        <th class="col-target">BERLAKU MULAI</th>
+                        <th class="col-actual">TARGET UPLOAD/MINGGU</th>
+                        <th class="col-diff">TARGET VIEWS/MINGGU</th>
+                        <th class="col-status">DIUBAH OLEH</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduledTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 4: Riwayat Perubahan Target (Target.History.View) -->
+    <div class="targets-section" id="historySection" hidden>
+        <div class="card-container">
+            <div class="card-header">
+                <h2 class="section-title">RIWAYAT PERUBAHAN TARGET</h2>
+            </div>
+            <div class="history-filter">
+                <label for="historyContentTypeSelect">Jenis konten</label>
+                <select id="historyContentTypeSelect" class="history-select"></select>
+            </div>
+            <table class="targets-table history-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">BERLAKU MULAI</th>
+                        <th class="col-target">TARGET UPLOAD</th>
+                        <th class="col-actual">TARGET VIEWS</th>
+                        <th class="col-diff">DIUBAH OLEH</th>
+                        <th class="col-status">DIUBAH PADA</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Footer Note -->
+    <!-- <div class="targets-footer">
+        <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" />
+            <path d="M12 8v4M12 16h0.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <p>
+            Kotak target di kedua tabel ini input berenan — coba ganti angkanya, status di kanan (hijau/merah) langsung update. 
+            Warna kuning-pucat + teks biru senagai disemain sama konvensi "sel input" di file Excel kamu, jadi familiar.
+        </p>
+    </div> -->
+
+    <!-- Toast Notification -->
+    <div id="saveToast" class="toast-notification" role="alert" aria-live="polite" aria-atomic="true">
+        Tersimpan
+    </div>
+
+    <!-- Hidden antiforgery token input -->
+    @Html.AntiForgeryToken()
+</div>
+
+<script src="~/js/calendar-popup.js"></script>
+<script src="~/js/targets.js" asp-append-version="true"></script>

@@ -1,0 +1,75 @@
+@model KaleContentOps.ViewModels.MasterRolesPageViewModel
+@using KaleContentOps.Security
+@{
+    ViewData["Title"] = "Master Role & Permission";
+    var canManagePerms = User.HasClaim(AuthConstants.PermissionClaimType, AuthConstants.Permissions.RolePermissionManage);
+}
+
+<link rel="stylesheet" href="~/css/admin.css" />
+
+<div class="content-page admin-page">
+    <header class="summary-header">
+        <div class="summary-title">
+            <h1>Master Role &amp; Permission</h1>
+            <p>Kelola permission per role. Permission tersimpan sebagai role claims pada AspNetRoleClaims (architecture existing).</p>
+        </div>
+    </header>
+
+    <div class="admin-roles-grid">
+        @foreach (var role in Model.Roles)
+        {
+            <section class="table-card admin-card role-card">
+                <div class="role-card-head">
+                    <div>
+                        <strong>@role.Name</strong>
+                        <small>@(string.IsNullOrWhiteSpace(role.Description) ? "Role bawaan aplikasi" : role.Description)</small>
+                        <small>@role.ActiveMemberCount user aktif</small>
+                    </div>
+                    @if (canManagePerms)
+                    {
+                        <button type="button" class="admin-action js-save-role" data-role-id="@role.Id" hidden>Simpan</button>
+                    }
+                </div>
+
+                <div class="role-perm-list" data-role-id="@role.Id">
+                    @foreach (var permission in Model.KnownPermissions)
+                    {
+                        var granted = role.Permissions.Contains(permission);
+                        <label class="role-perm">
+                            <input type="checkbox"
+                                   value="@permission"
+                                   checked="@granted"
+                                   disabled="@(!canManagePerms)" />
+                            <span class="perm-name">@permission</span>
+                        </label>
+                    }
+                </div>
+
+                @* Claims legacy (di luar registry) tetap ada di DB namun tidak diedit dari UI. *@
+                @if (role.Permissions.Except(Model.KnownPermissions).Any())
+                {
+                    <div class="role-legacy-note">
+                        <small>Claim legacy (tidak dikelola UI): @string.Join(", ", role.Permissions.Except(Model.KnownPermissions))</small>
+                    </div>
+                }
+            </section>
+        }
+    </div>
+
+    <div class="admin-save-bar" id="saveBar" hidden>
+        <span>Ada perubahan permission yang belum disimpan.</span>
+        <div>
+            <button type="button" class="button-secondary" id="discardPermChanges">Batalkan</button>
+            <button type="button" class="button-primary" id="savePermChanges">Simpan Perubahan</button>
+        </div>
+    </div>
+
+    @if (canManagePerms)
+    {
+        @Html.AntiForgeryToken()
+    }
+</div>
+
+@section Scripts {
+<script src="~/js/admin-roles.js"></script>
+}

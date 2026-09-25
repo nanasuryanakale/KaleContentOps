@@ -1,9 +1,15 @@
 ﻿using KaleContentOps.Models;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace KaleContentOps.Data;
 
-public class AppDbContext : DbContext
+/// <summary>
+/// Application DbContext. Inherits the ASP.NET Core Identity schema
+/// (users/roles/claims/logins) with custom ApplicationUser/ApplicationRole;
+/// all pre-existing business entities are unchanged.
+/// </summary>
+public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, string>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options)
         : base(options)
@@ -15,12 +21,17 @@ public class AppDbContext : DbContext
     public DbSet<MasterPic> MasterPics => Set<MasterPic>();
     public DbSet<ContentType> ContentTypes => Set<ContentType>();
     public DbSet<ProductionMethod> ProductionMethods => Set<ProductionMethod>();
+    public DbSet<Target> Targets => Set<Target>();
     public DbSet<TikTokShop> TikTokShops => Set<TikTokShop>();
     public DbSet<TikTokCredential> TikTokCredentials => Set<TikTokCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // Target (Menu Targets, Phase 1): configuration class keeps the Target mapping
+        // self-contained; existing entities keep their inline configuration below.
+        modelBuilder.ApplyConfiguration(new TargetConfiguration());
 
         // ContentLog: ensure uniqueness per shop + video
         modelBuilder.Entity<ContentLog>()
@@ -73,6 +84,20 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ContentMetric>()
             .Property(x => x.FullWatchRate)
             .HasPrecision(18, 2);
+
+        // Commerce metrics (verified from actual TikTok response)
+        modelBuilder.Entity<ContentMetric>()
+            .Property(x => x.GmvAmount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ContentMetric>()
+            .Property(x => x.AvgCustomers)
+            .HasPrecision(18, 2);
+
+        // 0..1 rate with 4+ source decimals (e.g. "0.0533") -> 6 to preserve source precision
+        modelBuilder.Entity<ContentMetric>()
+            .Property(x => x.ClickThroughRate)
+            .HasPrecision(18, 6);
 
         // Seed ContentType
         modelBuilder.Entity<ContentType>().HasData(

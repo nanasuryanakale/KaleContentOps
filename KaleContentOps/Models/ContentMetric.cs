@@ -24,6 +24,28 @@ public class ContentMetric
 
     public string? DemographicsJson { get; set; }
 
+    // Commerce/attribute metrics verified from actual shop video performance response
+    // (App_Data/tiktok-api-sample.json -> data.videos[])
+    public decimal? GmvAmount { get; set; }
+
+    [System.ComponentModel.DataAnnotations.MaxLength(10)]
+    public string? GmvCurrency { get; set; }
+
+    public long? ItemsSold { get; set; }
+
+    public long? SkuOrders { get; set; }
+
+    public decimal? AvgCustomers { get; set; }
+
+    // Stored as a 0..1 rate, same convention as FullWatchRate (source "0.0533" = 5.33%)
+    public decimal? ClickThroughRate { get; set; }
+
+    // JSON array of strings, e.g. ["kaos","kaospria"]
+    public string? HashtagsJson { get; set; }
+
+    // JSON array of { id, name } objects
+    public string? ProductsJson { get; set; }
+
     public DateTime? MetricStartDate { get; set; }
 
     public DateTime? MetricEndDate { get; set; }
