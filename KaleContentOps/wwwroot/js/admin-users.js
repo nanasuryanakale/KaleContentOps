@@ -23,6 +23,9 @@
     const newPasswordField = document.getElementById('newPasswordField');
     const fActive = document.getElementById('fActive');
     const submitBtn = document.getElementById('submitUserModal');
+    // Page-level error box (outside the modal) for table actions such as
+    // Nonaktifkan/Aktifkan - the modal error box is invisible while the modal is closed.
+    const actionError = document.getElementById('userActionError');
 
     let mode = 'create';
     let editingUserId = null;
@@ -87,6 +90,13 @@
         errorBox.hidden = false;
     }
 
+    function showActionError(message) {
+        if (!actionError) return; // view-only render never shows action buttons
+        actionError.textContent = message;
+        actionError.hidden = false;
+        actionError.scrollIntoView({ block: 'nearest' });
+    }
+
     async function postJson(url, payload) {
         const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
         const response = await fetch(url, {
@@ -140,7 +150,9 @@
             if (result.success) {
                 window.location.reload();
             } else {
-                showError((result.errors || ['Gagal menyimpan']).join(' '));
+                const message = (result.errors || ['Gagal menyimpan']).join(' ');
+                showError(message);       // in-modal feedback (existing pattern)
+                showActionError(message); // visible even if the modal is closed (e.g. LAST_ADMIN rejection)
             }
         } finally {
             submitBtn.disabled = false;
@@ -170,7 +182,10 @@
             if (result.success) {
                 window.location.reload();
             } else {
-                showError((result.errors || ['Gagal']).join(' '));
+                // The modal is closed for table actions - surface the backend
+                // rejection on the page itself so the user actually sees it
+                // (e.g. LAST_ADMIN safeguard, row state stays unchanged).
+                showActionError((result.errors || ['Gagal']).join(' '));
             }
         });
     });

@@ -558,6 +558,135 @@ public class AdminRolePermissionIntegrationTests : IDisposable
         Assert.True(deactivateSecond.GetProperty("success").GetBoolean(), deactivateSecond.GetRawText());
     }
 
+    /// <summary>
+    /// Counts ACTIVE Administrator members in this factory's isolated store - used to
+    /// assert the "at least one active Administrator remains" invariant end-to-end.
+    /// </summary>
+    private async Task<int> CountActiveAdministratorsAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+        var adminRole = await roleManager.FindByNameAsync(AuthConstants.Roles.Administrator);
+        if (adminRole is null) return 0;
+        return await (from u in db.Users
+                      where u.IsActive
+                      join ur in db.UserRoles on u.Id equals ur.UserId
+                      where ur.RoleId == adminRole.Id
+                      select u.Id).Distinct().CountAsync();
+    }
+
+    // ------------------------------------------------------------------
+    // Scenario H: LAST_ADMIN rejection must surface the UAT message to the
+    // UI (JS renders result.errors verbatim) and the row state must not change.
+    // ------------------------------------------------------------------
+
+    private const string LastAdminExpectedMessage =
+        "Operasi ditolak: harus tetap ada minimal satu user Administrator aktif.";
+
+    [Fact]
+    public async Task LastAdministrator_Rejection_ReturnsUiMessage_AndLeavesStateUnchanged()
+    {
+        // Isolated store: this admin is the ONLY user (created inside SignInAdminAsync).
+        var (client, token) = await SignInAdminAsync("reject.solo.admin");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByNameAsync("reject.solo.admin");
+            Assert.NotNull(user);
+
+            // Test A: disable the sole Administrator -> rejected with the UAT message.
+            var deactivate = await PostJsonAsync(client, "/Admin/Users/SetActive",
+                new { userId = user!.Id, isActive = false }, token);
+            Assert.False(deactivate.GetProperty("success").GetBoolean()); // no false success for the UI
+            Assert.Equal("LAST_ADMIN", deactivate.GetProperty("errorCode").GetString());
+            Assert.Equal(LastAdminExpectedMessage, deactivate.GetProperty("errors")[0].GetString());
+
+            // UI contract: JS renders errors[0] verbatim -> message reaches the user.
+            Assert.True(deactivate.GetProperty("errors").GetArrayLength() > 0);
+
+            // User stays Active after the rejected deactivation.
+            var afterDeactivate = await userManager.FindByNameAsync("reject.solo.admin");
+            Assert.True(afterDeactivate!.IsActive);
+
+            // Materialize the Manager role (demotion target) via an extra user.
+            await _factory.CreateRoleUserAsync("reject.manager.ref", AuthConstants.Roles.Manager, AdminPassword);
+
+            // Test B: change the sole Administrator's role -> rejected with the same message.
+            var demote = await PostJsonAsync(client, "/Admin/Users/Update", new
+            {
+                userId = user.Id,
+                roleName = AuthConstants.Roles.Manager,
+                isActive = true
+            }, token);
+            Assert.False(demote.GetProperty("success").GetBoolean());
+            Assert.Equal("LAST_ADMIN", demote.GetProperty("errorCode").GetString());
+            Assert.Equal(LastAdminExpectedMessage, demote.GetProperty("errors")[0].GetString());
+
+            // User keeps the Administrator role after the rejected role change.
+            var afterDemote = await userManager.FindByNameAsync("reject.solo.admin");
+            Assert.True(await userManager.IsInRoleAsync(afterDemote!, AuthConstants.Roles.Administrator));
+            Assert.False(await userManager.IsInRoleAsync(afterDemote!, AuthConstants.Roles.Manager));
+            Assert.True(afterDemote!.IsActive);
+        }
+
+        // Invariant: exactly one active Administrator remains (the acting one).
+        Assert.Equal(1, await CountActiveAdministratorsAsync());
+    }
+
+    [Fact]
+    public async Task SecondAdministrator_CanBeDeactivatedAndDemoted_WhileOneActiveRemains()
+    {
+        var (client, token) = await SignInAdminAsync("dual.admin");
+        var secondUserId = await _factory.CreateRoleUserAsync("dual.admin2", AuthConstants.Roles.Administrator, AdminPassword);
+        await _factory.CreateRoleUserAsync("dual.manager.ref", AuthConstants.Roles.Manager, AdminPassword);
+
+        // Two active administrators -> deactivating one is allowed by the existing rule.
+        var deactivate = await PostJsonAsync(client, "/Admin/Users/SetActive",
+            new { userId = secondUserId, isActive = false }, token);
+        Assert.True(deactivate.GetProperty("success").GetBoolean(), deactivate.GetRawText());
+        Assert.Equal(1, await CountActiveAdministratorsAsync());
+
+        // Reactivate, then demote the second administrator - still allowed.
+        var reactivate = await PostJsonAsync(client, "/Admin/Users/SetActive",
+            new { userId = secondUserId, isActive = true }, token);
+        Assert.True(reactivate.GetProperty("success").GetBoolean(), reactivate.GetRawText());
+        Assert.Equal(2, await CountActiveAdministratorsAsync());
+
+        var demote = await PostJsonAsync(client, "/Admin/Users/Update", new
+        {
+            userId = secondUserId,
+            roleName = AuthConstants.Roles.Manager,
+            isActive = true
+        }, token);
+        Assert.True(demote.GetProperty("success").GetBoolean(), demote.GetRawText());
+
+        // Exactly one active Administrator (dual.admin) remains - never zero.
+        Assert.Equal(1, await CountActiveAdministratorsAsync());
+    }
+
+    [Fact]
+    public async Task MasterUserPage_RendersPageLevelErrorBox_ForBackendRejections()
+    {
+        // UI contract for Scenario H: backend rejections are displayed on the page
+        // itself (the modal error box is invisible while the modal is closed).
+        var (client, _) = await SignInAdminAsync("uibox.admin");
+        var html = await (await client.GetAsync("/Admin/Users")).Content.ReadAsStringAsync();
+
+        Assert.Contains("id=\"userActionError\"", html);       // page-level error box for table actions
+        Assert.Contains("admin-error", html);                  // existing error styling - no new framework
+        Assert.Contains("js/admin-users.js", html);             // script that surfaces result.errors
+
+        // UAT placement requirement: the error box renders ABOVE the Master User table -
+        // after the page header/toolbar (+ User Baru), before the table markup.
+        var toolbarIndex = html.IndexOf("id=\"btnNewUser\"", StringComparison.Ordinal);
+        var errorBoxIndex = html.IndexOf("id=\"userActionError\"", StringComparison.Ordinal);
+        var tableIndex = html.IndexOf("<table class=\"admin-table\"", StringComparison.Ordinal);
+        Assert.True(toolbarIndex >= 0 && errorBoxIndex > toolbarIndex && tableIndex > errorBoxIndex,
+            $"Expected UI order header -> error box -> table (toolbar={toolbarIndex}, errorBox={errorBoxIndex}, table={tableIndex}).");
+    }
+
     [Fact]
     public async Task AdministratorRole_CannotLoseUserManage_WhenNoOtherHolderExists()
     {

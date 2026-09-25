@@ -289,7 +289,7 @@ public sealed class AdminUserAccessService
         {
             return AdminOperationResult.Fail(
                 "LAST_ADMIN",
-                "Operasi ditolak: tidak boleh menonaktifkan satu-satunya Administrator aktif.");
+                "Operasi ditolak: harus tetap ada minimal satu user Administrator aktif.");
         }
 
         user.IsActive = isActive;

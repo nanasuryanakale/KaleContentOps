@@ -21,6 +21,13 @@
         }
     </header>
 
+    @* Visible page-level feedback for table actions (e.g. deactivation rejected by the
+       last-admin safeguard). Reuses the existing .admin-error style - no new framework. *@
+    @if (canManage)
+    {
+        <div class="admin-error" id="userActionError" hidden></div>
+    }
+
     <section class="table-card admin-card">
         <div class="table-scroll">
             <table class="admin-table" id="usersTable">
