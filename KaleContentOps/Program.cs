@@ -5,6 +5,7 @@ using KaleContentOps.Models;
 using KaleContentOps.Services.TikTok;
 using KaleContentOps.Services;
 using KaleContentOps.Services.DailySummary;
+using KaleContentOps.Services.WinningContent;
 using KaleContentOps.Services.Targets;
 using KaleContentOps.Security;
 using System.IO;
@@ -120,6 +121,8 @@ builder.Services.Configure<TikTokOptions>(builder.Configuration.GetSection("TikT
 builder.Services.Configure<ShopTimeZoneOptions>(builder.Configuration.GetSection(ShopTimeZoneOptions.SectionName));
 builder.Services.AddSingleton<IShopTimeZone, ShopTimeZone>();
 builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
+// Winning Content Phase 2A: backend data foundation (no UI yet)
+builder.Services.AddScoped<IWinningContentService, WinningContentService>();
 // Menu Targets persistence (versioned weekly targets for NON_KK / KK)
 builder.Services.AddScoped<ITargetService, TargetService>();
 

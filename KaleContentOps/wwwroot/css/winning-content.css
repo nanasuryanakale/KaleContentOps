@@ -1,0 +1,288 @@
+/*
+ * Winning Content page styles - Phase 3B (Leaderboard UI).
+ * EVERY selector is scoped under .winning-content-page so no other page is affected.
+ * Uses the application's existing visual language (dark panels, category colors).
+ * Below Median / Composition get their dedicated visual pass in later phases.
+ */
+
+.winning-content-page {
+    --wc-panel: #121824;
+    --wc-panel-2: #172038;
+    --wc-border: #2a3447;
+    --wc-border-soft: #232d40;
+    --wc-text: #f4f7ff;
+    --wc-muted: #8791aa;
+    --wc-blue: #78a6ff;
+    --wc-blue-bg: #182f57;
+    --wc-yellow: #f3b91f;
+    --wc-yellow-bg: #3a2d08;
+    --wc-purple: #b39bd7;
+    --wc-purple-bg: #2a2038;
+    --wc-radius: 11px;
+    color: var(--wc-text);
+}
+
+/* ============ Header (structure only - dedicated pass comes later) ============ */
+.winning-content-page .wc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.winning-content-page .wc-title h1 { margin: 0 0 4px; font-size: 23px; font-weight: 700; letter-spacing: -.3px; }
+.winning-content-page .wc-title p { margin: 0; font-size: 12px; color: var(--wc-muted); }
+
+.winning-content-page .wc-date-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.winning-content-page .wc-date-range label { font-size: 12px; color: var(--wc-muted); }
+.winning-content-page .wc-date-range input[type="date"] {
+    height: 36px;
+    background: #151b29;
+    border: 1px solid #2d374b;
+    border-radius: 9px;
+    color: #e7ecf7;
+    padding: 0 10px;
+}
+.winning-content-page .wc-apply-button {
+    height: 36px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 8px;
+    background: #6f90f7;
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/* ============ Sections ============ */
+.winning-content-page .wc-section { margin-bottom: 26px; }
+.winning-content-page .wc-section h2 { margin: 0 0 2px; font-size: 17px; font-weight: 700; }
+.winning-content-page .wc-section-note { margin: 0 0 12px; font-size: 12px; color: var(--wc-muted); }
+
+/* ============ Leaderboard grid: one independent card per category ============ */
+.winning-content-page .wc-leaderboards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+}
+/* Keep three equal columns on wide screens, wrap on narrower desktop/tablet widths. */
+@media (min-width: 1100px) {
+    .winning-content-page .wc-leaderboards { grid-template-columns: repeat(3, 1fr); }
+}
+/* The section wrapper carries the heading; the grid lives on the cards container. */
+.winning-content-page section.wc-leaderboards { display: block; }
+.winning-content-page .wc-leaderboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+}
+@media (min-width: 1100px) {
+    .winning-content-page .wc-leaderboard-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ============ Leaderboard card ============ */
+.winning-content-page .wc-card {
+    background: var(--wc-panel);
+    border: 1px solid var(--wc-border);
+    border-radius: var(--wc-radius);
+    padding: 14px 14px 12px;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, .12);
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.winning-content-page .wc-leaderboard-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.winning-content-page .wc-leaderboard-title { font-size: 13.5px; font-weight: 700; margin: 0; }
+.winning-content-page .wc-leaderboard-sub { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--wc-muted); text-transform: uppercase; white-space: nowrap; }
+
+/* Category accents (existing application category colors) */
+.winning-content-page .type-nonkk .wc-leaderboard-title { color: var(--wc-blue); }
+.winning-content-page .type-kk .wc-leaderboard-title { color: var(--wc-yellow); }
+.winning-content-page .type-autogmv .wc-leaderboard-title { color: var(--wc-purple); }
+.winning-content-page .type-nonkk { border-top: 2px solid var(--wc-blue); }
+.winning-content-page .type-kk { border-top: 2px solid var(--wc-yellow); }
+.winning-content-page .type-autogmv { border-top: 2px solid var(--wc-purple); }
+
+/* ============ Rank list ============ */
+.winning-content-page .wc-rank-list { list-style: none; margin: 0; padding: 0; }
+
+.winning-content-page .wc-rank-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+        "rank info metrics"
+        "rank link  metrics";
+    align-items: center;
+    column-gap: 11px;
+    row-gap: 2px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--wc-border-soft);
+}
+.winning-content-page .wc-rank-item:last-child { border-bottom: 0; }
+
+.winning-content-page .wc-rank {
+    grid-area: rank;
+    align-self: center;
+    min-width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    background: var(--wc-panel-2);
+    border: 1px solid var(--wc-border);
+    color: var(--wc-text);
+}
+/* Rank prominence: #1 strongest, then #2, #3 - consistent with leaderboard semantics. */
+.winning-content-page .wc-rank-1 { background: #6f90f7; border-color: #7ea0ff; color: #fff; }
+.winning-content-page .wc-rank-2 { background: #33518f; border-color: #41649f; color: #eaf1ff; }
+.winning-content-page .wc-rank-3 { background: var(--wc-panel-2); border-color: #46557a; color: #dbe4f7; }
+
+.winning-content-page .wc-rank-info { grid-area: info; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.winning-content-page .wc-rank-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #e9eefb;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.winning-content-page .wc-rank-meta { font-size: 11px; color: var(--wc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Primary metric emphasis: ER leads, multiplier/baseline are supporting. */
+.winning-content-page .wc-rank-metrics {
+    grid-area: metrics;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    text-align: right;
+}
+.winning-content-page .wc-er { font-size: 14px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-er-support { font-size: 10.5px; color: var(--wc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.winning-content-page .wc-rank-link {
+    grid-area: link;
+    justify-self: start;
+    font-size: 11px;
+    color: #8cb0ff;
+    text-decoration: underline;
+}
+.winning-content-page .wc-rank-link:hover { color: #b3ccff; }
+
+.winning-content-page .wc-card-foot {
+    margin: 10px 4px 0;
+    padding-top: 9px;
+    border-top: 1px solid var(--wc-border-soft);
+    font-size: 11px;
+    color: var(--wc-muted);
+}
+.winning-content-page .wc-card-foot strong { color: #cfe0ff; font-variant-numeric: tabular-nums; }
+
+/* ============ Empty states (leaderboard) ============ */
+.winning-content-page .wc-empty { margin: 8px 4px 4px; font-size: 12px; color: var(--wc-muted); }
+
+/* ============ Section 2 - Distribusi di Bawah Median (Phase 3C) ============ */
+.winning-content-page .wc-below-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+}
+@media (min-width: 1100px) {
+    .winning-content-page .wc-below-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Same card language as the leaderboard (Phase 3B) so both sections read as one page. */
+.winning-content-page .wc-below-group {
+    border-top: 2px solid var(--wc-border);
+    display: flex;
+    flex-direction: column;
+}
+.winning-content-page .wc-below-group.type-nonkk { border-top-color: var(--wc-blue); }
+.winning-content-page .wc-below-group.type-kk { border-top-color: var(--wc-yellow); }
+.winning-content-page .wc-below-group.type-autogmv { border-top-color: var(--wc-purple); }
+
+.winning-content-page .wc-below-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.winning-content-page .wc-below-title { margin: 0; font-size: 13.5px; font-weight: 700; min-width: 0; }
+.winning-content-page .type-nonkk .wc-below-title { color: var(--wc-blue); }
+.winning-content-page .type-kk .wc-below-title { color: var(--wc-yellow); }
+.winning-content-page .type-autogmv .wc-below-title { color: var(--wc-purple); }
+
+/* Median reference: prominent, per category, straight from the backend value. */
+.winning-content-page .wc-below-median-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 4px 9px;
+    border: 1px solid var(--wc-border);
+    border-radius: 14px;
+    background: var(--wc-panel-2);
+    font-size: 11px;
+    color: #c3c9d8;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.winning-content-page .wc-below-median-badge strong { color: #fff; font-size: 12px; }
+.winning-content-page .wc-below-median-badge small { color: var(--wc-muted); font-size: 10px; }
+
+/* Rows: Views is the PRIMARY metric of this section (strongest emphasis). */
+.winning-content-page .wc-below-list { list-style: none; margin: 0; padding: 0; }
+.winning-content-page .wc-below-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    column-gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--wc-border-soft);
+}
+.winning-content-page .wc-below-item:last-child { border-bottom: 0; }
+
+.winning-content-page .wc-below-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.winning-content-page .wc-below-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #e9eefb;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.winning-content-page .wc-below-meta { font-size: 11px; color: var(--wc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.winning-content-page .wc-below-views {
+    font-size: 14px;
+    font-weight: 800;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.winning-content-page .wc-below-views small { font-size: 10px; font-weight: 600; color: var(--wc-muted); }
+
+.winning-content-page .wc-below-link { font-size: 11px; color: #8cb0ff; text-decoration: underline; }
+.winning-content-page .wc-below-link:hover { color: #b3ccff; }
+
+.winning-content-page .wc-composition-summary { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #c3c9d8; }
+.winning-content-page .wc-comp-chip { padding: 6px 10px; border: 1px solid var(--wc-border); border-radius: 16px; background: var(--wc-panel); font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-comp-chip strong { color: #fff; }
+
+.winning-content-page .wc-table-wrap { background: var(--wc-panel); border: 1px solid var(--wc-border); border-radius: var(--wc-radius); overflow: auto; }
+.winning-content-page .wc-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.winning-content-page .wc-table th, .winning-content-page .wc-table td { padding: 9px 10px; border-bottom: 1px solid #263043; white-space: nowrap; text-align: left; }
+.winning-content-page .wc-table th { color: #8ea6df; font-size: 11px; letter-spacing: .3px; }

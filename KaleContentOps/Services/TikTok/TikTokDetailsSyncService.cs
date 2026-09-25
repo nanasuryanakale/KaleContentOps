@@ -26,9 +26,7 @@ public class TikTokDetailsSyncService
     // Process a batch of content logs for a given shop. Limit controls number of videos processed.
     public async Task<int> RunDetailsSyncAsync(string shopCipher, int limit = 10, int skip = 0, CancellationToken cancellationToken = default)
     {
-        // Select candidate ContentLogs: have VideoId, prefer missing metrics or stale metrics.
-        var threshold = DateTime.UtcNow.AddDays(-1); // consider older than 1 day stale
-
+        // Select candidate ContentLogs: have VideoId, prefer missing metrics or not-yet-enriched metrics.
         var query = _db.ContentLogs
             .AsNoTracking()
             .Where(cl => cl.TikTokShop != null && cl.TikTokShop.ShopCipher == shopCipher && !string.IsNullOrEmpty(cl.VideoId));
@@ -181,6 +179,12 @@ public class TikTokDetailsSyncService
                 {
                     _logger.LogWarning("Details sync: TikTok returned 429 for shop {ShopCipher}, stopping details sync run.", shopCipher);
                     break; // stop the batch run to avoid further throttle
+                }
+                else if (res.StatusCode == 200)
+                {
+                    // HTTP 200 but no data: TikTok business error (e.g. code 36009002 after retry
+                    // exhaustion returns Data = null; video deleted/private returns empty data).
+                    _logger.LogWarning("Details sync: business error (no data) for video {VideoId}", videoId);
                 }
                 else
                 {
