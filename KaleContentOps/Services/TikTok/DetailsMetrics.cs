@@ -54,7 +54,15 @@ public class DetailsMetrics
     public string? Age45Path { get; set; }
 
     public decimal? Age55 { get; set; }
+
     public string? Age55Path { get; set; }
+
+    // Country demographics from country_distribution[] of the first VIEWERS profile.
+    // Key = ISO country code (blank codes skipped), value = viewer share 0..1 as returned by the API.
+    // Null when the VIEWERS profile has no parseable country_distribution entries.
+    public Dictionary<string, decimal?>? Countries { get; set; }
+
+    public string? CountriesPath { get; set; }
 
     // Fields not present will have null value and null path
 }

@@ -96,6 +96,60 @@
         var below = group?.Entries.Count ?? 0;
         return total == 0 ? Dash() : Math.Round(below * 100m / total, 0, MidpointRounding.AwayFromZero).ToString("0", Inv) + "%";
     }
+
+    // ============================================================
+    // Phase C additions (Features 2-5): display-only formatting of
+    // backend values - every number comes from WinningContentData
+    // .ProductionBreakdown / .Funnel / .Audience (no UI analytics).
+    // ============================================================
+    string Pct1(object? p) => p is decimal d ? d.ToString("0.0", Inv) + "%" : Dash();
+    string Pts(object? d) => d is decimal v ? v.ToString("+0.0;-0.0;0.0", Inv) + " pts" : Dash();
+    string AvgPerVideo(object? v) => v is decimal d ? d.ToString("N0", IdCulture) : Dash();
+    string BarWidth(decimal? pct) => pct is null ? "0%" : Math.Clamp(pct.Value, 0m, 100m).ToString("0.#", Inv) + "%";
+    string PctExact(decimal? p) => p is null ? Dash() : p.Value.ToString("0.##", Inv) + "%";
+
+    // Feature 2/3: AI Produce vs Self Produce rows (locked order AI first, no new methods).
+    var aiMethod = Model.ProductionBreakdown.Methods.FirstOrDefault(m => m.Code == "AI_PRODUCE")
+        ?? new WinningContentProductionMethodStats { Code = "AI_PRODUCE", Label = "AI Produce" };
+    var selfMethod = Model.ProductionBreakdown.Methods.FirstOrDefault(m => m.Code == "SELF_PRODUCE")
+        ?? new WinningContentProductionMethodStats { Code = "SELF_PRODUCE", Label = "Self Produce" };
+    var pmTotal = aiMethod.TotalCount + selfMethod.TotalCount;
+    decimal? aiPct = pmTotal == 0 ? null : aiMethod.TotalCount * 100m / pmTotal;
+
+    // Feature 3 donut: conic-gradient (two-slot composition) from the EXACT backend
+    // ratio; the empty state draws the neutral track only (never a fabricated split).
+    string PmGradient() => pmTotal == 0
+        ? "conic-gradient(#232d40 0% 100%)"
+        : aiPct >= 100m
+            ? "conic-gradient(var(--wc-blue) 0% 100%)"
+            : $"conic-gradient(var(--wc-blue) 0% {aiPct!.Value.ToString("0.##", Inv)}%, #8a94a8 {aiPct.Value.ToString("0.##", Inv)}% 100%)";
+
+    // Feature 4 funnel captions: percentage of views + honest per-video averages.
+    string FunnelCaption(decimal? pct, decimal? avgPerVideo)
+    {
+        var parts = new List<string>();
+        if (pct != null) parts.Add(Pct1(pct) + " dari views");
+        if (avgPerVideo != null) parts.Add(AvgPerVideo(avgPerVideo) + " avg/video");
+        return parts.Count == 0 ? Dash() : string.Join(" \u00b7 ", parts);
+    }
+
+    var funnelStages = new[]
+    {
+        (Label: "Views", Pct: Model.Funnel.ViewsPercent,
+         Fill: Model.Funnel.AverageViewsPerVideo == null ? (decimal?)null : 100m,
+         Caption: Model.Funnel.AverageViewsPerVideo == null ? Dash() : AvgPerVideo(Model.Funnel.AverageViewsPerVideo) + " avg/video"),
+        (Label: "Reach", Pct: Model.Funnel.ReachPercent, Fill: Model.Funnel.ReachPercent,
+         Caption: FunnelCaption(Model.Funnel.ReachPercent, Model.Funnel.AverageReachPerVideo)),
+        (Label: "Engagement", Pct: Model.Funnel.EngagementPercent, Fill: Model.Funnel.EngagementPercent,
+         Caption: FunnelCaption(Model.Funnel.EngagementPercent, Model.Funnel.AverageEngagementPerVideo))
+    };
+
+    // Feature 5 period labels (mockup pattern: "7 Agu-5 Sep 2026 vs 8 Jul-6 Agu 2026").
+    // The previous window is the EXISTING baseline window [start - 30d, start).
+    string PeriodLabel(DateTime periodStart, DateTime periodEndInclusive) =>
+        $"{periodStart.ToString("d MMM", IdCulture)}\u2013{periodEndInclusive.ToString("d MMM yyyy", IdCulture)}";
+    var audienceCurrentLabel = PeriodLabel(Model.StartDate, Model.EndDate);
+    var audiencePreviousLabel = PeriodLabel(Model.Audience.PreviousStart, Model.Audience.PreviousEndExclusive.AddDays(-1));
 }
 
 <link rel="stylesheet" href="~/css/winning-content.css" />
@@ -269,6 +323,8 @@
         <p class="wc-section-note">Median itu angka &ldquo;tengah&rdquo; &mdash; kalau semua video jenis yang sama diurutin dari views paling kecil ke paling besar, median adalah angka yang persis di tengah urutan itu. Bedanya sama rata-rata (average): rata-rata gampang keseret tinggi kalau ada 1-2 video yang viral banget, sedangkan median nggak kepengaruhi sama outlier kaya gitu &mdash; jadi lebih jujur buat nunjukkin performa yang &ldquo;typical&rdquo;. &ldquo;Di bawah median&rdquo; di bawah ini artinya video itu views-nya di bawah angka tengah tadi, dibandingin video lain yang jenis kontennya sama. Di volume posting seperti sekarang, sebagian besar konten memang wajar nggak seperform yang paling viral &mdash; ini bukan tanda gagal, cuma gimana algoritma kerja. Yang penting adalah pola: tipe konten apa dan cara produksi apa yang paling banyak nongol di pool &ldquo;di bawah median&rdquo; jenisnya, biar bisa ditarik kesimpulan, bukan cuma lihat 3 video terjelek.</p>
 
         <div class="wc-card wc-below-panel">
+            <div class="wc-below-tables">
+            <div class="wc-below-col">
             <table class="wc-below-summary">
                 <thead>
                     <tr>
@@ -291,6 +347,38 @@
                     }
                 </tbody>
             </table>
+            </div>
+
+            <!-- Feature 2: Cara Produksi dimension (existing ProductionMethod, no new methods).
+                 Median rule untouched: BelowMedianCount reuses the backend strict < median groups. -->
+            <div class="wc-below-col">
+                <table class="wc-below-summary wc-method-table">
+                    <thead>
+                        <tr>
+                            <th class="wc-col-video">Cara Produksi</th>
+                            <th class="wc-col-num">Di Bawah Median</th>
+                            <th class="wc-col-num">Total Konten</th>
+                            <th class="wc-col-num">% Di Bawah Median</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var method in Model.ProductionBreakdown.Methods)
+                        {
+                            <tr class="wc-method-row">
+                                <td class="wc-col-video">
+                                    <span class="wc-method-name">
+                                        <span class="wc-dot pm-dot @(method.Code == "AI_PRODUCE" ? "pm-ai" : "pm-self")" aria-hidden="true"></span>@method.Label
+                                    </span>
+                                </td>
+                                <td class="wc-col-num wc-num-strong">@Count(method.BelowMedianCount)</td>
+                                <td class="wc-col-num">@Count(method.TotalCount)</td>
+                                <td class="wc-col-num wc-num-strong">@(method.TotalCount == 0 || method.BelowMedianPercentage == null ? Dash() : Math.Round(method.BelowMedianPercentage.Value, 0, MidpointRounding.AwayFromZero).ToString("0", Inv) + "%")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            </div>
 
             @{
                 var nullMedianTypes = typeCodes
@@ -342,9 +430,11 @@
         <h2>3. Komposisi Konten</h2>
         <p class="wc-section-note">Proporsi konten per jenis konten (Non-KK/KK/Auto GMV Live), berdasarkan jumlah video &mdash; bukan views.</p>
 
+        <div class="wc-composition-grid">
         @if (!Model.CompositionSummary.HasData)
         {
             <div class="wc-card wc-composition-card">
+                <p class="wc-comp-subtitle">KOMPOSISI JENIS KONTEN</p>
                 <p class="wc-empty">Tidak ada konten pada periode yang dipilih.</p>
             </div>
         }
@@ -381,6 +471,162 @@
                 </div>
             </div>
         }
+
+        <!-- Card 2 (Feature 3): Komposisi & Performa - AI Produce vs Self Produce.
+             All values from Model.ProductionBreakdown (existing ProductionMethod + metrics). -->
+        <div class="wc-card wc-composition-card wc-pm-card">
+            <p class="wc-comp-subtitle">KOMPOSISI &amp; PERFORMA &middot; AI PRODUCE VS SELF PRODUCE</p>
+            @if (pmTotal == 0)
+            {
+                <p class="wc-empty">Belum ada konten ber-cara produksi (KK/Non-KK) pada periode ini.</p>
+            }
+            else
+            {
+                <div class="wc-composition-body">
+                    <div class="wc-pm-donut-wrap">
+                        <div class="wc-pm-donut" style="background:@PmGradient()" role="img" aria-label="Komposisi cara produksi: AI Produce vs Self Produce"></div>
+                    </div>
+                    <ul class="wc-pm-legend">
+                        <li class="wc-pm-legend-item">
+                            <span class="wc-pm-swatch pm-ai" aria-hidden="true"></span>
+                            <span class="wc-pm-name">AI Produce</span>
+                            <span class="wc-pm-pct">@PctExact(aiPct)</span>
+                        </li>
+                        <li class="wc-pm-legend-item">
+                            <span class="wc-pm-swatch pm-self" aria-hidden="true"></span>
+                            <span class="wc-pm-name">Self Produce</span>
+                            <span class="wc-pm-pct">@PctExact(pmTotal == 0 ? null : 100m - aiPct)</span>
+                        </li>
+                    </ul>
+                </div>
+                <p class="wc-pm-note">@aiMethod.TotalCount video AI Produce &middot; @selfMethod.TotalCount video Self Produce, dari @pmTotal total konten KK+Non-KK di periode ini.</p>
+
+                <table class="wc-pm-metrics">
+                    <thead>
+                        <tr>
+                            <th>Metrik</th>
+                            <th>AI Produce</th>
+                            <th>Self Produce</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Avg Views/Video</td>
+                            <td>@AvgPerVideo(aiMethod.AverageViewsPerVideo)</td>
+                            <td>@AvgPerVideo(selfMethod.AverageViewsPerVideo)</td>
+                        </tr>
+                        <tr>
+                            <td>Avg Engagement Rate (%)</td>
+                            <td>@Er(aiMethod.AverageEngagementRate)</td>
+                            <td>@Er(selfMethod.AverageEngagementRate)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="wc-pm-bars">
+                    <p class="wc-pm-barstitle">AVG VIEWS/VIDEO</p>
+                    @{ var maxViews = Math.Max(aiMethod.AverageViewsPerVideo ?? 0m, selfMethod.AverageViewsPerVideo ?? 0m); }
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">AI Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-ai" style="width:@BarWidth(maxViews == 0m ? null : aiMethod.AverageViewsPerVideo / maxViews * 100m)"></div></div>
+                    </div>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">Self Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-self" style="width:@BarWidth(maxViews == 0m ? null : selfMethod.AverageViewsPerVideo / maxViews * 100m)"></div></div>
+                    </div>
+
+                    <p class="wc-pm-barstitle">AVG ENGAGEMENT RATE</p>
+                    @{ var maxEr = Math.Max(aiMethod.AverageEngagementRate ?? 0m, selfMethod.AverageEngagementRate ?? 0m); }
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">AI Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-ai" style="width:@BarWidth(maxEr == 0m ? null : aiMethod.AverageEngagementRate / maxEr * 100m)"></div></div>
+                    </div>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">Self Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-self" style="width:@BarWidth(maxEr == 0m ? null : selfMethod.AverageEngagementRate / maxEr * 100m)"></div></div>
+                    </div>
+                </div>
+
+                @if (aiMethod.TotalCount <= 1)
+                {
+                    <p class="wc-pm-note">Baru @aiMethod.TotalCount video AI Produce &mdash; belum cukup buat disimpulkan, tapi tetap dipantau dari sini sampai ada tambahan.</p>
+                }
+            }
+        </div>
+        </div>
+    </section>
+
+    <!-- ============ F. Section 4 - Funnel Views -> Reach -> Engagement (Feature 4).
+         All stages from Model.Funnel: honest per-video averages of the active period,
+         percentages relative to Views; NULL metrics render as dash, never NaN/0. ============ -->
+    <section class="wc-section wc-funnel">
+        <h2>4. Funnel Views &rarr; Reach &rarr; Engagement</h2>
+        <p class="wc-section-note">Rata-rata per video di periode ini: dari yang nonton, berapa persen lanjut ke reach, dan berapa persen lanjut engage.</p>
+
+        <div class="wc-card wc-funnel-card">
+            @if (Model.Funnel.VideosWithViews == 0 && Model.Funnel.VideosWithReach == 0 && Model.Funnel.VideosWithEngagement == 0)
+            {
+                <p class="wc-empty">Belum ada data Views/Reach/Engagement pada periode ini.</p>
+            }
+            @foreach (var stage in funnelStages)
+            {
+                <div class="wc-funnel-row">
+                    <span class="wc-funnel-label">@stage.Label</span>
+                    <div class="wc-funnel-track"><div class="wc-funnel-fill" style="width:@BarWidth(stage.Fill)"></div></div>
+                    <div class="wc-funnel-values">
+                        <strong>@Pct1(stage.Pct)</strong>
+                        <small title="Rata-rata per video dari data periode aktif">@stage.Caption</small>
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+
+    <!-- ============ G. Section 5 - Snapshot Audiens (Feature 5).
+         Current period vs the EXISTING 30-day baseline window; deltas in percentage
+         points. Follower % has no verified source - honest unavailable state. ============ -->
+    <section class="wc-section wc-audience">
+        <h2>5. Snapshot Audiens &middot; @audienceCurrentLabel vs @audiencePreviousLabel (30 hari sebelumnya)</h2>
+        <p class="wc-section-note">Profil penonton dari video pada periode aktif, dibandingkan dengan 30 hari sebelumnya. Persentase adalah rata-rata tertimbang Views dari share penonton per video; perubahan ditampilkan dalam poin persentase (pts).</p>
+
+        <div class="wc-aud-grid">
+            @foreach (var metric in Model.Audience.Metrics)
+            {
+                <div class="wc-card wc-aud-card">
+                    <p class="wc-aud-label">@metric.Label.ToUpperInvariant()</p>
+                    @if (!metric.IsAvailable)
+                    {
+                        <p class="wc-aud-value wc-aud-na">@Dash()</p>
+                        <p class="wc-aud-unavailable">@metric.UnavailableReason</p>
+                    }
+                    else if (metric.CurrentPercentage == null)
+                    {
+                        <p class="wc-aud-value">@Dash()</p>
+                        <p class="wc-aud-delta flat">Belum ada data demografi pada periode ini</p>
+                    }
+                    else
+                    {
+                        <p class="wc-aud-value">@Pct1(metric.CurrentPercentage)</p>
+                        @if (metric.DeltaPoints == null)
+                        {
+                            <p class="wc-aud-delta flat">Tidak ada pembanding periode sebelumnya</p>
+                        }
+                        else if (metric.DeltaPoints.Value > 0)
+                        {
+                            <p class="wc-aud-delta up">&#9650; @Pts(metric.DeltaPoints) vs periode sebelumnya</p>
+                        }
+                        else if (metric.DeltaPoints.Value < 0)
+                        {
+                            <p class="wc-aud-delta down">&#9660; @Pts(metric.DeltaPoints) vs periode sebelumnya</p>
+                        }
+                        else
+                        {
+                            <p class="wc-aud-delta flat">&#177; @Pts(metric.DeltaPoints) vs periode sebelumnya</p>
+                        }
+                    }
+                </div>
+            }
+        </div>
     </section>
 
     <!-- ============ Content items binding (selected-period population) ============ -->

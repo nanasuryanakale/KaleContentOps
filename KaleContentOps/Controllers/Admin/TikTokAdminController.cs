@@ -20,13 +20,15 @@ namespace KaleContentOps.Controllers.Admin
     private readonly ITikTokVideoService _videoService;
     private readonly TikTokDetailsSyncService _detailsService;
     private readonly AppDbContext _db;
+    private readonly Microsoft.AspNetCore.Hosting.IWebHostEnvironment _env;
 
-    public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, AppDbContext db)
+    public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, AppDbContext db, Microsoft.AspNetCore.Hosting.IWebHostEnvironment env)
     {
         _shopService = shopService;
         _videoService = videoService;
         _detailsService = detailsService;
         _db = db;
+        _env = env;
     }
 
         [HttpGet("")]
@@ -147,6 +149,32 @@ namespace KaleContentOps.Controllers.Admin
             TempData["TikTokSyncResult"] = $"TikTok Details Sync completed. Shops processed: {shopsProcessed}. Videos enriched: {videosEnriched}. Errors: {errors}";
             if (perShopErrors.Count > 0) TempData["TikTokSyncPerShopErrors"] = string.Join("\n", perShopErrors);
 
+            return RedirectToAction("Index");
+        }
+
+        // Development-only diagnostic: run the EXISTING details sync pipeline for exactly ONE
+        // ContentLog selected by VideoId. Disabled outside Development; no shop credentials are
+        // accepted from the request (ShopCipher is resolved from the database).
+        [HttpPost("SyncVideoDetailsSingle")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SyncVideoDetailsSingle(string videoId, CancellationToken cancellationToken = default)
+        {
+            if (!_env.IsDevelopment())
+            {
+                return NotFound(); // hard-disabled outside Development
+            }
+
+            if (string.IsNullOrWhiteSpace(videoId))
+            {
+                TempData["TikTokSyncError"] = "videoId is required.";
+                return RedirectToAction("Index");
+            }
+
+            var synced = await _detailsService.RunSingleVideoSyncAsync(videoId.Trim(), cancellationToken);
+
+            TempData["TikTokSyncResult"] = synced
+                ? $"Single-video details sync completed for {videoId}."
+                : $"Single-video details sync produced no persisted metric for {videoId} (see logs).";
             return RedirectToAction("Index");
         }
     }

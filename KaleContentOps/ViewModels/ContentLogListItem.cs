@@ -57,6 +57,11 @@ public class ContentLogListItem
     public decimal? Age45_54 { get; set; }
     public decimal? Age55Plus { get; set; }
 
+    // Viewer country distribution parsed from DemographicsJson "countries" object.
+    // Key = ISO country code (blank codes are never persisted), value = viewer share 0..1.
+    // Sorted by share descending. Null when the persisted JSON has no countries data.
+    public List<KeyValuePair<string, decimal>>? Countries { get; set; }
+
     // Metrics not present in the actual TikTok details response - stay null so UI shows "—".
     public long? Saves { get; set; }
     public long? NonFollowers { get; set; }

@@ -99,7 +99,9 @@ public sealed class WinningContentService : IWinningContentService
                     Views = m.Views,
                     Likes = m.Likes,
                     Comments = m.Comments,
-                    Shares = m.Shares
+                    Shares = m.Shares,
+                    Reach = m.Reach,
+                    DemographicsJson = m.DemographicsJson
                 })
                 .ToListAsync(cancellationToken);
 
@@ -163,7 +165,13 @@ public sealed class WinningContentService : IWinningContentService
                 x.Username,
                 x.VideoUrl,
                 x.VideoPostTime,
-                x.ContentTypeId
+                x.ContentTypeId,
+                x.ProductionMethodId,
+                // Feature 2/3: production method via the existing FK (LEFT JOIN in the
+                // same query - no extra round trip). NULL for Auto GMV Live by locked
+                // mapping; display convention "null -> Self Produce" matches Content Log.
+                ProductionMethodCode = x.ProductionMethod != null ? x.ProductionMethod.Code : null,
+                ProductionMethodName = x.ProductionMethod != null ? x.ProductionMethod.Name : null
             })
             .ToListAsync(cancellationToken);
 
@@ -181,7 +189,9 @@ public sealed class WinningContentService : IWinningContentService
                     Views = m.Views,
                     Likes = m.Likes,
                     Comments = m.Comments,
-                    Shares = m.Shares
+                    Shares = m.Shares,
+                    Reach = m.Reach,
+                    DemographicsJson = m.DemographicsJson
                 })
                 .ToListAsync(cancellationToken);
 
@@ -202,6 +212,7 @@ public sealed class WinningContentService : IWinningContentService
                 var type = log.ContentTypeId != null ? typeById.GetValueOrDefault(log.ContentTypeId.Value) : null;
                 var er = WinningContentCalculator.ComputeEngagementRate(likes, comments, shares, views);
                 var baselineEr = type != null ? baselineByTypeId.GetValueOrDefault(type.Id) : null;
+                var sharesParsed = ParseDemographicShares(metric?.DemographicsJson);
                 return new WinningContentItem
                 {
                     ContentLogId = log.Id,
@@ -220,7 +231,18 @@ public sealed class WinningContentService : IWinningContentService
                     EngagementRate = er,
                     BaselineEngagementRate = baselineEr,
                     Multiplier = WinningContentCalculator.ComputeMultiplier(er, baselineEr),
-                    LatestMetricCapturedAt = metric?.CapturedAt
+                    LatestMetricCapturedAt = metric?.CapturedAt,
+                    // Phase B additions - pure transports of existing columns:
+                    Reach = metric?.Reach,
+                    ProductionMethodId = log.ProductionMethodId ?? null,
+                    ProductionMethodCode = log.ProductionMethodCode,
+                    ProductionMethodName = log.ProductionMethodName,
+                    EngagementCount = likes.HasValue && comments.HasValue && shares.HasValue
+                        ? likes.Value + comments.Value + shares.Value
+                        : null,
+                    MaleShare = sharesParsed.MaleShare,
+                    FemaleShare = sharesParsed.FemaleShare,
+                    Age18_34Share = sharesParsed.Age18_34Share
                 };
             })
             .OrderByDescending(x => x.VideoPostTime)
@@ -358,6 +380,39 @@ public sealed class WinningContentService : IWinningContentService
             composition.Single(c => c.ContentTypeCode == KkCode).Count,
             composition.Single(c => c.ContentTypeCode == AutoGmvCode).Count);
 
+        // ---- 10) Feature 4 funnel: honest per-video averages over the selected period.
+        var (avgViews, avgReach, avgEngagement) = WinningContentCalculator.ComputeFunnelAverages(items
+            .Select(x => (x.Views, x.Reach, x.Likes, x.Comments, x.Shares)));
+        var funnel = new WinningContentFunnel
+        {
+            AverageViewsPerVideo = avgViews,
+            AverageReachPerVideo = avgReach,
+            AverageEngagementPerVideo = avgEngagement,
+            ViewsPercent = avgViews > 0 ? 100m : avgViews == 0 ? null : null,
+            ReachPercent = WinningContentCalculator.ComputeFunnelPercent(avgReach, avgViews),
+            EngagementPercent = WinningContentCalculator.ComputeFunnelPercent(avgEngagement, avgViews),
+            VideosWithViews = items.Count(x => x.Views.HasValue),
+            VideosWithReach = items.Count(x => x.Reach.HasValue),
+            VideosWithEngagement = items.Count(x => x.Likes.HasValue && x.Comments.HasValue && x.Shares.HasValue)
+        };
+
+        // ---- 11) Feature 2/3 production-method breakdown (NON_KK + KK only; median rule untouched).
+        var productionBreakdown = new WinningContentProductionBreakdown
+        {
+            TotalKkNonKkCount = items.Count(x => x.ContentTypeCode != AutoGmvCode),
+            Methods = BuildProductionBreakdown(items, belowMedian)
+        };
+
+        // ---- 12) Feature 5 audience snapshot over the EXISTING baseline window
+        // [start - 30d, start): reuses latestBaselineMetricByLog (already fetched for
+        // the ER baseline) - no second date-window implementation, no extra queries.
+        var baselineDemographics = latestBaselineMetricByLog
+            .Select(kv => (ContentLogId: kv.Key,
+                           Views: (long?)kv.Value.Views,
+                           DemographicsJson: kv.Value.DemographicsJson))
+            .ToList();
+        var audience = BuildAudienceSnapshot(start, items, baselineDemographics);
+
         return new WinningContentData
         {
             StartDate = start,
@@ -371,7 +426,193 @@ public sealed class WinningContentService : IWinningContentService
             Medians = medians,
             BelowMedian = belowMedian,
             Composition = composition,
-            CompositionSummary = compositionSummary
+            CompositionSummary = compositionSummary,
+            Funnel = funnel,
+            ProductionBreakdown = productionBreakdown,
+            Audience = audience
+        };
+    }
+
+    /// <summary>
+    /// Feature 2/3: production-method rows over NON_KK + KK period content. Auto GMV
+    /// Live is excluded (locked mapping: it carries no production method). NULL
+    /// ProductionMethodId displays as SELF_PRODUCE - the same convention Content Log
+    /// uses. Median rule untouched: a video is "below median" exactly when the
+    /// backend put it in Model.BelowMedian (strict Views &lt; its own type's median).
+    /// </summary>
+    private static List<WinningContentProductionMethodStats> BuildProductionBreakdown(
+        IReadOnlyList<WinningContentItem> items,
+        IReadOnlyList<WinningContentBelowMedianGroup> belowMedian)
+    {
+        var belowSet = belowMedian
+            .SelectMany(g => g.Entries)
+            .Select(e => e.ContentLogId)
+            .ToHashSet();
+
+        var labelByCode = new Dictionary<string, string>
+        {
+            [AiProduceCode] = "AI Produce",
+            [SelfProduceCode] = "Self Produce"
+        };
+
+        var rows = new List<WinningContentProductionMethodStats>();
+        foreach (var code in new[] { AiProduceCode, SelfProduceCode })
+        {
+            // Display mapping: NULL method -> Self Produce (Content Log convention).
+            var methodItems = items
+                .Where(x => x.ProductionMethodCode == code
+                    || (code == SelfProduceCode && x.ProductionMethodCode == null))
+                // Auto GMV Live never carries a production method, but guard anyway.
+                .Where(x => x.ContentTypeCode != AutoGmvCode)
+                .ToList();
+
+            var ers = methodItems
+                .Where(x => x.EngagementRate.HasValue)
+                .Select(x => x.EngagementRate!.Value)
+                .ToList();
+            var views = methodItems
+                .Where(x => x.Views.HasValue)
+                .Select(x => x.Views!.Value)
+            .ToList();
+
+            var total = methodItems.Count;
+            var below = methodItems.Count(x => belowSet.Contains(x.ContentLogId));
+
+            rows.Add(new WinningContentProductionMethodStats
+            {
+                Code = code,
+                Label = labelByCode[code],
+                TotalCount = total,
+                BelowMedianCount = below,
+                BelowMedianPercentage = total == 0 ? null : below * 100m / total,
+                // decimal math (List<long>.Average() would return double):
+                AverageViewsPerVideo = views.Count == 0 ? null : views.Sum() / (decimal)views.Count,
+                AverageEngagementRate = ers.Count == 0 ? null : ers.Average() // List<decimal>.Average() is decimal
+            });
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Demographics parser for the Feature 5 snapshot. Values in DemographicsJson are
+    /// viewer shares on the 0..1 scale (verified: TikTokVideoService stores the raw
+    /// viewer_profile percentages; ContentLogListItem documents "0..1 decimals" and
+    /// ContentLogDemographicsMappingTests pins male:0.4 -> 0.4m). Output is 0..100.
+    /// Corrupt JSON, missing keys and absent metrics all stay NULL - never fabricated.
+    /// </summary>
+    public static (decimal? MaleShare, decimal? FemaleShare, decimal? Age18_34Share) ParseDemographicShares(string? demographicsJson)
+    {
+        if (string.IsNullOrWhiteSpace(demographicsJson))
+        {
+            return (null, null, null);
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(demographicsJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                return (null, null, null);
+            }
+
+            decimal? Read(decimal? v) => v;
+
+            decimal? ReadProp(string key)
+            {
+                if (!root.TryGetProperty(key, out var prop)) return null;
+                if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDecimal(out var d)) return d;
+                if (prop.ValueKind == System.Text.Json.JsonValueKind.String
+                    && decimal.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+                return null;
+            }
+
+            var male = ReadProp("male");
+            var female = ReadProp("female");
+
+            decimal? age18_34 = null;
+            if (root.TryGetProperty("ages", out var ages) && ages.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                decimal? ReadAge(string key)
+                {
+                    if (!ages.TryGetProperty(key, out var prop)) return null;
+                    if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDecimal(out var d)) return d;
+                    if (prop.ValueKind == System.Text.Json.JsonValueKind.String
+                        && decimal.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+                    return null;
+                }
+
+                var a = ReadAge("18-24");
+                var b = ReadAge("25-34");
+                age18_34 = a.HasValue || b.HasValue ? (a ?? 0m) + (b ?? 0m) : null;
+            }
+
+            return (Read(male), Read(female), age18_34);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return (null, null, null);
+        }
+    }
+
+    /// <summary>
+    /// Feature 5 audience snapshot over the EXISTING baseline window
+    /// [start - 30d, start) - the same window the ER baseline uses (no second
+    /// date-window implementation). Shares are 0..1 per video; aggregation is the
+    /// Views-weighted average (documented on WinningContentAudienceSnapshot).
+    /// Follower % has NO verified source (only the NewFollowers COUNT is ingested) and
+    /// is rendered as an explicit unavailable state - never fabricated.
+    /// </summary>
+    private static WinningContentAudienceSnapshot BuildAudienceSnapshot(
+        DateTime start,
+        IReadOnlyList<WinningContentItem> items,
+        IReadOnlyList<(long ContentLogId, long? Views, string? DemographicsJson)> baselineDemographics)
+    {
+        var currentMale = WinningContentCalculator.ComputeWeightedSharePercent(items.Select(x => (x.Views, x.MaleShare)));
+        var currentFemale = WinningContentCalculator.ComputeWeightedSharePercent(items.Select(x => (x.Views, x.FemaleShare)));
+        var currentAge = WinningContentCalculator.ComputeWeightedSharePercent(items.Select(x => (x.Views, x.Age18_34Share)));
+
+        var previousMale = WinningContentCalculator.ComputeWeightedSharePercent(baselineDemographics.Select(x => (x.Views, ParseDemographicShares(x.DemographicsJson).MaleShare)));
+        var previousFemale = WinningContentCalculator.ComputeWeightedSharePercent(baselineDemographics.Select(x => (x.Views, ParseDemographicShares(x.DemographicsJson).FemaleShare)));
+        var previousAge = WinningContentCalculator.ComputeWeightedSharePercent(baselineDemographics.Select(x => (x.Views, ParseDemographicShares(x.DemographicsJson).Age18_34Share)));
+
+        WinningContentAudienceMetric Metric(string key, string label, decimal? current, decimal? previous, bool available = true, string? reason = null) => new()
+        {
+            Key = key,
+            Label = label,
+            CurrentPercentage = current,
+            PreviousPercentage = previous,
+            DeltaPoints = WinningContentCalculator.ComputeDeltaPoints(current, previous),
+            IsAvailable = available,
+            UnavailableReason = reason
+        };
+
+        var follower = Metric("follower", "Follower", null, null,
+            available: false,
+            reason: "Data persentase follower belum tersedia di sistem (hanya jumlah NewFollowers yang tersinkron).");
+
+        return new WinningContentAudienceSnapshot
+        {
+            PreviousStart = start.AddDays(-BaselineDays),
+            PreviousEndExclusive = start,
+            // Contributor counts: a video counts only when it actually participates in a
+            // weighted share (positive Views AND at least one demographic share present).
+            CurrentVideosWithDemographics = items.Count(x => x.Views > 0
+                && (x.MaleShare.HasValue || x.FemaleShare.HasValue || x.Age18_34Share.HasValue)),
+            PreviousVideosWithDemographics = baselineDemographics.Count(x => x.Views > 0
+                && (ParseDemographicShares(x.DemographicsJson).MaleShare.HasValue
+                    || ParseDemographicShares(x.DemographicsJson).FemaleShare.HasValue
+                    || ParseDemographicShares(x.DemographicsJson).Age18_34Share.HasValue)),
+            Metrics = new[]
+            {
+                follower,
+                Metric("male", "Male", currentMale, previousMale),
+                Metric("female", "Female", currentFemale, previousFemale),
+                Metric("age18_34", "Usia 18-34", currentAge, previousAge)
+            }
         };
     }
 
@@ -383,6 +624,11 @@ public sealed class WinningContentService : IWinningContentService
         _ => 0
     };
 
+    // Feature 2/3: locked production-method catalog (no new methods are invented).
+    // Labels fall back to these when the ProductionMethods table has no matching row.
+    private const string AiProduceCode = "AI_PRODUCE";
+    private const string SelfProduceCode = "SELF_PRODUCE";
+
     /// <summary>Minimal metric projection for set-based latest-metric selection.</summary>
     private sealed class PeriodMetricRow
     {
@@ -393,5 +639,8 @@ public sealed class WinningContentService : IWinningContentService
         public long? Likes { get; init; }
         public long? Comments { get; init; }
         public long? Shares { get; init; }
+        // Feature 4/5 transports (existing columns - no new ingestion):
+        public long? Reach { get; init; }
+        public string? DemographicsJson { get; init; }
     }
 }

@@ -26,45 +26,29 @@ public class TikTokDetailsSyncService
     // Process a batch of content logs for a given shop. Limit controls number of videos processed.
     public async Task<int> RunDetailsSyncAsync(string shopCipher, int limit = 10, int skip = 0, CancellationToken cancellationToken = default)
     {
-        // Select candidate ContentLogs: have VideoId, prefer missing metrics or not-yet-enriched metrics.
+        // Resolve the TikTokShop ID from the cipher up-front with a simple query
+        // This avoids forcing LEFT JOIN in the candidate query and allows efficient use of indexes
+        var shop = await _db.TikTokShops
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.ShopCipher == shopCipher, cancellationToken);
+
+        if (shop == null)
+        {
+            // Invalid shop cipher: return 0 processed candidates
+            return 0;
+        }
+
+        long shopId = shop.Id;
+
+        // Select candidate ContentLogs: must have VideoId, must belong to this shop, filter by resolved shopId (not TikTokShop navigation)
         var query = _db.ContentLogs
             .AsNoTracking()
-            .Where(cl => cl.TikTokShop != null && cl.TikTokShop.ShopCipher == shopCipher && !string.IsNullOrEmpty(cl.VideoId));
+            .Where(cl => cl.TikTokShopId == shopId && !string.IsNullOrEmpty(cl.VideoId));
 
         // Determine candidate priority using latest ContentMetric per ContentLog
         // Priority: 0 = no metric, 1 = metric exists but NOT enriched (views-only), 2 = metric exists and enriched
 
-        // 1) Compute latest CapturedAt per ContentLog (server-side)
-        var latestPerLog = _db.ContentMetrics
-            .GroupBy(m => m.ContentLogId)
-            .Select(g => new
-            {
-                ContentLogId = g.Key,
-                CapturedAt = g.Max(x => x.CapturedAt)
-            });
-
-        // 2) Join back to ContentMetrics to obtain the latest metric row and compute IsEnriched (server-side)
-        var latestRows = from lm in latestPerLog
-                         join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
-                         select new
-                         {
-                             m.ContentLogId,
-                             m.CapturedAt,
-                             IsEnriched = (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null)
-                         };
-
-        // 3) Left-join ContentLogs with latestRows so logs without metrics are included
-        var candidateQuery = from cl in query
-                             join lr in latestRows on cl.Id equals lr.ContentLogId into lj
-                             from lr in lj.DefaultIfEmpty()
-                             select new
-                             {
-                                 Cl = cl,
-                                 LatestCapturedAt = (DateTime?)lr.CapturedAt,
-                                 IsEnriched = (bool?)lr.IsEnriched
-                             };
-
-        // 4) Apply pagination while preserving priority semantics.
+        // Apply pagination while preserving priority semantics.
         // To avoid expensive server-side grouping over huge tables, execute prioritized queries in sequence
         // and apply skip/limit across the priority buckets so we only materialize the minimum rows.
 
@@ -135,69 +119,102 @@ public class TikTokDetailsSyncService
         {
             _logger.LogInformation("Details sync: no candidate ContentLogs found for shop {ShopCipher}", shopCipher);
             return 0;
-        }
-
-        int processed = 0;
-        var client = _httpFactory.CreateClient("TikTokApi");
+        }        int processed = 0;
 
         foreach (var entry in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var videoId = entry.Cl.VideoId!;
 
-                try
-                {
-                    // Call via interface (implementation will perform rate-limited HTTP calls)
-                    var res = await _videoService.RunDetailsDiagnosticAsync(videoId, shopCipher, cancellationToken);
-
-                if (res.StatusCode == 200 && res.Data.HasValue)
-                {
-                    var d = res.Data.Value;
-                    // Use centralized parser from TikTokVideoService to extract metrics
-                    if (_videoService is TikTokVideoService concrete)
-                    {
-                        var dm = concrete.ParseDetailsMetrics(d);
-                        var metric = concrete.MapDetailsMetricsToContentMetric(dm, entry.Cl.Id);
-
-                        if (metric != null && (metric.Views.HasValue || metric.Likes.HasValue || metric.Comments.HasValue || metric.Shares.HasValue || metric.NewFollowers.HasValue || metric.Reach.HasValue || metric.AverageWatch.HasValue || metric.FullWatchRate.HasValue || !string.IsNullOrWhiteSpace(metric.DemographicsJson)))
-                        {
-                            _db.ContentMetrics.Add(metric);
-                            await _db.SaveChangesAsync(cancellationToken);
-                            processed++;
-                        }
-                        else
-                        {
-                            _logger.LogDebug("Details sync: no metric fields returned for video {VideoId}", videoId);
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Details sync: video service is not concrete TikTokVideoService; skipping mapping for video {VideoId}", videoId);
-                    }
-                }
-                else if (res.StatusCode == 429)
-                {
-                    _logger.LogWarning("Details sync: TikTok returned 429 for shop {ShopCipher}, stopping details sync run.", shopCipher);
-                    break; // stop the batch run to avoid further throttle
-                }
-                else if (res.StatusCode == 200)
-                {
-                    // HTTP 200 but no data: TikTok business error (e.g. code 36009002 after retry
-                    // exhaustion returns Data = null; video deleted/private returns empty data).
-                    _logger.LogWarning("Details sync: business error (no data) for video {VideoId}", videoId);
-                }
-                else
-                {
-                    _logger.LogWarning("Details sync: non-200 response {Status} for video {VideoId}", res.StatusCode, videoId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Details sync: error processing video {VideoId}", videoId);
-                // continue to next video
-            }
+            var (synced, throttleStop) = await SyncOneContentLogAsync(entry.Cl, shopCipher, cancellationToken);
+            if (synced) processed++;
+            if (throttleStop) break; // 429: stop the batch run to avoid further throttle
         }
 
         return processed;
+    }
+
+    // Development-only: sync details for ONE existing ContentLog selected by VideoId.
+    // Reuses the exact same pipeline as the batch flow (RunDetailsDiagnosticAsync -> ParseDetailsMetrics
+    // -> MapDetailsMetricsToContentMetric -> SaveChangesAsync); no duplicate HTTP/parser/persistence logic.
+    // ShopCipher is always resolved from the database (never accepted from the request).
+    public async Task<bool> RunSingleVideoSyncAsync(string videoId, CancellationToken cancellationToken = default)
+    {
+        var log = await _db.ContentLogs.AsNoTracking()
+            .FirstOrDefaultAsync(cl => cl.VideoId == videoId, cancellationToken);
+
+        if (log == null)
+        {
+            _logger.LogWarning("Details sync (single): no ContentLog found for VideoId {VideoId}", videoId);
+            return false;
+        }
+
+        var shop = await _db.TikTokShops.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == log.TikTokShopId, cancellationToken);
+
+        if (shop == null || string.IsNullOrWhiteSpace(shop.ShopCipher))
+        {
+            _logger.LogWarning("Details sync (single): ContentLog {ContentLogId} has no resolvable shop", log.Id);
+            return false;
+        }
+
+        var (synced, _) = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
+        return synced;
+    }
+
+    // Shared per-video pipeline used by both the batch flow and the single-video (dev) flow.
+    private async Task<(bool Synced, bool ThrottleStop)> SyncOneContentLogAsync(ContentLog log, string shopCipher, CancellationToken cancellationToken)
+    {
+        var videoId = log.VideoId!;
+        try
+        {
+            // Call via interface (implementation performs rate-limited HTTP calls with retry/backoff)
+            var res = await _videoService.RunDetailsDiagnosticAsync(videoId, shopCipher, cancellationToken);
+
+            if (res.StatusCode == 200 && res.Data.HasValue)
+            {
+                var d = res.Data.Value;
+                // Use centralized parser from TikTokVideoService to extract metrics
+                if (_videoService is TikTokVideoService concrete)
+                {
+                    var dm = concrete.ParseDetailsMetrics(d);
+                    var metric = concrete.MapDetailsMetricsToContentMetric(dm, log.Id);
+
+                    if (metric != null && (metric.Views.HasValue || metric.Likes.HasValue || metric.Comments.HasValue || metric.Shares.HasValue || metric.NewFollowers.HasValue || metric.Reach.HasValue || metric.AverageWatch.HasValue || metric.FullWatchRate.HasValue || !string.IsNullOrWhiteSpace(metric.DemographicsJson)))
+                    {
+                        _db.ContentMetrics.Add(metric);
+                        await _db.SaveChangesAsync(cancellationToken);
+                        return (true, false);
+                    }
+
+                    _logger.LogDebug("Details sync: no metric fields returned for video {VideoId}", videoId);
+                    return (false, false);
+                }
+
+                _logger.LogWarning("Details sync: video service is not concrete TikTokVideoService; skipping mapping for video {VideoId}", videoId);
+                return (false, false);
+            }
+
+            if (res.StatusCode == 429)
+            {
+                _logger.LogWarning("Details sync: TikTok returned 429 for shop {ShopCipher}, stopping details sync run.", shopCipher);
+                return (false, true);
+            }
+
+            if (res.StatusCode == 200)
+            {
+                // HTTP 200 but no data: TikTok business error (e.g. code 36009002 after retry
+                // exhaustion returns Data = null; video deleted/private returns empty data).
+                _logger.LogWarning("Details sync: business error (no data) for video {VideoId}", videoId);
+                return (false, false);
+            }
+
+            _logger.LogWarning("Details sync: non-200 response {Status} for video {VideoId}", res.StatusCode, videoId);
+            return (false, false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Details sync: error processing video {VideoId}", videoId);
+            return (false, false);
+        }
     }
 }

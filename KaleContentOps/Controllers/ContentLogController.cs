@@ -146,6 +146,20 @@ public class ContentLogController : Controller
                         item.Age45_54 = ReadPerc(ages, "45-54");
                         item.Age55Plus = ReadPerc(ages, "55+");
                     }
+
+                    // Countries: JSON object { "ID": 1.000, ... } (VIEWERS country_distribution).
+                    // Only present keys are surfaced; unknown shapes are skipped safely.
+                    if (root.TryGetProperty("countries", out var countries) && countries.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        item.Countries = countries.EnumerateObject()
+                            .Select(c => c.Value.ValueKind == System.Text.Json.JsonValueKind.Number && c.Value.TryGetDecimal(out var cv)
+                                ? new KeyValuePair<string, decimal>(c.Name, cv)
+                                : (KeyValuePair<string, decimal>?)null)
+                            .Where(kv => kv.HasValue)
+                            .Select(kv => kv!.Value)
+                            .OrderByDescending(kv => kv.Value)
+                            .ToList();
+                    }
                 }
                 catch (System.Text.Json.JsonException)
                 {

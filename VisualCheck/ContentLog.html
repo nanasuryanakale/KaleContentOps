@@ -1,40 +1,126 @@
-@model KaleContentOps.ViewModels.ContentLogIndexViewModel
-@{
-    ViewData["Title"] = "Content Log";
-    var search = Model.Search ?? string.Empty;
-    var selectedContentType = Model.SelectedContentType ?? string.Empty;
-    var page = Model.CurrentPage <= 0 ? 1 : Model.CurrentPage;
-    var pageSize = Model.PageSize <= 0 ? 20 : Model.PageSize;
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Content Log - KaleContentOps</title>
+    
+    <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/site.css?v=j6fhJSuuyLpOSLuPJU0TsDV0iNjor5S3rDnvxJrt4bg" />
+    <link rel="stylesheet" href="/css/layout.css?v=hORzHwr14vBkMo_sOh-7Bf2u_napwoeUwzNjW-Q-zsc" />
+    <link rel="stylesheet" href="/css/auth-ui.css?v=s34BkC2QJiDKAEWGdrnNVBliTsqpoBOggtV3gVMNpQk" />
+    
+    <link rel="stylesheet" href="/css/content-log.css?v=Fw2Vq6qC1UTV8NNXPFTZ7Trfcj2i2j2Oq60D0Il1TFg" />
 
+</head>
+<body>
+    <div b-ch5g2sg2fg class="topbar">
+        <div b-ch5g2sg2fg class="topbar-left">
+            <span b-ch5g2sg2fg class="app-title">KALE Content Ops</span>
+        </div>
+            <div b-ch5g2sg2fg class="topbar-right topbar-user">
+                <span b-ch5g2sg2fg class="topbar-username">cl.capture</span>
+                <form method="post" class="topbar-logout-form" action="/Account/Logout">
+                    
+                    <button b-ch5g2sg2fg type="submit" class="btn btn-sm btn-outline-light topbar-logout">Logout</button>
+                <input name="__RequestVerificationToken" type="hidden" value="CfDJ8EsFTNBnFoZNqzOIhSwGCV4Ln8lhvln4LoR9JRtJ3MUafgntJhy9j6JtfEIXSupYxeLNGNFTloWb0JI3Nw8ce2kvrru8fDQmrhI2OxU15UunZ0uuvWtPVDLxHqqJx0aFMT8AquKmRt7LbZl8LCski03vnG4DvyBmbatQy4zCPxt8QxHug41nCycnIhAqK15fYg" /></form>
+            </div>
+    </div>
+
+    <aside class="app-sidebar">
+    <div class="brand">
+        <div class="brand-icon">K</div>
+        <div class="brand-text">
+            <div class="title">KALE Content Ops</div>
+            <div class="subtitle">TikTok · Content Log</div>
+        </div>
+    </div>
+
+    <nav class="menu">
+        <div class="menu-section">TIKTOK CONTENT</div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="/ContentLog">
+                    <span class="nav-icon" aria-hidden="true">
+                        <!-- list / table icon -->
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.5" />
+                            <path d="M7 9H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M7 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span class="nav-text">Content Log</span>
+                </a>
+            </li>
+            <li class="nav-item"><a class="nav-link " href="/DailySummary"><span class="nav-icon" aria-hidden="true">
+                        <!-- calendar icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.2" />
+                            <path d="M16 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                            <path d="M8 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                        </svg>
+                    </span> <span class="nav-text">Daily Summary</span></a></li>
+            <li class="nav-item"><a class="nav-link " href="/Targets"><span class="nav-icon" aria-hidden="true">
+                        <!-- target icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.2" />
+                            <circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.2" />
+                        </svg>
+                    </span> <span class="nav-text">Targets</span></a></li>
+            <li class="nav-item"><a class="nav-link " href="/WinningContent"><span class="nav-icon" aria-hidden="true">
+                        <!-- star / trophy icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2l2.6 5.3L20 9l-4 3.6L17 20l-5-2.6L7 20l1-7.4L4 9l5.4-1.7L12 2z" stroke="currentColor" stroke-width="0.8" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Winning Content</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="#"><span class="nav-icon" aria-hidden="true">
+                        <!-- team icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zM4 18c0-2.2 3.6-3.5 6-3.5s6 1.3 6 3.5v1H4v-1z" stroke="currentColor" stroke-width="0.9" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Team Performance</span></a></li>
+        </ul>
+
+
+        <div class="menu-section">CREATIVE PERFORMANCE</div>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Daily</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Weekly</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Monthly</a></li>
+        </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+    <div class="muted"></div>
+</div>
+
+</aside>
+
+
+    <main b-ch5g2sg2fg class="app-main">
+        <div b-ch5g2sg2fg class="container-fluid">
+            
 <div class="content-page">
     <div class="page-head">
         <div>
             <h1>Content Log</h1>
             <div class="page-meta">
-                <b>@Model.Items.Count</b> video ditampilkan dari <b>@Model.TotalItems</b> total
+                <b>2</b> video ditampilkan dari <b>2</b> total
             </div>
         </div>
     </div>
 
     <div class="toolbar-row">
         <div class="filter-pills">
-            <a class="filter-pill @(string.IsNullOrEmpty(selectedContentType) ? "active" : "")"
-               href="@Url.Action("Index", new { search = search })">
+            <a class="filter-pill active"
+               href="/ContentLog">
                 ● Semua
             </a>
 
-            @foreach (var ct in Model.ContentTypes)
-            {
-                var filterClass = ct.Code == "KK"
-                    ? "yellow"
-                    : (ct.Code == "NON_KK" ? "blue" : "purple");
-
-                <a class="filter-pill @filterClass @(selectedContentType == ct.Code ? "active" : "")"
-                   href="@Url.Action("Index", new { search = search, contentType = ct.Code })">
-                    ● @ct.Name
+                <a class="filter-pill blue "
+                   href="/ContentLog?contentType=NON_KK">
+                    ● Non-KK
                 </a>
-            }
         </div>
 
         <div class="toolbar-actions">
@@ -61,18 +147,18 @@
     </div>
 
     <div class="search-row">
-        <form asp-action="Index" method="get" class="search-box-wrap">
+        <form method="get" class="search-box-wrap" action="/ContentLog">
             <span class="search-icon">⌕</span>
 
             <input class="search-box"
                    type="text"
                    name="search"
-                   value="@search"
+                   value=""
                    placeholder="Cari judul konten..." />
 
             <input type="hidden"
                    name="contentType"
-                   value="@selectedContentType" />
+                   value="" />
         </form>
     </div>
 
@@ -82,47 +168,194 @@
             <div class="panel-title">PILIH KOLOM YANG DITAMPILKAN</div>
 
             <div class="column-grid">
-                @foreach (var item in new[]
-                {
-                    ("production", "Cara Produksi", true),
-                ("pic", "PIC", true),
-                ("link", "Link", true),
-                ("views", "Views", true),
-                ("reach", "Reach", true),
-                ("avgwatch", "Average Watch", true),
-                ("fullwatch", "% Full Watch", true),
-                ("likes", "Like", true),
-                ("comments", "Comment", true),
-                ("save", "Save", false),
-                ("share", "Share", false),
-                ("follower", "Follower", true),
-                ("nonfollower", "Non-Follower", true),
-                ("male", "Male", true),
-                ("female", "Female", true),
-                ("nongender", "Non-Gender", false),
-                ("age18", "18-24", false),
-                ("age25", "25-34", false),
-                ("age35", "35-44", false),
-                ("age45", "45-54", false),
-                ("age55", "55+", false),
-                ("country", "Country", false),
-                ("gmv", "GMV", true),
-                ("items", "Items Sold", false),
-                ("sku", "SKU Orders", false),
-                ("avgcust", "Avg Customers", false),
-                ("ctr", "CTR", false),
-                ("hashtags", "Hashtags", false),
-                ("products", "Products", false)
-                })
-                {
                     <label class="column-check">
                         <input type="checkbox"
-                               checked="@item.Item3"
+                               checked="checked"
                                class="col-toggle"
-                               data-col-key="@item.Item1" />
-                        <span>@item.Item2</span>
+                               data-col-key="production" />
+                        <span>Cara Produksi</span>
                     </label>
-                }
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="pic" />
+                        <span>PIC</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="link" />
+                        <span>Link</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="views" />
+                        <span>Views</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="reach" />
+                        <span>Reach</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="avgwatch" />
+                        <span>Average Watch</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="fullwatch" />
+                        <span>% Full Watch</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="likes" />
+                        <span>Like</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="comments" />
+                        <span>Comment</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="save" />
+                        <span>Save</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="share" />
+                        <span>Share</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="follower" />
+                        <span>Follower</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="nonfollower" />
+                        <span>Non-Follower</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="male" />
+                        <span>Male</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="female" />
+                        <span>Female</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="nongender" />
+                        <span>Non-Gender</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age18" />
+                        <span>18-24</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age25" />
+                        <span>25-34</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age35" />
+                        <span>35-44</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age45" />
+                        <span>45-54</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age55" />
+                        <span>55&#x2B;</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="country" />
+                        <span>Country</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="gmv" />
+                        <span>GMV</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="items" />
+                        <span>Items Sold</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="sku" />
+                        <span>SKU Orders</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="avgcust" />
+                        <span>Avg Customers</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="ctr" />
+                        <span>CTR</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="hashtags" />
+                        <span>Hashtags</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="products" />
+                        <span>Products</span>
+                    </label>
             </div>
 
             <div class="panel-note">
@@ -140,12 +373,6 @@
             </div>
 
             <div class="pic-chips" id="picChips">
-                @foreach (var p in Model.MasterPics)
-                {
-                    <span class="pic-chip" data-pic-id="@p.Id">
-                        @p.Name <b data-action="remove">×</b>
-                    </span>
-                }
             </div>
 
             <div class="pic-add-row">
@@ -226,292 +453,306 @@
             </thead>
 
             <tbody>
-                @if (!Model.Items.Any())
-                {
-                <tr>
-                    <td colspan="33" class="empty-cell">
-                            Belum ada data Content Log.
-                        </td>
-                    </tr>
-                }
-                else
-                {
-                    var index = (page - 1) * pageSize;
-
-                    foreach (var row in Model.Items)
-                    {
-                        index++;
-
-                        // metric projection: latest metric scalars are provided in the DTO
-                        var metric = new {
-                            Views = row.Views,
-                            Reach = row.Reach,
-                            AverageWatch = row.AverageWatch,
-                            FullWatchRate = row.FullWatchRate,
-                            Likes = row.Likes,
-                            Comments = row.Comments,
-                            Shares = row.Shares,
-                            NewFollowers = row.NewFollowers,
-                            CapturedAt = row.LatestMetricCapturedAt,
-                            // placeholder metrics (nullable) provided by DTO — remain null until data available
-                            Saves = row.Saves,
-                            NonFollowers = row.NonFollowers,
-                            Male = row.Male,
-                            Female = row.Female,
-                            NonGender = row.NonGender,
-                            Age18_24 = row.Age18_24,
-                            Age25_34 = row.Age25_34,
-                            Age35_44 = row.Age35_44,
-                            Age45_54 = row.Age45_54,
-                            Age55Plus = row.Age55Plus,
-                            Countries = row.Countries,
-                            // commerce/attribute metrics (verified from actual TikTok response)
-                            GmvAmount = row.GmvAmount,
-                            GmvCurrency = row.GmvCurrency,
-                            ItemsSold = row.ItemsSold,
-                            SkuOrders = row.SkuOrders,
-                            AvgCustomers = row.AvgCustomers,
-                            ClickThroughRate = row.ClickThroughRate,
-                            Hashtags = row.Hashtags,
-                            Products = row.Products
-                        };
-
-                        var prodName = row.ProductionMethodName ?? "Self Produce";
-
-                        var prodClass = prodName == "AI Produce"
-                            ? "prod-ai"
-                            : "prod-self";
-                        <tr data-content-id="@row.Id">
-                            <td>@index</td>
+                        <tr data-content-id="1">
+                            <td>1</td>
 
                             <td>
-                                @(row.VideoPostTime?.ToString("dd/MM/yyyy") ?? "—")
+                                28-09-2026
                             </td>
 
                             <td>
                                 <select class="content-type-select"
-                                        data-content-id="@row.Id">
-                                    <option value=""
-                                            selected="@(row.ContentTypeId == null)">
+                                        data-content-id="1">
+                                    <option value="">
                                         Belum diklasifikasikan
                                     </option>
 
-                                    @foreach (var ct in Model.ContentTypes)
-                                    {
-                                        <option value="@ct.Id"
-                                                selected="@(row.ContentTypeId == ct.Id)">
-                                            @ct.Name
+                                        <option value="1" selected="selected">
+                                            Non-KK
                                         </option>
-                                    }
                                 </select>
                             </td>
 
                             <td data-col="production">
-                                @{
-                                    var isAutoGmv = row.ContentTypeCode == "AUTO_GMV_LIVE";
-                                    var selfPm = Model.ProductionMethods.FirstOrDefault(pm => pm.Code == "SELF_PRODUCE");
-                                    var aiPm = Model.ProductionMethods.FirstOrDefault(pm => pm.Code == "AI_PRODUCE");
-                                    var displayMethodId = row.ProductionMethodId ?? selfPm?.Id;
-                                    var displayName = row.ProductionMethodName ?? "Self Produce";
-                                    var displayClass = displayName == "AI Produce" ? "prod-ai" : "prod-self";
-                                }
 
-                                @if (isAutoGmv)
-                                {
-                                    <span class="production-disabled">—</span>
-                                }
-                                else
-                                {
                                     <button type="button"
-                                            class="production-toggle production-pill @displayClass"
-                                            data-content-log-id="@row.Id"
-                                            data-production-method-id="@displayMethodId">
-                                        ↔ @displayName
+                                            class="production-toggle production-pill prod-self"
+                                            data-content-log-id="1"
+                                            data-production-method-id="">
+                                        ↔ Self Produce
                                     </button>
-                                }
                             </td>
 
                             <td data-col="pic">
                                 <select class="pic-select">
                                     <option value="0">—</option>
 
-                                    @foreach (var p in Model.MasterPics)
-                                    {
-                                        if (row.PicId == p.Id)
-                                        {
-                                            <option value="@p.Id" selected>
-                                                @p.Name
-                                            </option>
-                                        }
-                                        else
-                                        {
-                                            <option value="@p.Id">
-                                                @p.Name
-                                            </option>
-                                        }
-                                    }
-                                    @* if this row references a historical/inactive pic, render it as selected option with label *@
-                                    @{
-                                        var hist = Model.HistoricalPics.FirstOrDefault(h => h.Id == row.PicId);
-                                        if (hist != null)
-                                        {
-                                            <option value="@hist.Id" selected>
-                                                @hist.Name (dihapus dari master)
-                                            </option>
-                                        }
-                                    }
                                 </select>
                             </td>
 
                             <td class="title-cell"
-                                title="@row.Title">
-                                @row.Title
+                                title="Dengan demographics (VIEWERS)">
+                                Dengan demographics (VIEWERS)
                             </td>
 
                             <td data-col="link">
-                                @if (!string.IsNullOrEmpty(row.VideoUrl))
-                                {
-                                    <a class="link-btn"
-                                       href="@row.VideoUrl"
-                                       target="_blank"
-                                       rel="noopener">
-                                        Lihat post ↗
-                                    </a>
-                                }
-                                else
-                                {
                                     <span class="muted">—</span>
-                                }
                             </td>
 
                             <td data-col="views">
-                                @(metric?.Views?.ToString("N0") ?? "—")
+                                477
                             </td>
 
                             <td data-col="reach">
-                                @(metric?.Reach?.ToString("N0") ?? "—")
+                                &#x2014;
                             </td>
 
                             <td data-col="avgwatch">
-                                @(metric?.AverageWatch?.ToString("0.##") ?? "—")s
+                                &#x2014;s
                             </td>
 
                             <td data-col="fullwatch">
-                                @(metric?.FullWatchRate is null
-                                    ? "—"
-                                    : (metric.FullWatchRate.Value * 100).ToString("0.0") + "%")
+                                &#x2014;
                             </td>
 
                             <td data-col="likes">
-                                @(metric?.Likes?.ToString("N0") ?? "—")
+                                15
                             </td>
 
                             <td data-col="comments">
-                                @(metric?.Comments?.ToString("N0") ?? "—")
+                                0
                             </td>
 
                             <td data-col="save">
-                                @(metric?.Saves?.ToString("N0") ?? "—")
+                                &#x2014;
                             </td>
 
                             <td data-col="share">
-                                @(metric?.Shares?.ToString("N0") ?? "—")
+                                0
                             </td>
 
                             <td data-col="follower">
-                                @(metric?.NewFollowers?.ToString("N0") ?? "—")
+                                1
                             </td>
 
                             <td data-col="nonfollower">
-                                @(metric?.NonFollowers?.ToString("N0") ?? "—")
+                                &#x2014;
                             </td>
 
                             <td data-col="male">
-                                @(metric?.Male is null ? "—" : (metric.Male.Value * 100).ToString("0.0") + "%")
+                                68.4%
                             </td>
 
                             <td data-col="female">
-                                @(metric?.Female is null ? "—" : (metric.Female.Value * 100).ToString("0.0") + "%")
+                                31.6%
                             </td>
 
                             <td data-col="nongender">
-                                @(metric?.NonGender is null ? "—" : (metric.NonGender.Value * 100).ToString("0.0") + "%")
+                                &#x2014;
                             </td>
 
                             <td data-col="age18">
-                                @(metric?.Age18_24 is null ? "—" : (metric.Age18_24.Value * 100).ToString("0.0") + "%")
+                                27.8%
                             </td>
 
                             <td data-col="age25">
-                                @(metric?.Age25_34 is null ? "—" : (metric.Age25_34.Value * 100).ToString("0.0") + "%")
+                                50.0%
                             </td>
 
                             <td data-col="age35">
-                                @(metric?.Age35_44 is null ? "—" : (metric.Age35_44.Value * 100).ToString("0.0") + "%")
+                                16.7%
                             </td>
 
                             <td data-col="age45">
-                                @(metric?.Age45_54 is null ? "—" : (metric.Age45_54.Value * 100).ToString("0.0") + "%")
+                                5.6%
                             </td>
 
                             <td data-col="age55">
-                                @(metric?.Age55Plus is null ? "—" : (metric.Age55Plus.Value * 100).ToString("0.0") + "%")
+                                &#x2014;
                             </td>
 
                             <td data-col="country" class="cell-wrap">
-                                @(metric?.Countries is { Count: > 0 }
-                                    ? string.Join(", ", metric.Countries.Select(kv => kv.Key + " " + (kv.Value * 100).ToString("0.0") + "%"))
-                                    : "—")
+                                ID 100.0%
                             </td>
 
                             <td data-col="gmv">
-                                @(metric?.GmvAmount is null
-                                    ? "—"
-                                    : metric.GmvAmount.Value.ToString("N2") + (string.IsNullOrWhiteSpace(metric.GmvCurrency) ? "" : " " + metric.GmvCurrency))
+                                &#x2014;
                             </td>
 
                             <td data-col="items">
-                                @(metric?.ItemsSold?.ToString("N0") ?? "—")
+                                &#x2014;
                             </td>
 
                             <td data-col="sku">
-                                @(metric?.SkuOrders?.ToString("N0") ?? "—")
+                                &#x2014;
                             </td>
 
                             <td data-col="avgcust">
-                                @(metric?.AvgCustomers?.ToString("0.##") ?? "—")
+                                &#x2014;
                             </td>
 
                             <td data-col="ctr">
-                                @(metric?.ClickThroughRate is null
-                                    ? "—"
-                                    : (metric.ClickThroughRate.Value * 100).ToString("0.0") + "%")
+                                &#x2014;
                             </td>
 
                             <td data-col="hashtags" class="cell-wrap">
-                                @(metric?.Hashtags is { Count: > 0 }
-                                    ? string.Join(" ", metric.Hashtags.Select(h => h.StartsWith("#") ? h : "#" + h))
-                                    : "—")
+                                &#x2014;
                             </td>
 
                             <td data-col="products" class="cell-wrap">
-                                @{
-                                    var productText = "—";
-                                    if (metric?.Products is { Count: 1 })
-                                    {
-                                        productText = metric.Products[0].Name ?? "—";
-                                    }
-                                    else if (metric?.Products is { Count: > 1 })
-                                    {
-                                        var first = metric.Products[0].Name ?? "—";
-                                        productText = first + " +" + (metric.Products.Count - 1) + " more";
-                                    }
-                                }
-                                @productText
+                                &#x2014;
                             </td>
                         </tr>
-                    }
-                }
+                        <tr data-content-id="2">
+                            <td>2</td>
+
+                            <td>
+                                27-09-2026
+                            </td>
+
+                            <td>
+                                <select class="content-type-select"
+                                        data-content-id="2">
+                                    <option value="">
+                                        Belum diklasifikasikan
+                                    </option>
+
+                                        <option value="1" selected="selected">
+                                            Non-KK
+                                        </option>
+                                </select>
+                            </td>
+
+                            <td data-col="production">
+
+                                    <button type="button"
+                                            class="production-toggle production-pill prod-self"
+                                            data-content-log-id="2"
+                                            data-production-method-id="">
+                                        ↔ Self Produce
+                                    </button>
+                            </td>
+
+                            <td data-col="pic">
+                                <select class="pic-select">
+                                    <option value="0">—</option>
+
+                                </select>
+                            </td>
+
+                            <td class="title-cell"
+                                title="Tanpa demographics (NULL state)">
+                                Tanpa demographics (NULL state)
+                            </td>
+
+                            <td data-col="link">
+                                    <span class="muted">—</span>
+                            </td>
+
+                            <td data-col="views">
+                                120
+                            </td>
+
+                            <td data-col="reach">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="avgwatch">
+                                &#x2014;s
+                            </td>
+
+                            <td data-col="fullwatch">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="likes">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="comments">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="save">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="share">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="follower">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="nonfollower">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="male">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="female">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="nongender">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age18">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age25">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age35">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age45">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age55">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="country" class="cell-wrap">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="gmv">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="items">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="sku">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="avgcust">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="ctr">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="hashtags" class="cell-wrap">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="products" class="cell-wrap">
+                                &#x2014;
+                            </td>
+                        </tr>
             </tbody>
         </table>
 
@@ -520,49 +761,21 @@
 
     <div class="pagination-row">
         <div class="pagination-info">
-            Page @Model.CurrentPage of @Model.TotalPages
+            Page 1 of 1
         </div>
 
         <div class="pagination-controls">
-            @if (Model.CurrentPage > 1)
-            {
-                <a class="page-link"
-                   href="@Url.Action("Index", new {
-                       search = search,
-                       contentType = selectedContentType,
-                       page = Model.CurrentPage - 1
-                   })">
-                    ◀ Prev
-                </a>
-            }
-            else
-            {
                 <span class="page-link disabled">
                     ◀ Prev
                 </span>
-            }
 
             <span class="current-page">
-                @Model.CurrentPage
+                1
             </span>
 
-            @if (Model.CurrentPage < Model.TotalPages)
-            {
-                <a class="page-link"
-                   href="@Url.Action("Index", new {
-                       search = search,
-                       contentType = selectedContentType,
-                       page = Model.CurrentPage + 1
-                   })">
-                    Next ▶
-                </a>
-            }
-            else
-            {
                 <span class="page-link disabled">
                     Next ▶
                 </span>
-            }
         </div>
     </div>
 
@@ -602,13 +815,20 @@
 
 </div>
 
-@section Styles {
-    <link rel="stylesheet"
-          href="~/css/content-log.css"
-          asp-append-version="true" />
-}
 
-@section Scripts {
+
+        </div>
+    </main>
+
+    <footer b-ch5g2sg2fg class="app-footer">
+        <div b-ch5g2sg2fg class="container-fluid">
+            <div b-ch5g2sg2fg class="footer-left text-center">&copy; 2026 - KaleContentOps</div>
+        </div>
+    </footer>
+    <script src="/lib/jquery/dist/jquery.min.js"></script>
+    <script src="/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/site.js?v=hRQyftXiu1lLX2P9Ly9xa4gHJgLeR1uGN5qegUobtGo"></script>
+    
     <script>
         // Toggle panel individual: Membuka card pilihan dan menutup card lain jika sedang terbuka
         function togglePanel(targetCardId) {
@@ -997,4 +1217,6 @@
             });
         }
     </script>
-}
+
+</body>
+</html>
