@@ -13,12 +13,13 @@ using Xunit;
 namespace KaleContentOps.Tests.WinningContent;
 
 /// <summary>
-/// Phase 3C below-median UI tests (real MVC pipeline, seeded InMemory store):
-/// - three independent category groups, each with its own median badge
-/// - below-median entries render straight from Model.BelowMedian (backend order)
+/// Phase 3C below-median UI tests (real MVC pipeline, seeded InMemory store).
+/// Mockup layout (visual parity phase): ONE merged panel with a per-type summary table
+/// (below / total / % below) and a single ascending full list tagged with each type's
+/// median. Business assertions unchanged:
+/// - entries render straight from Model.BelowMedian (no UI filtering of its own)
 /// - STRICT backend behavior surfaces in the UI: equal-to-median and above-median
-///   items never appear (the UI adds no filtering of its own)
-/// - mockup sample: NON_KK median 8,371 -> 2,673 and 5,000 visible, 8,371 not
+///   items never appear
 /// - archived Auto GMV Live renders; NULL median renders safe; empty group safe
 /// Assertions are culture-independent: titles, codes, counts, structural markers.
 /// </summary>
@@ -124,20 +125,35 @@ public class WinningContentBelowMedianUiTests
         return await client.GetStringAsync($"/WinningContent?{Range}");
     }
 
-    /// <summary>Slices the below-median group card for a category label.</summary>
+    /// <summary>
+    /// Slices the below-median summary row for a category label. The list below the
+    /// summary table is merged across types, so type-scoped assertions target the
+    /// summary row; title-level assertions run against the whole panel.
+    /// </summary>
     private static string BelowChunk(string html, string label)
     {
-        var marker = $"wc-below-title\">{label}</h3>";
-        var start = html.IndexOf(marker, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"below-median group '{label}' not found");
-        start += marker.Length;
-        var end = html.IndexOf("wc-below-title\">", start, StringComparison.Ordinal);
-        if (end < 0)
-        {
-            var sectionEnd = html.IndexOf("wc-composition\"", start, StringComparison.Ordinal);
-            end = sectionEnd < 0 ? html.Length : sectionEnd;
-        }
-        return html[start..end];
+        var marker = $"wc-below-type type-";
+        var start = html.IndexOf(marker + RowTypeFor(label), StringComparison.Ordinal);
+        Assert.True(start >= 0, $"below-median summary row '{label}' not found");
+        var end = html.IndexOf("</tr>", start, StringComparison.Ordinal);
+        return end < 0 ? html[start..] : html[start..end];
+    }
+
+    private static string RowTypeFor(string label) => label switch
+    {
+        "Non-KK" => "nonkk",
+        "Keranjang Kuning" => "kk",
+        _ => "autogmv"
+    };
+
+    /// <summary>Slices the whole below-median panel (summary + list), excluding the
+    /// period-items table which also lists content titles.</summary>
+    private static string BelowPanel(string html)
+    {
+        var start = html.IndexOf("wc-below-panel\"", StringComparison.Ordinal);
+        Assert.True(start >= 0, "below-median panel not found");
+        var end = html.IndexOf("wc-composition\"", start, StringComparison.Ordinal);
+        return end < 0 ? html[start..] : html[start..end];
     }
 
     private static int Count(string html, string needle) =>
@@ -170,22 +186,31 @@ public class WinningContentBelowMedianUiTests
                 ("BM-AU-C", AutoGmv, false, 3000, 10));
 
             var html = await GetPageHtmlAsync(factory, user);
+            var panel = BelowPanel(html);
 
-            // Three independent group cards.
-            Assert.Equal(3, Count(html, "wc-below-group"));
+            // One merged panel: summary table rows per type + one ascending list.
+            Assert.Equal(3, Count(html, "wc-below-row"));
 
-            // Median values come from the backend; 8,371 formatted N0 is culture-sensitive,
-            // so assert the raw digits in any grouping form.
-            Assert.Matches(@"8[.,\u00a0 ]?371", html);
-            Assert.Matches(@"4[.,\u00a0 ]?148", html);
-            Assert.Matches(@"2[.,\u00a0 ]?000", html);
+            // Median values come from the backend; exact median of an even population is
+            // the average of the two middle values, so NON_KK [2673,5000,8371,10000] ->
+            // 6.685,5 (display 6.686). Formatted N0 is culture-sensitive, so assert the raw
+            // digits in any grouping form (they appear as the per-item median reference in
+            // the merged list: NON_KK 6.686, KK 4.148, AUTO 2.000).
+            Assert.Matches(@"6[.,\u00a0 ]?68[56]", panel);
+            Assert.Matches(@"4[.,\u00a0 ]?148", panel);
+            Assert.Matches(@"2[.,\u00a0 ]?000", panel);
 
-            // NON_KK group: only 2,673 and 5,000 are below 8,371 (equal 8,371 excluded).
+            // Summary row: NON_KK 2 below / 4 total / 50% below (2/4 exact display).
             var nonKk = BelowChunk(html, "Non-KK");
-            Assert.Contains("BM-NK-A", nonKk);
-            Assert.Contains("BM-NK-B", nonKk);
-            Assert.DoesNotContain("BM-NK-C", nonKk); // equal to median -> NOT displayed
-            Assert.DoesNotContain("BM-NK-D", nonKk); // above median -> NOT displayed
+            Assert.Contains(">2<", nonKk);
+            Assert.Contains(">4<", nonKk);
+            Assert.Contains("50%", nonKk);
+
+            // Merged list: only 2,673 and 5,000 are below 8,371 (equal/above excluded).
+            Assert.Contains("BM-NK-A", panel);
+            Assert.Contains("BM-NK-B", panel);
+            Assert.DoesNotContain("BM-NK-C", panel); // equal to median -> NOT displayed
+            Assert.DoesNotContain("BM-NK-D", panel); // above median -> NOT displayed
         }
     }
 
@@ -207,14 +232,14 @@ public class WinningContentBelowMedianUiTests
                 ("BM-MID", NonKk, false, 501, 5));
 
             var html = await GetPageHtmlAsync(factory, user);
-            var nonKk = BelowChunk(html, "Non-KK");
+            var panel = BelowPanel(html);
 
-            Assert.Contains("BM-LO", nonKk);        // 499 < 500 -> displayed
-            Assert.DoesNotContain("BM-EQ1", nonKk); // 500 == median -> hidden
-            Assert.DoesNotContain("BM-EQ2", nonKk);
-            Assert.DoesNotContain("BM-MID", nonKk); // 501 > median -> hidden
-            Assert.DoesNotContain("BM-HI", nonKk);
-            Assert.Equal(1, Count(nonKk, "wc-below-item"));
+            Assert.Contains("BM-LO", panel);        // 499 < 500 -> displayed
+            Assert.DoesNotContain("BM-EQ1", panel); // 500 == median -> hidden
+            Assert.DoesNotContain("BM-EQ2", panel);
+            Assert.DoesNotContain("BM-MID", panel); // 501 > median -> hidden
+            Assert.DoesNotContain("BM-HI", panel);
+            Assert.Equal(1, Count(panel, "wc-below-item"));
         }
     }
 
@@ -235,12 +260,17 @@ public class WinningContentBelowMedianUiTests
                 ("AU-ARCH-LOW", AutoGmv, true, 500, 5));
 
             var html = await GetPageHtmlAsync(factory, user);
-            var auto = BelowChunk(html, "Auto GMV Live");
+            var panel = BelowPanel(html);
 
-            // Archived below-median entry renders exactly as returned by the backend.
-            Assert.Contains("AU-ARCH-LOW", auto);
-            // [500, 1000, 2000, 3000] -> median (1000+2000)/2 = 1500.
-            Assert.Matches(@"1[.,\u00a0 ]?500", html);
+            // Archived below-median entry renders in the merged list (backend output).
+            Assert.Contains("AU-ARCH-LOW", panel);
+            // [500, 1000, 2000, 3000] -> median (1000+2000)/2 = 1500 (per-item ref).
+            Assert.Matches(@"1[.,\u00a0 ]?500", panel);
+            // AUTO summary row: 2 below / 4 total / 50%.
+            var auto = BelowChunk(html, "Auto GMV Live");
+            Assert.Contains(">2<", auto);
+            Assert.Contains(">4<", auto);
+            Assert.Contains("50%", auto);
         }
     }
 
@@ -260,16 +290,19 @@ public class WinningContentBelowMedianUiTests
             SeedPeriod(factory, ("BM-AU-NULLV", AutoGmv, false, null, null));
 
             var html = await GetPageHtmlAsync(factory, user);
+            var panel = BelowPanel(html);
 
-            var nonKk = BelowChunk(html, "Non-KK");
-            Assert.Contains("Median kategori belum tersedia", nonKk);
+            // NULL medians surface in the panel note (per type, never as 0).
+            Assert.Contains("Median kategori belum tersedia", panel);
+            Assert.Contains("belum ada Views valid", panel);
+            Assert.DoesNotContain("BM-AU-NULLV", panel); // NULL Views never below-median, never "0"
 
-            var auto = BelowChunk(html, "Auto GMV Live");
-            Assert.Contains("Median kategori belum tersedia", auto);
-            Assert.DoesNotContain("BM-AU-NULLV", auto); // NULL Views never below-median, never "0"
-
+            // KK summary row: 0 below / 1 total / 0% - valid median, no entries below.
             var kk = BelowChunk(html, "Keranjang Kuning");
-            Assert.Contains("Tidak ada konten di bawah median", kk); // valid median, no entries below
+            Assert.Contains(">0<", kk);
+            Assert.Contains(">1<", kk);
+            Assert.Contains("0%", kk);
+            Assert.Contains("Tidak ada konten di bawah median", panel);
         }
     }
 
@@ -287,16 +320,16 @@ public class WinningContentBelowMedianUiTests
                 ("BM-NK-SMALL", NonKk, false, 1000, 5));
 
             var html = await GetPageHtmlAsync(factory, user);
-            var nonKk = BelowChunk(html, "Non-KK");
+            var panel = BelowPanel(html);
 
             // Views emphasized as the section's primary metric: views-value class present.
-            Assert.Contains("wc-below-views", nonKk);
-            Assert.Matches(@"1[.,\u00a0 ]?000", nonKk);
+            Assert.Contains("wc-below-views", panel);
+            Assert.Matches(@"1[.,\u00a0 ]?000", panel);
 
-            // Identity metadata + accessible video link.
-            Assert.Contains("creator", nonKk);
-            Assert.Contains("aria-label=\"Buka video BM-NK-SMALL\"", nonKk);
-            Assert.Contains("href=\"https://tiktok.com/@creator/video/BM-NK-SMALL\"", nonKk);
+            // Identity metadata + accessible video link (merged list, whole panel).
+            Assert.Contains("creator", panel);
+            Assert.Contains("aria-label=\"Buka video BM-NK-SMALL\"", panel);
+            Assert.Contains("href=\"https://tiktok.com/@creator/video/BM-NK-SMALL\"", panel);
         }
     }
 }

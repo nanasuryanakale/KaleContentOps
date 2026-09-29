@@ -271,7 +271,7 @@ public sealed class AdminUserAccessService
             }
         }
 
-        LogAdminAction("UserUpdated", target: user.UserName,
+        LogAdminAction("UserUpdated", target: user.UserName ?? userId,
             detail: $"role={roleName}, active={user.IsActive}, displayName={user.DisplayName}");
         return AdminOperationResult.Ok();
     }

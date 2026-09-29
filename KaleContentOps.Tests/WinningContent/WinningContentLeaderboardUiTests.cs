@@ -12,14 +12,17 @@ using Xunit;
 namespace KaleContentOps.Tests.WinningContent;
 
 /// <summary>
-/// Phase 3B leaderboard UI tests (real MVC pipeline, seeded InMemory store):
-/// - three independent category cards (Non-KK / Keranjang Kuning / Auto GMV Live)
-/// - exact Top-N rendering: NON_KK max 4, KK max 4, AUTO_GMV_LIVE max 2
+/// Phase 3B leaderboard UI tests (real MVC pipeline, seeded InMemory store).
+/// Mockup layout (visual parity phase): each category card shows the per-type video
+/// count and TWO tables - TOP BY VIEWS (display-only Views DESC re-order of the SAME
+/// backend entries) and TOP BY ENGAGEMENT RATE (exact backend ER DESC order).
+/// Business assertions unchanged:
+/// - exact Top-N rendering: NON_KK max 4, KK max 4, AUTO_GMV_LIVE max 2 (per block)
 /// - backend order (ER DESC) preserved, ranks rendered from the backend Rank value
 /// - NO threshold: sub-1.0x multiplier entries remain visible
 /// - archived Auto GMV Live remains visible
 /// - NULL multiplier/baseline render as em dash (never 0x / 0%)
-/// Assertions avoid culture-formatted decimals; they use titles, rank text and
+/// Assertions avoid culture-formatted decimals; they use titles, rank aria-labels and
 /// structural class names, which are culture-independent.
 /// </summary>
 public class WinningContentLeaderboardUiTests
@@ -96,7 +99,7 @@ public class WinningContentLeaderboardUiTests
     /// </summary>
     private static string LeaderboardChunk(string html, string label)
     {
-        var marker = $"wc-leaderboard-title\">{label}</h3>";
+        var marker = $"wc-leaderboard-title\"><span class=\"wc-dot\" aria-hidden=\"true\"></span>{label}</h3>";
         var start = html.IndexOf(marker, StringComparison.Ordinal);
         Assert.True(start >= 0, $"leaderboard card '{label}' not found");
         start += marker.Length;
@@ -145,18 +148,19 @@ public class WinningContentLeaderboardUiTests
             var kk = LeaderboardChunk(html, "Keranjang Kuning");
             var auto = LeaderboardChunk(html, "Auto GMV Live");
 
-            // Exact Top-N per card: 4 / 4 / 2.
-            Assert.Equal(4, Count(nonKk, "wc-rank-item"));
-            Assert.Equal(4, Count(kk, "wc-rank-item"));
-            Assert.Equal(2, Count(auto, "wc-rank-item"));
+            // Exact Top-N per card, rendered in BOTH blocks (views + ER): 4+4 / 4+4 / 2+2 rows.
+            Assert.Equal(8, Count(nonKk, "wc-lb-row"));
+            Assert.Equal(8, Count(kk, "wc-lb-row"));
+            Assert.Equal(4, Count(auto, "wc-lb-row"));
 
-            // Ranks come from the backend value: #1..#4 in NON_KK/KK, #1..#2 only in AUTO.
-            Assert.Contains("#1", nonKk);
-            Assert.Contains("#4", nonKk);
-            Assert.Contains("#4", kk);
-            Assert.Contains("#2", auto);
-            Assert.DoesNotContain("#3", auto);
-            Assert.DoesNotContain("#5", nonKk);
+            // Ranks come from the backend value: 1..4 in NON_KK/KK, 1..2 only in AUTO
+            // (rank numbers render as aria-labels on every row).
+            Assert.Contains("Peringkat 1\"", nonKk);
+            Assert.Contains("Peringkat 4\"", nonKk);
+            Assert.Contains("Peringkat 4\"", kk);
+            Assert.Contains("Peringkat 2\"", auto);
+            Assert.DoesNotContain("Peringkat 3\"", auto);
+            Assert.DoesNotContain("Peringkat 5\"", nonKk);
 
             // 5th/6th NON_KK entries (lowest ERs: likes 10 and 20) are excluded by the
             // backend Top-4 and therefore never rendered.
@@ -186,7 +190,7 @@ public class WinningContentLeaderboardUiTests
 
             Assert.True(posHigh >= 0 && posMid > posHigh && posLow > posMid,
                 "entries must render in backend order ER DESC");
-            Assert.Equal(3, Count(nonKk, "wc-rank-item"));
+            Assert.Equal(6, Count(nonKk, "wc-lb-row")); // 3 in each block
         }
     }
 
@@ -217,7 +221,7 @@ public class WinningContentLeaderboardUiTests
             Assert.Contains("NK-SUB06", nonKk);
             Assert.Contains("NK-SUB05", nonKk);
             Assert.Contains("NK-SUB04", nonKk);
-            Assert.Equal(4, Count(nonKk, "wc-rank-item"));
+            Assert.Equal(8, Count(nonKk, "wc-lb-row")); // 4 in each block
         }
     }
 
@@ -244,7 +248,7 @@ public class WinningContentLeaderboardUiTests
                 || auto.Contains('\u2014');
             Assert.True(hasDash, "NULL values must render as an em dash placeholder");
             Assert.DoesNotContain("0x", auto);                  // never rendered as 0x
-            Assert.Equal(1, Count(auto, "wc-rank-item"));
+            Assert.Equal(2, Count(auto, "wc-lb-row"));          // 1 in each block
         }
     }
 
@@ -264,16 +268,15 @@ public class WinningContentLeaderboardUiTests
 
             var html = await GetPageHtmlAsync(client);
 
-            // Exactly three independent cards.
+            // Exactly three independent cards, each with the mockup's two blocks.
             Assert.Equal(3, Count(html, "wc-leaderboard-title"));
-            Assert.Contains("Top 4 ER", html);
-            Assert.Contains("Top 2 ER", html);
+            Assert.Equal(3, Count(html, "TOP BY VIEWS"));
+            Assert.Equal(3, Count(html, "TOP BY ENGAGEMENT RATE"));
 
-            // Video link renders with an accessible label.
-            Assert.Contains("aria-label=\"Buka video NK-ITEM\"", html);
-            Assert.Contains("href=\"https://tiktok.com/@creator/video/NK-ITEM\"", html);
+            // Badges: the #1 ER entry of a card carries the Top Engagement badge.
+            Assert.Contains("Top Engagement", html);
 
-            // Rank badges carry accessible labels.
+            // Rank cells carry accessible labels.
             Assert.Contains("aria-label=\"Peringkat 1\"", html);
         }
     }

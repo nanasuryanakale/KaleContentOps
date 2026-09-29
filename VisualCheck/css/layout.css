@@ -1,0 +1,46 @@
+/* Layout styles for sidebar + topbar design (mockup-inspired) */
+:root{
+  --bg:#0b1220;
+  --sidebar:#0f1724;
+  --muted:#9aa4b2;
+  --accent:#5b7fff;
+  --text:#dce6f2;
+}
+
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);margin:0;font-family:Segoe UI,system-ui,Arial,Helvetica,sans-serif}
+
+.topbar{height:44px;background:#14181c;color:#fff;padding:6px 16px;position:fixed;left:0;right:0;top:0;z-index:1050;display:flex;align-items:center;justify-content:space-between}
+.topbar .app-title{font-weight:600;margin-right:12px}
+.topbar .app-sub{color:var(--muted);font-size:13px}
+
+
+.app-sidebar{position:fixed;top:44px;left:0;bottom:0;width:240px;background:var(--sidebar);padding:18px 12px;overflow:auto;border-right:1px solid rgba(255,255,255,0.03);font-size:13px}
+.app-sidebar .brand{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.brand-icon{width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#7c6cff,#5b7fff);display:flex;align-items:center;justify-content:center;font-weight:700;color:white}
+.brand-text .title{font-weight:700;font-size:14px}
+.brand-text .subtitle{font-size:12px;color:var(--muted);margin-top:2px}
+
+.menu-section{margin-top:12px;margin-bottom:8px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:0.4px}
+.app-sidebar .nav-link{color:#b7c2d6;padding:8px 10px;border-radius:8px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+.app-sidebar .nav-link .nav-icon{display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.55)}
+.app-sidebar .nav-link .nav-text{flex:1;text-align:left}
+.app-sidebar .nav-link svg{display:block}
+.app-sidebar .nav-link.active{background:rgba(91,127,255,0.08);border:1px solid rgba(91,127,255,0.12);color:var(--text)}
+.app-sidebar .nav-link:hover{background:rgba(255,255,255,0.02);color:var(--text)}
+
+.app-sidebar .nav-link .nav-icon svg{width:18px;height:18px}
+
+
+.sidebar-footer{position:relative;padding-top:18px;margin-top:12px;border-top:1px solid rgba(255,255,255,0.02);color:var(--muted);font-size:13px}
+
+.app-main{margin-left:240px;padding-top:64px;min-height:calc(100vh - 44px - 56px);padding-left:24px;padding-right:24px}
+
+.app-footer{position:relative;margin-left:240px;height:56px;background:transparent;color:var(--muted);display:flex;align-items:center;padding:12px 24px;border-top:1px solid rgba(255,255,255,0.02)}
+.app-footer .footer-left{flex:1}
+
+@media (max-width:767px){
+  .app-sidebar{position:static;width:100%;height:auto;top:auto;border-right:none}
+  .app-main{margin-left:0;padding-top:120px}
+  .app-footer{left:0}
+}
