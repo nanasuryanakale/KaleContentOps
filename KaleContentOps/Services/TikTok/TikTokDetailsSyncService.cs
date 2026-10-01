@@ -133,6 +133,57 @@ public class TikTokDetailsSyncService
         return processed;
     }
 
+    // Run a bounded details sync that targets only P1 candidates (latest metric exists but is not enriched).
+    // This is a safe, idempotent, shop-scoped operation that reuses the existing per-video pipeline
+    // and respects the same retry/backoff/throttle semantics. It will process up to `limit` videos
+    // and stop on HTTP 429 / throttle signals. It does not touch P0 candidates.
+    public async Task<int> RunP1DetailsSyncAsync(string shopCipher, int limit = 10, int skip = 0, CancellationToken cancellationToken = default)
+    {
+        var shop = await _db.TikTokShops
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.ShopCipher == shopCipher, cancellationToken);
+
+        if (shop == null) return 0;
+
+        long shopId = shop.Id;
+
+        var query = _db.ContentLogs
+            .AsNoTracking()
+            .Where(cl => cl.TikTokShopId == shopId && !string.IsNullOrEmpty(cl.VideoId));
+
+        // latest per log restricted
+        var latestPerLogRestricted = _db.ContentMetrics
+            .Where(m => _db.ContentLogs.Where(cl => cl.TikTokShopId == shopId).Select(cl => cl.Id).Contains(m.ContentLogId))
+            .GroupBy(m => m.ContentLogId)
+            .Select(g => new { ContentLogId = g.Key, CapturedAt = g.Max(x => x.CapturedAt) });
+
+        var latestMetrics = from lm in latestPerLogRestricted
+                            join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
+                            where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null) == false
+                            select new { lm.ContentLogId, m.CapturedAt };
+
+        var q = from cl in query
+                join lm in latestMetrics on cl.Id equals lm.ContentLogId
+                orderby cl.VideoPostTime descending, cl.Id descending
+                select new { Cl = cl, CapturedAt = (DateTime?)lm.CapturedAt };
+
+        var page = await q.Skip(skip).Take(limit).ToListAsync(cancellationToken);
+
+        var candidates = page.Select(x => (ContentLog)x.Cl).ToList();
+
+        int processed = 0;
+
+        foreach (var cl in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (synced, throttleStop) = await SyncOneContentLogAsync(cl, shop.ShopCipher, cancellationToken);
+            if (synced) processed++;
+            if (throttleStop) break;
+        }
+
+        return processed;
+    }
+
     // Development-only: sync details for ONE existing ContentLog selected by VideoId.
     // Reuses the exact same pipeline as the batch flow (RunDetailsDiagnosticAsync -> ParseDetailsMetrics
     // -> MapDetailsMetricsToContentMetric -> SaveChangesAsync); no duplicate HTTP/parser/persistence logic.
@@ -154,6 +205,41 @@ public class TikTokDetailsSyncService
         if (shop == null || string.IsNullOrWhiteSpace(shop.ShopCipher))
         {
             _logger.LogWarning("Details sync (single): ContentLog {ContentLogId} has no resolvable shop", log.Id);
+            return false;
+        }
+
+        var (synced, _) = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
+        return synced;
+    }
+
+    // Production-safe: sync details for ONE existing ContentLog selected by ContentLog.Id.
+    // This is the minimal service entry point required by Admin UI to deterministically
+    // target exactly one ContentLog. It reuses the shared SyncOneContentLogAsync pipeline.
+    public async Task<bool> SyncSingleContentLogAsync(long contentLogId, CancellationToken cancellationToken = default)
+    {
+        var log = await _db.ContentLogs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cl => cl.Id == contentLogId, cancellationToken);
+
+        if (log == null)
+        {
+            _logger.LogWarning("Details sync (single): no ContentLog found for Id {ContentLogId}", contentLogId);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(log.VideoId))
+        {
+            _logger.LogWarning("Details sync (single): ContentLog {ContentLogId} has no VideoId", contentLogId);
+            return false;
+        }
+
+        var shop = await _db.TikTokShops
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == log.TikTokShopId, cancellationToken);
+
+        if (shop == null || string.IsNullOrWhiteSpace(shop.ShopCipher))
+        {
+            _logger.LogWarning("Details sync (single): ContentLog {ContentLogId} has no resolvable shop", contentLogId);
             return false;
         }
 

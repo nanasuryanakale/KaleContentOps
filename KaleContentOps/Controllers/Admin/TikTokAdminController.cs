@@ -49,6 +49,54 @@ namespace KaleContentOps.Controllers.Admin
                 TempData["TikTokSyncMessage"] = $"Authorized shops synchronized: {count}";
                 return RedirectToAction("Index");
             }
+
+        // Historical P1 enrichment: process videos whose latest metric exists but is not enriched.
+        [HttpPost("SyncVideoDetailsP1")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SyncVideoDetailsP1(int limit = 10, CancellationToken cancellationToken = default)
+        {
+            if (limit < 1) limit = 1;
+            if (limit > 100) limit = 100; // safety hard bound
+
+            var shops = await _db.TikTokShops.ToListAsync(cancellationToken);
+            if (shops == null || shops.Count == 0)
+            {
+                TempData["TikTokSyncError"] = "No authorized TikTok shops found. Sync authorized shops first.";
+                return RedirectToAction("Index");
+            }
+
+            int shopsProcessed = 0;
+            int videosEnriched = 0;
+            int errors = 0;
+            var perShopErrors = new List<string>();
+
+            foreach (var shop in shops)
+            {
+                if (string.IsNullOrWhiteSpace(shop.ShopCipher))
+                {
+                    perShopErrors.Add($"Shop {shop.Id} has empty ShopCipher");
+                    errors++;
+                    continue;
+                }
+
+                try
+                {
+                    var processed = await _detailsService.RunP1DetailsSyncAsync(shop.ShopCipher, limit: limit, skip: 0, cancellationToken: cancellationToken);
+                    shopsProcessed++;
+                    videosEnriched += processed;
+                }
+                catch (Exception ex)
+                {
+                    errors++;
+                    perShopErrors.Add($"Shop {shop.Id} error: {ex.Message}");
+                }
+            }
+
+            TempData["TikTokSyncResult"] = $"TikTok P1 Details Sync completed. Shops processed: {shopsProcessed}. Videos enriched: {videosEnriched}. Errors: {errors}";
+            if (perShopErrors.Count > 0) TempData["TikTokSyncPerShopErrors"] = string.Join("\n", perShopErrors);
+
+            return RedirectToAction("Index");
+        }
             catch (Exception ex)
             {
                 TempData["TikTokSyncError"] = ex.Message;
@@ -157,24 +205,33 @@ namespace KaleContentOps.Controllers.Admin
         // accepted from the request (ShopCipher is resolved from the database).
         [HttpPost("SyncVideoDetailsSingle")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SyncVideoDetailsSingle(string videoId, CancellationToken cancellationToken = default)
+        public async Task<IActionResult> SyncVideoDetailsSingle(long? contentLogId, string? videoId, CancellationToken cancellationToken = default)
         {
             if (!_env.IsDevelopment())
             {
                 return NotFound(); // hard-disabled outside Development
             }
 
-            if (string.IsNullOrWhiteSpace(videoId))
+            // Accept either ContentLogId (preferred) or videoId for compatibility with existing UI.
+            if (!contentLogId.HasValue && string.IsNullOrWhiteSpace(videoId))
             {
-                TempData["TikTokSyncError"] = "videoId is required.";
+                TempData["TikTokSyncError"] = "contentLogId or videoId is required.";
                 return RedirectToAction("Index");
             }
 
-            var synced = await _detailsService.RunSingleVideoSyncAsync(videoId.Trim(), cancellationToken);
+            bool synced = false;
+            if (contentLogId.HasValue)
+            {
+                synced = await _detailsService.SyncSingleContentLogAsync(contentLogId.Value, cancellationToken);
+            }
+            else if (!string.IsNullOrWhiteSpace(videoId))
+            {
+                synced = await _detailsService.RunSingleVideoSyncAsync(videoId.Trim(), cancellationToken);
+            }
 
             TempData["TikTokSyncResult"] = synced
-                ? $"Single-video details sync completed for {videoId}."
-                : $"Single-video details sync produced no persisted metric for {videoId} (see logs).";
+                ? "Single-video details sync completed."
+                : "Single-video details sync produced no persisted metric (see logs).";
             return RedirectToAction("Index");
         }
     }
