@@ -101,6 +101,7 @@ public sealed class WinningContentService : IWinningContentService
                     Comments = m.Comments,
                     Shares = m.Shares,
                     Reach = m.Reach,
+                    FullWatchRate = m.FullWatchRate,
                     DemographicsJson = m.DemographicsJson
                 })
                 .ToListAsync(cancellationToken);
@@ -191,6 +192,7 @@ public sealed class WinningContentService : IWinningContentService
                     Comments = m.Comments,
                     Shares = m.Shares,
                     Reach = m.Reach,
+                    FullWatchRate = m.FullWatchRate,
                     DemographicsJson = m.DemographicsJson
                 })
                 .ToListAsync(cancellationToken);
@@ -234,6 +236,7 @@ public sealed class WinningContentService : IWinningContentService
                     LatestMetricCapturedAt = metric?.CapturedAt,
                     // Phase B additions - pure transports of existing columns:
                     Reach = metric?.Reach,
+                    FullWatchRate = metric?.FullWatchRate,
                     ProductionMethodId = log.ProductionMethodId ?? null,
                     ProductionMethodCode = log.ProductionMethodCode,
                     ProductionMethodName = log.ProductionMethodName,
@@ -277,6 +280,7 @@ public sealed class WinningContentService : IWinningContentService
                         Likes = x.Likes,
                         Comments = x.Comments,
                         Shares = x.Shares,
+                        FullWatchRate = x.FullWatchRate,
                         EngagementRate = x.EngagementRate,
                         BaselineEngagementRate = x.BaselineEngagementRate,
                         Multiplier = x.Multiplier,
@@ -639,8 +643,9 @@ public sealed class WinningContentService : IWinningContentService
         public long? Likes { get; init; }
         public long? Comments { get; init; }
         public long? Shares { get; init; }
-        // Feature 4/5 transports (existing columns - no new ingestion):
+        // Feature 4/5 transports + %Full Watch badge display (existing columns - no new ingestion):
         public long? Reach { get; init; }
+        public decimal? FullWatchRate { get; init; }
         public string? DemographicsJson { get; init; }
     }
 }

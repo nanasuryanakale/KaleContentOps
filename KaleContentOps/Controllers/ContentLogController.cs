@@ -1,39 +1,77 @@
 ﻿using KaleContentOps.Data;
 using KaleContentOps.Models;
+using KaleContentOps.Services;
 using KaleContentOps.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace KaleContentOps.Controllers;
 
 public class ContentLogController : Controller
 {
-    private readonly AppDbContext _db;
+    // Date formats accepted for date filtering: the dd/MM/yyyy value rendered by the
+    // Tanggal column, the legacy dd-MM-yyyy input, and the ISO value posted by
+    // <input type="date">.
+    private static readonly string[] DateSearchFormats =
+        { "dd-MM-yyyy", "dd/MM/yyyy", "d-M-yyyy", "d/M/yyyy", "yyyy-MM-dd" };
 
-    public ContentLogController(AppDbContext db)
+    private readonly AppDbContext _db;
+    private readonly IShopTimeZone _shopTimeZone;
+
+    // shopTimeZone stays optional so existing single-argument construction (unit tests)
+    // keeps compiling; DI supplies the configured shop timezone (Asia/Jakarta) at runtime.
+    public ContentLogController(AppDbContext db, IShopTimeZone? shopTimeZone = null)
     {
         _db = db;
+        _shopTimeZone = shopTimeZone ?? new ShopTimeZone(Options.Create(new ShopTimeZoneOptions()));
     }
 
     public async Task<IActionResult> Index(
         string? search,
         string? contentType,
+        string? dateFrom = null,
+        string? dateTo = null,
         int page = 1,
         int pageSize = 20)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
 
+        dateFrom = string.IsNullOrWhiteSpace(dateFrom) ? null : dateFrom.Trim();
+        dateTo = string.IsNullOrWhiteSpace(dateTo) ? null : dateTo.Trim();
+
         IQueryable<ContentLog> query = _db.ContentLogs.AsNoTracking();
+
+        // Date range filter on VideoPostTime, evaluated server-side as a half-open window:
+        //   startInclusive <= VideoPostTime < endExclusive.
+        // Boundaries are shop-local (Asia/Jakarta, GMT+7) midnights because VideoPostTime is
+        // stored as a naive shop-local timestamp, so the selected day keeps its full 24h span.
+        var filterFrom = ParseFilterDate(dateFrom);
+        var filterTo = ParseFilterDate(dateTo);
+
+        if (filterFrom.HasValue)
+        {
+            var startInclusive = _shopTimeZone.ToDateTime(filterFrom.Value);
+            query = query.Where(x => x.VideoPostTime != null && x.VideoPostTime >= startInclusive);
+        }
+
+        if (filterTo.HasValue)
+        {
+            var endExclusive = _shopTimeZone.ToDateTime(filterTo.Value.AddDays(1));
+            query = query.Where(x => x.VideoPostTime != null && x.VideoPostTime < endExclusive);
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
             search = search.Trim();
 
-            // support date search in dd-MM-yyyy format (using range for SQL translation)
-            if (DateTime.TryParseExact(search, "dd-MM-yyyy", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
+            // Exact-date search on VideoPostTime (server-side, half-open range so the whole
+            // selected Jakarta day stays included). Accepts the dd/MM/yyyy value shown in the
+            // Tanggal column as well as the legacy dd-MM-yyyy input.
+            if (DateOnly.TryParseExact(search, DateSearchFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
             {
-                var start = parsedDate.Date;
+                var start = _shopTimeZone.ToDateTime(parsedDate);
                 var end = start.AddDays(1);
                 query = query.Where(x => x.VideoPostTime != null && x.VideoPostTime >= start && x.VideoPostTime < end);
             }
@@ -47,9 +85,15 @@ public class ContentLogController : Controller
                     parsedViews = v;
                 }
 
-                // build predicate that checks multiple fields (Title, ContentType code/name, ProductionMethod name, PIC name, latest metric Views)
+                // build predicate that checks multiple table fields (Title, VideoId, Username,
+                // CreatorNickname, ContentType code/name, ProductionMethod name, PIC name,
+                // latest metric Views). Case-insensitive Contains, translated to SQL.
                 query = query.Where(x =>
                     (x.Title != null && x.Title.Contains(search))
+                    || x.VideoId.Contains(search)
+                    || (x.Username != null && x.Username.Contains(search))
+                    || (x.VideoUrl != null && x.VideoUrl.Contains(search))
+                    || (x.CreatorNickname != null && x.CreatorNickname.Contains(search))
                     || (x.ContentType != null && (x.ContentType.Code != null && x.ContentType.Code.Contains(search) || x.ContentType.Name != null && x.ContentType.Name.Contains(search)))
                     || (x.ProductionMethod != null && x.ProductionMethod.Name != null && x.ProductionMethod.Name.Contains(search))
                     || (x.Pic != null && x.Pic.Name != null && x.Pic.Name.Contains(search))
@@ -234,6 +278,8 @@ public class ContentLogController : Controller
             TotalPages = totalPages,
             Search = search ?? string.Empty,
             SelectedContentType = contentType ?? string.Empty,
+            DateFrom = dateFrom ?? string.Empty,
+            DateTo = dateTo ?? string.Empty,
             ContentTypes = contentTypes,
             MasterPics = masterPics,
             HistoricalPics = historicalPics,
@@ -241,6 +287,23 @@ public class ContentLogController : Controller
         };
 
         return View(vm);
+    }
+
+    // Parses a filter date: ISO yyyy-MM-dd (posted by <input type="date">) or the
+    // dd/MM/yyyy / dd-MM-yyyy display formats. Returns null when absent or unparseable so
+    // an invalid value narrows nothing instead of throwing.
+    private static DateOnly? ParseFilterDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        return DateOnly.TryParseExact(
+            value.Trim(),
+            DateSearchFormats,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out var parsed)
+            ? parsed
+            : null;
     }
 
     [HttpPost]

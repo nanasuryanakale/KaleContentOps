@@ -16,20 +16,20 @@ namespace KaleContentOps.Controllers.Admin
     [Authorize(Policy = PermissionPolicyProvider.PolicyPrefix + AuthConstants.Permissions.TikTokAdminView)]
     public class TikTokAdminController : Controller
     {
-    private readonly ITikTokShopService _shopService;
-    private readonly ITikTokVideoService _videoService;
-    private readonly TikTokDetailsSyncService _detailsService;
-    private readonly AppDbContext _db;
-    private readonly Microsoft.AspNetCore.Hosting.IWebHostEnvironment _env;
+        private readonly ITikTokShopService _shopService;
+        private readonly ITikTokVideoService _videoService;
+        private readonly TikTokDetailsSyncService _detailsService;
+        private readonly AppDbContext _db;
+        private readonly Microsoft.AspNetCore.Hosting.IWebHostEnvironment _env;
 
-    public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, AppDbContext db, Microsoft.AspNetCore.Hosting.IWebHostEnvironment env)
-    {
-        _shopService = shopService;
-        _videoService = videoService;
-        _detailsService = detailsService;
-        _db = db;
-        _env = env;
-    }
+        public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, AppDbContext db, Microsoft.AspNetCore.Hosting.IWebHostEnvironment env)
+        {
+            _shopService = shopService;
+            _videoService = videoService;
+            _detailsService = detailsService;
+            _db = db;
+            _env = env;
+        }
 
         [HttpGet("")]
         public async Task<IActionResult> Index()
@@ -49,6 +49,12 @@ namespace KaleContentOps.Controllers.Admin
                 TempData["TikTokSyncMessage"] = $"Authorized shops synchronized: {count}";
                 return RedirectToAction("Index");
             }
+            catch (System.Exception ex)
+            {
+                TempData["TikTokSyncError"] = ex.Message;
+                return RedirectToAction("Index");
+            }
+        }
 
         // Historical P1 enrichment: process videos whose latest metric exists but is not enriched.
         [HttpPost("SyncVideoDetailsP1")]
@@ -56,7 +62,7 @@ namespace KaleContentOps.Controllers.Admin
         public async Task<IActionResult> SyncVideoDetailsP1(int limit = 10, CancellationToken cancellationToken = default)
         {
             if (limit < 1) limit = 1;
-            if (limit > 100) limit = 100; // safety hard bound
+            if (limit > 10) limit = 10; // safety hard bound (UI max)
 
             var shops = await _db.TikTokShops.ToListAsync(cancellationToken);
             if (shops == null || shops.Count == 0)
@@ -69,6 +75,7 @@ namespace KaleContentOps.Controllers.Admin
             int videosEnriched = 0;
             int errors = 0;
             var perShopErrors = new List<string>();
+            var perShopSummaries = new List<string>();
 
             foreach (var shop in shops)
             {
@@ -83,25 +90,43 @@ namespace KaleContentOps.Controllers.Admin
                 {
                     var processed = await _detailsService.RunP1DetailsSyncAsync(shop.ShopCipher, limit: limit, skip: 0, cancellationToken: cancellationToken);
                     shopsProcessed++;
-                    videosEnriched += processed;
+                    // maintain previous aggregate behavior: videosEnriched was counting succeeded/new metrics
+                    videosEnriched += processed?.NewContentMetrics ?? 0;
+
+                    if (processed != null)
+                    {
+                        if (processed.CandidatesSelected == 0)
+                        {
+                            perShopSummaries.Add($"P1 Details Sync for shop {shop.ShopCipher}: tidak ada kandidat P1. Tidak ada TikTok Details API request dilakukan.");
+                        }
+                        else if (processed.Attempted == 0)
+                        {
+                            perShopSummaries.Add($"P1 Details Sync for shop {shop.ShopCipher}: P1 {processed.P1Before} → {processed.P1After}. Selected {processed.CandidatesSelected}, attempted {processed.Attempted}, enriched {processed.Succeeded}, no enrichment {processed.NoEnrichment}, failed {processed.Failed}, throttled {processed.Throttled}. New ContentMetrics: {processed.NewContentMetrics}. Demographics: {processed.DemographicsPopulated}.");
+                        }
+                        else
+                        {
+                            perShopSummaries.Add($"P1 Details Sync for shop {shop.ShopCipher}: P1 {processed.P1Before} → {processed.P1After}. Selected {processed.CandidatesSelected}, attempted {processed.Attempted}, enriched {processed.Succeeded}, no enrichment {processed.NoEnrichment}, failed {processed.Failed}, throttled {processed.Throttled}. New ContentMetrics: {processed.NewContentMetrics}. Demographics: {processed.DemographicsPopulated}.");
+                        }
+                    }
                 }
-                catch (Exception ex)
+                catch (System.Exception ex)
                 {
                     errors++;
                     perShopErrors.Add($"Shop {shop.Id} error: {ex.Message}");
                 }
             }
 
-            TempData["TikTokSyncResult"] = $"TikTok P1 Details Sync completed. Shops processed: {shopsProcessed}. Videos enriched: {videosEnriched}. Errors: {errors}";
+            if (perShopSummaries.Count > 0)
+            {
+                TempData["TikTokSyncResult"] = string.Join("\n", perShopSummaries);
+            }
+            else
+            {
+                TempData["TikTokSyncResult"] = $"TikTok P1 Details Sync completed. Shops processed: {shopsProcessed}. Videos enriched: {videosEnriched}. Errors: {errors}";
+            }
             if (perShopErrors.Count > 0) TempData["TikTokSyncPerShopErrors"] = string.Join("\n", perShopErrors);
 
             return RedirectToAction("Index");
-        }
-            catch (Exception ex)
-            {
-                TempData["TikTokSyncError"] = ex.Message;
-                return RedirectToAction("Index");
-            }
         }
 
         [HttpPost("SyncVideos")]
@@ -135,7 +160,7 @@ namespace KaleContentOps.Controllers.Admin
                     shopsProcessed++;
                     videosInserted += processed; // service returns total processed (insert+update)
                 }
-                catch (Exception ex)
+                catch (System.Exception ex)
                 {
                     errors++;
                     perShopErrors.Add($"Shop {shop.Id} error: {ex.Message}");
@@ -148,9 +173,7 @@ namespace KaleContentOps.Controllers.Admin
             return RedirectToAction("Index");
         }
 
-        // Manual trigger for per-video Details enrichment. Bounded per shop to stay rate-limit safe:
-        // each call goes through the shared TikTokGetWithRetryAsync (Retry-After, exponential backoff
-        // with jitter, business code 36009002) and the DetailsSemaphore concurrency limiter.
+        // Manual trigger for per-video Details enrichment. Bounded per shop to stay rate-limit safe.
         [HttpPost("SyncVideoDetails")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SyncVideoDetails(int limit = 20, CancellationToken cancellationToken = default)
@@ -187,7 +210,7 @@ namespace KaleContentOps.Controllers.Admin
                     shopsProcessed++;
                     videosEnriched += processed;
                 }
-                catch (Exception ex)
+                catch (System.Exception ex)
                 {
                     errors++;
                     perShopErrors.Add($"Shop {shop.Id} error: {ex.Message}");

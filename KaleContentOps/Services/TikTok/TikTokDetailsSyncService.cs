@@ -119,31 +119,63 @@ public class TikTokDetailsSyncService
         {
             _logger.LogInformation("Details sync: no candidate ContentLogs found for shop {ShopCipher}", shopCipher);
             return 0;
-        }        int processed = 0;
+        }
+
+        int processed = 0;
 
         foreach (var entry in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var (synced, throttleStop) = await SyncOneContentLogAsync(entry.Cl, shopCipher, cancellationToken);
-            if (synced) processed++;
-            if (throttleStop) break; // 429: stop the batch run to avoid further throttle
+            var info = await SyncOneContentLogAsync(entry.Cl, shopCipher, cancellationToken);
+            if (info.Synced) processed++;
+            if (info.ThrottleStop) break; // 429: stop the batch run to avoid further throttle
         }
 
         return processed;
+
+        return processed;
+    }
+
+    // Result model for P1 batch runs. In-memory only, not persisted.
+    public class P1DetailsResult
+    {
+        public int P0 { get; set; }
+        public int P1Before { get; set; }
+        public int P2 { get; set; }
+        public int CandidatesSelected { get; set; }
+        public int Attempted { get; set; }
+        public int Succeeded { get; set; }
+        public int Failed { get; set; }
+        public int NoEnrichment { get; set; }
+        public int Throttled { get; set; }
+        public int RateLimit36009002 { get; set; }
+        public int NewContentMetrics { get; set; }
+        public int DemographicsPopulated { get; set; }
+        public int P1After { get; set; }
+    }
+
+    private class SyncOneResult
+    {
+        public bool Synced { get; set; }
+        public bool ThrottleStop { get; set; }
+        public bool NewMetricAdded { get; set; }
+        public bool DemographicsPopulated { get; set; }
+        public bool NoEnrichment { get; set; }
+        public bool RateLimit36009002 { get; set; }
     }
 
     // Run a bounded details sync that targets only P1 candidates (latest metric exists but is not enriched).
     // This is a safe, idempotent, shop-scoped operation that reuses the existing per-video pipeline
     // and respects the same retry/backoff/throttle semantics. It will process up to `limit` videos
     // and stop on HTTP 429 / throttle signals. It does not touch P0 candidates.
-    public async Task<int> RunP1DetailsSyncAsync(string shopCipher, int limit = 10, int skip = 0, CancellationToken cancellationToken = default)
+    public async Task<P1DetailsResult> RunP1DetailsSyncAsync(string shopCipher, int limit = 10, int skip = 0, CancellationToken cancellationToken = default)
     {
         var shop = await _db.TikTokShops
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.ShopCipher == shopCipher, cancellationToken);
 
-        if (shop == null) return 0;
+        if (shop == null) return new P1DetailsResult();
 
         long shopId = shop.Id;
 
@@ -171,17 +203,83 @@ public class TikTokDetailsSyncService
 
         var candidates = page.Select(x => (ContentLog)x.Cl).ToList();
 
-        int processed = 0;
+        // Prepare result
+        var result = new P1DetailsResult();
+
+        // compute P0/P1/P2 counts for reporting (P1Before is the total P1 candidate count)
+        try
+        {
+            result.P0 = await query.Where(cl => !_db.ContentMetrics.Any(m => m.ContentLogId == cl.Id)).CountAsync(cancellationToken);
+        }
+        catch { result.P0 = 0; }
+
+        try
+        {
+            result.P1Before = await latestMetrics.CountAsync(cancellationToken);
+        }
+        catch { result.P1Before = 0; }
+
+        try
+        {
+            // P2 = those with latest metric and enriched == true
+            var latestPerLogRestricted2 = _db.ContentMetrics
+                .Where(m => _db.ContentLogs.Where(cl => cl.TikTokShopId == shopId).Select(cl => cl.Id).Contains(m.ContentLogId))
+                .GroupBy(m => m.ContentLogId)
+                .Select(g => new { ContentLogId = g.Key, CapturedAt = g.Max(x => x.CapturedAt) });
+
+            var latestEnriched = from lm in latestPerLogRestricted2
+                                 join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
+                                 where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null) == true
+                                 select lm.ContentLogId;
+
+            result.P2 = await latestEnriched.Distinct().CountAsync(cancellationToken);
+        }
+        catch { result.P2 = 0; }
+
+        result.CandidatesSelected = candidates.Count;
 
         foreach (var cl in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (synced, throttleStop) = await SyncOneContentLogAsync(cl, shop.ShopCipher, cancellationToken);
-            if (synced) processed++;
-            if (throttleStop) break;
+            result.Attempted++;
+
+            var info = await SyncOneContentLogAsync(cl, shop.ShopCipher, cancellationToken);
+
+            if (info.ThrottleStop)
+            {
+                result.Throttled++;
+                // Stop processing further candidates on throttle
+                if (info.RateLimit36009002) result.RateLimit36009002++;
+                break;
+            }
+
+            if (info.NewMetricAdded)
+            {
+                result.Succeeded++;
+                result.NewContentMetrics += 1;
+                if (info.DemographicsPopulated) result.DemographicsPopulated += 1;
+            }
+            else if (info.NoEnrichment)
+            {
+                result.NoEnrichment++;
+            }
+            else if (!info.NewMetricAdded && !info.NoEnrichment)
+            {
+                // considered a failed attempt (exception, non-200, etc.)
+                result.Failed++;
+            }
+
+            if (info.RateLimit36009002) result.RateLimit36009002++;
         }
 
-        return processed;
+        // compute post-run P1 count
+        try
+        {
+            result.P1After = await latestMetrics.CountAsync(cancellationToken);
+        }
+        catch { result.P1After = 0; }
+
+        return result;
     }
 
     // Development-only: sync details for ONE existing ContentLog selected by VideoId.
@@ -208,8 +306,8 @@ public class TikTokDetailsSyncService
             return false;
         }
 
-        var (synced, _) = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
-        return synced;
+            var info = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
+            return info.Synced;
     }
 
     // Production-safe: sync details for ONE existing ContentLog selected by ContentLog.Id.
@@ -243,14 +341,15 @@ public class TikTokDetailsSyncService
             return false;
         }
 
-        var (synced, _) = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
-        return synced;
+        var info = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
+        return info.Synced;
     }
 
     // Shared per-video pipeline used by both the batch flow and the single-video (dev) flow.
-    private async Task<(bool Synced, bool ThrottleStop)> SyncOneContentLogAsync(ContentLog log, string shopCipher, CancellationToken cancellationToken)
+    private async Task<SyncOneResult> SyncOneContentLogAsync(ContentLog log, string shopCipher, CancellationToken cancellationToken)
     {
         var videoId = log.VideoId!;
+        var outInfo = new SyncOneResult();
         try
         {
             // Call via interface (implementation performs rate-limited HTTP calls with retry/backoff)
@@ -269,38 +368,55 @@ public class TikTokDetailsSyncService
                     {
                         _db.ContentMetrics.Add(metric);
                         await _db.SaveChangesAsync(cancellationToken);
-                        return (true, false);
+                        outInfo.Synced = true;
+                        outInfo.NewMetricAdded = true;
+                        outInfo.DemographicsPopulated = !string.IsNullOrWhiteSpace(metric.DemographicsJson);
+                        return outInfo;
                     }
 
                     _logger.LogDebug("Details sync: no metric fields returned for video {VideoId}", videoId);
-                    return (false, false);
+                    outInfo.NoEnrichment = true;
+                    return outInfo;
                 }
 
                 _logger.LogWarning("Details sync: video service is not concrete TikTokVideoService; skipping mapping for video {VideoId}", videoId);
-                return (false, false);
+                return outInfo;
             }
 
             if (res.StatusCode == 429)
             {
                 _logger.LogWarning("Details sync: TikTok returned 429 for shop {ShopCipher}, stopping details sync run.", shopCipher);
-                return (false, true);
+                outInfo.ThrottleStop = true;
+                return outInfo;
             }
 
-            if (res.StatusCode == 200)
-            {
-                // HTTP 200 but no data: TikTok business error (e.g. code 36009002 after retry
-                // exhaustion returns Data = null; video deleted/private returns empty data).
-                _logger.LogWarning("Details sync: business error (no data) for video {VideoId}", videoId);
-                return (false, false);
-            }
+                if (res.StatusCode == 200)
+                {
+                    // HTTP 200 but no data: TikTok business error (e.g. code 36009002 after retry
+                    // exhaustion returns Data = null; video deleted/private returns empty data).
+                    _logger.LogWarning("Details sync: business error (no data) for video {VideoId}", videoId);
+
+                    // detect known rate-limit business code if present on root and treat as throttle stop
+                    try
+                    {
+                        if (res.Root.HasValue && res.Root.Value.ValueKind == JsonValueKind.Object && res.Root.Value.TryGetProperty("code", out var codeElem) && codeElem.ValueKind == JsonValueKind.Number && codeElem.TryGetInt32(out var codeVal) && codeVal == 36009002)
+                        {
+                            outInfo.RateLimit36009002 = true;
+                            outInfo.ThrottleStop = true; // propagate as throttle stop so batches halt
+                        }
+                    }
+                    catch { }
+
+                    return outInfo;
+                }
 
             _logger.LogWarning("Details sync: non-200 response {Status} for video {VideoId}", res.StatusCode, videoId);
-            return (false, false);
+            return outInfo;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Details sync: error processing video {VideoId}", videoId);
-            return (false, false);
+            return outInfo;
         }
     }
 }

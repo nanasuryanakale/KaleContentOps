@@ -117,6 +117,7 @@
     box-shadow: 0 10px 35px rgba(0, 0, 0, .12);
     box-sizing: border-box;
     min-width: 0;
+    overflow: hidden;
 }
 
 /* ============ Section 1 - Leaderboard per Jenis Konten ============ */
@@ -154,8 +155,12 @@
     color: #7e8aa5;
 }
 
-/* Mockup table: airy rows, thin separators, numeric columns right-aligned. */
+/* Mockup table: airy rows, thin separators, numeric columns right-aligned.
+   Cells clip their own content (fixed layout + ellipsis on the title): an
+   unbreakable title must never widen the table or push the page horizontally. */
 .winning-content-page .wc-lb-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.winning-content-page .wc-lb-table th,
+.winning-content-page .wc-lb-table td { overflow: hidden; }
 .winning-content-page .wc-lb-table th {
     padding: 6px 6px;
     color: #7e8aa5;
@@ -175,7 +180,8 @@
 
 .winning-content-page .wc-lb-ident { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .winning-content-page .wc-lb-rank { flex: 0 0 auto; min-width: 16px; font-size: 12px; font-weight: 700; color: var(--wc-muted); font-variant-numeric: tabular-nums; }
-.winning-content-page .wc-lb-titles { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.winning-content-page .wc-lb-titles { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; max-width: 100%; }
+.winning-content-page .wc-lb-title { min-width: 0; max-width: 100%; }
 .winning-content-page .wc-lb-title {
     font-size: 12.5px;
     font-weight: 600;
@@ -185,6 +191,8 @@
     white-space: nowrap;
     max-width: 100%;
 }
+/* Badge row (mockup): badges sit side-by-side under the title. */
+.winning-content-page .wc-lb-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 .winning-content-page .wc-badge {
     display: inline-flex;
     align-items: center;
@@ -207,6 +215,10 @@
 /* ============ Section 2 - Distribusi Konten di Bawah Median (merged panel) ============ */
 .winning-content-page .wc-below-panel { padding: 18px; }
 .winning-content-page .wc-below-summary { width: 100%; border-collapse: collapse; }
+/* Mockup: fixed column widths (colgroup classes) so headers sit exactly over their
+   body columns; header text wraps within its own column instead of stretching the
+   table or being clipped. */
+.winning-content-page .wc-below-summary { table-layout: fixed; }
 .winning-content-page .wc-below-summary th {
     padding: 6px 8px;
     color: #7e8aa5;
@@ -217,6 +229,11 @@
     text-align: right;
     border-bottom: 1px solid var(--wc-border-soft);
 }
+.winning-content-page .wc-below-summary .wc-w-label { width: 34%; }
+.winning-content-page .wc-below-summary .wc-w-below { width: 20%; }
+.winning-content-page .wc-below-summary .wc-w-total { width: 26%; }
+.winning-content-page .wc-below-summary .wc-w-pct { width: 20%; }
+.winning-content-page .wc-below-summary td.wc-col-num { overflow: hidden; text-overflow: ellipsis; }
 .winning-content-page .wc-below-summary th.wc-col-video { text-align: left; }
 .winning-content-page .wc-below-summary td { padding: 10px 8px; border-bottom: 1px solid var(--wc-border-soft); }
 .winning-content-page .wc-below-summary tr:last-child td { border-bottom: 0; }
@@ -241,6 +258,13 @@
     gap: 10px;
     padding: 9px 4px;
     border-bottom: 1px solid var(--wc-border-soft);
+}
+/* Long titles wrap inside the row instead of pushing the views/median/link cluster
+   out of the card (mockup: one row per video, meta stays right-aligned). */
+.winning-content-page .wc-below-item .wc-below-name { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+    .winning-content-page .wc-below-item { flex-wrap: wrap; }
+    .winning-content-page .wc-below-item .wc-below-meta { margin-left: 19px; }
 }
 .winning-content-page .wc-below-item:last-child { border-bottom: 0; }
 .winning-content-page .wc-below-name {
@@ -270,7 +294,6 @@
 
 /* ============ Feature 3 - two-card composition grid ============ */
 .winning-content-page .wc-composition-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; align-items: stretch; }
-.winning-content-page .wc-composition-card { max-width: none; }
 .winning-content-page .wc-pm-donut-wrap { width: 150px; height: 150px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
 .winning-content-page .wc-pm-donut { width: 132px; height: 132px; border-radius: 50%; position: relative; }
 .winning-content-page .wc-pm-donut::after { content: ""; position: absolute; inset: 26px; border-radius: 50%; background: var(--wc-panel); }
@@ -322,7 +345,7 @@
 .winning-content-page .wc-aud-unavailable { margin: 0; font-size: 11px; line-height: 1.55; color: var(--wc-muted); }
 
 /* ============ Section 3 - Komposisi Konten ============ */
-.winning-content-page .wc-composition-card { padding: 18px; max-width: 760px; }
+.winning-content-page .wc-composition-card { padding: 18px; }
 .winning-content-page .wc-comp-subtitle {
     margin: 0 0 14px;
     font-size: 10px;

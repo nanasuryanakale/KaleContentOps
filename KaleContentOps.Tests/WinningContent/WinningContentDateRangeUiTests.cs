@@ -109,7 +109,8 @@ public class WinningContentDateRangeUiTests
             Assert.Contains("aria-expanded=\"false\"", html);
             Assert.Contains("aria-controls=\"datePickerPanel\"", html);
             Assert.Contains("GMT+7", html);
-            Assert.Contains("<strong id=\"dateRangeLabel\">01/09 - 07/09</strong>", html);
+            // Exact display contract (mockup): 2-digit dd/MM + " - " + "(GMT+7)".
+            Assert.Contains("<strong id=\"dateRangeLabel\">01/09 - 07/09 (GMT+7)</strong>", html);
 
             // Popover panel with the Daily Summary structure: topline, presets,
             // month navigation, shared calendar grid, footer + Apply/Cancel.
@@ -212,8 +213,8 @@ public class WinningContentDateRangeUiTests
             Assert.Equal(new DateTime(2026, 9, 1), start);
             Assert.Equal(new DateTime(2026, 9, 7), end);
 
-            // ...and the button label shows it in the Daily Summary display format (dd/MM).
-            Assert.Contains("01/09 - 07/09", html);
+            // ...and the button label shows the standard dd/MM - dd/MM (GMT+7) format.
+            Assert.Contains("01/09 - 07/09 (GMT+7)", html);
         }
     }
 

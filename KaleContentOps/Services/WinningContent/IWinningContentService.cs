@@ -86,6 +86,14 @@ public sealed class WinningContentItem
     /// <summary>Latest-metric Reach of this content (NULL when the metric has no Reach - never fabricated).</summary>
     public long? Reach { get; init; }
 
+    /// <summary>
+    /// Latest-metric %Full Watch of this content (existing ContentMetric.FullWatchRate
+    /// column, 0..1 scale). DISPLAY-ONLY transport for the mockup's "Top %Full Watch"
+    /// badge: it never participates in ER, baseline, multiplier, median or any
+    /// eligibility rule. NULL when the metric has no value - never fabricated.
+    /// </summary>
+    public decimal? FullWatchRate { get; init; }
+
     public int? ProductionMethodId { get; init; }
 
     /// <summary>ProductionMethod code (AI_PRODUCE / SELF_PRODUCE); NULL when the log has no method (Auto GMV Live always has none).</summary>
@@ -137,6 +145,12 @@ public sealed class WinningContentLeaderboardEntry
 
     public decimal? EngagementRate { get; init; }
     public decimal? BaselineEngagementRate { get; init; }
+
+    /// <summary>
+    /// Latest-metric %Full Watch (0..1). Display-only "Top %Full Watch" badge input;
+    /// ranking stays ER DESC (locked rule 10-12) - this field never re-ranks anything.
+    /// </summary>
+    public decimal? FullWatchRate { get; init; }
 
     /// <summary>Unrounded ER / baseline. Information only; never used for eligibility.</summary>
     public decimal? Multiplier { get; init; }

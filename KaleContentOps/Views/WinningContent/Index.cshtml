@@ -53,6 +53,19 @@
     System.Collections.Generic.IEnumerable<WinningContentLeaderboardEntry> ByViews(WinningContentLeaderboard lb) =>
         lb.Entries.OrderByDescending(e => e.Views ?? long.MinValue).ThenBy(e => e.Rank);
 
+    // "Top %Full Watch" badge (mockup): the leaderboard entry with the HIGHEST
+    // FullWatchRate among the ALREADY-SELECTED Top-N entries. Pure display - the
+    // selection itself stays locked (Top-N by ER, no thresholds); ties keep the
+    // first entry (stable order). NULL when no entry has a FullWatchRate value.
+    (long logId, long views)? FullWatchBest(WinningContentLeaderboard lb)
+    {
+        var best = lb.Entries
+            .Where(e => e.FullWatchRate != null)
+            .OrderByDescending(e => e.FullWatchRate)
+            .FirstOrDefault();
+        return best == null ? null : (best.ContentLogId, best.Views ?? 0);
+    }
+
     // Merged below-median list (presentation): all backend entries of all three
     // groups, ordered by Views ASCENDING ("urut dari paling rendah" per mockup).
     var belowAll = Model.BelowMedian
@@ -124,12 +137,12 @@
             ? "conic-gradient(var(--wc-blue) 0% 100%)"
             : $"conic-gradient(var(--wc-blue) 0% {aiPct!.Value.ToString("0.##", Inv)}%, #8a94a8 {aiPct.Value.ToString("0.##", Inv)}% 100%)";
 
-    // Feature 4 funnel captions: percentage of views + honest per-video averages.
+    // Feature 4 funnel captions (per mockup): each stage caption is its "% dari views";
+    // only the Views row carries the honest per-video average ("avg/video").
     string FunnelCaption(decimal? pct, decimal? avgPerVideo)
     {
         var parts = new List<string>();
         if (pct != null) parts.Add(Pct1(pct) + " dari views");
-        if (avgPerVideo != null) parts.Add(AvgPerVideo(avgPerVideo) + " avg/video");
         return parts.Count == 0 ? Dash() : string.Join(" \u00b7 ", parts);
     }
 
@@ -173,8 +186,11 @@
                         <path d="M8 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
                     </svg>
                 </span>
-                <strong id="dateRangeLabel">@Model.StartDate.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture) - @Model.EndDate.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture)</strong>
-                <small>GMT+7</small>
+                @* Single display path for the period label (mockup): invariant 2-digit
+                   day/month, exact " - " separator, exact "(GMT+7)" suffix. The same
+                   format is reproduced by the picker script below - never locale Date
+                   formatting. Display only: the query window itself is unchanged. *@
+                <strong id="dateRangeLabel">@Model.StartDate.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture) - @Model.EndDate.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture) (GMT+7)</strong>
             </button>
 
             <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
@@ -230,15 +246,28 @@
                         <span class="wc-leaderboard-count">@(Count(typeTotal)) video</span>
                     </div>
 
-                    @if (lb == null || lb.Entries.Count == 0)
+                    @* Empty states must never contradict the header count (both derive
+                       from the same backend data): 0 content of this type -> "no content"
+                       copy; content present but NONE eligible for the leaderboard (no
+                       usable ER yet - eligibility rule unchanged) -> honest "not synced
+                       yet" copy. Eligibility itself is untouched backend logic. *@
+                    @if (typeTotal == 0)
                     {
-                        <p class="wc-empty">Belum ada konten dengan Engagement Rate pada periode ini.</p>
+                        <p class="wc-empty">Tidak ada konten untuk jenis ini pada periode yang dipilih.</p>
+                    }
+                    else if (lb == null || lb.Entries.Count == 0)
+                    {
+                        <p class="wc-empty">@(Count(typeTotal)) video pada periode ini belum punya Engagement Rate (Likes/Comments/Shares belum tersinkron) &mdash; leaderboard terisi otomatis begitu datanya masuk.</p>
                     }
                     else
                     {
                         var viewsOrdered = ByViews(lb);
                         var erFirst = lb.Entries.FirstOrDefault(e => e.Rank == 1);
                         var viewsFirst = viewsOrdered.FirstOrDefault();
+                        // Positional number for the views block (1..N in views order).
+                        // entry.Rank is the ER ranking and would show a shuffled 1..4 here.
+                        var viewsPosition = 0;
+                        var fwBest = FullWatchBest(lb);
 
                         <div class="wc-lb-block">
                             <p class="wc-lb-subtitle">TOP BY VIEWS</p>
@@ -253,12 +282,14 @@
                                 <tbody>
                                     @foreach (var entry in viewsOrdered)
                                     {
+                                        viewsPosition++;
                                         <tr class="wc-lb-row">
                                             <td class="wc-col-video">
                                                 <span class="wc-lb-ident">
-                                                    <span class="wc-lb-rank" aria-label="Peringkat @entry.Rank">@entry.Rank.</span>
+                                                    <span class="wc-lb-rank" aria-label="Urutan @viewsPosition (urutan views)">@viewsPosition.</span>
                                                     <span class="wc-lb-titles">
                                                         <span class="wc-lb-title" title="@(entry.Title ?? entry.VideoId)">@(entry.Title ?? entry.VideoId)</span>
+                                                        <span class="wc-lb-badges">
                                                         @if (entry == viewsFirst)
                                                         {
                                                             <span class="wc-badge">Top Views</span>
@@ -267,6 +298,11 @@
                                                         {
                                                             <span class="wc-badge">Top Engagement</span>
                                                         }
+                                                        @if (fwBest.HasValue && entry.ContentLogId == fwBest.Value.logId)
+                                                        {
+                                                            <span class="wc-badge">Top %Full Watch</span>
+                                                        }
+                                                        </span>
                                                     </span>
                                                 </span>
                                             </td>
@@ -297,10 +333,20 @@
                                                     <span class="wc-lb-rank" aria-label="Peringkat @entry.Rank">@entry.Rank.</span>
                                                     <span class="wc-lb-titles">
                                                         <span class="wc-lb-title" title="@(entry.Title ?? entry.VideoId)">@(entry.Title ?? entry.VideoId)</span>
+                                                        <span class="wc-lb-badges">
                                                         @if (entry.Rank == 1)
                                                         {
                                                             <span class="wc-badge">Top Engagement</span>
                                                         }
+                                                        @if (viewsFirst != null && entry.ContentLogId == viewsFirst.ContentLogId)
+                                                        {
+                                                            <span class="wc-badge">Top Views</span>
+                                                        }
+                                                        @if (fwBest.HasValue && entry.ContentLogId == fwBest.Value.logId)
+                                                        {
+                                                            <span class="wc-badge">Top %Full Watch</span>
+                                                        }
+                                                        </span>
                                                     </span>
                                                 </span>
                                             </td>
@@ -326,6 +372,12 @@
             <div class="wc-below-tables">
             <div class="wc-below-col">
             <table class="wc-below-summary">
+                <colgroup>
+                    <col class="wc-w-label" />
+                    <col class="wc-w-below" />
+                    <col class="wc-w-total" />
+                    <col class="wc-w-pct" />
+                </colgroup>
                 <thead>
                     <tr>
                         <th class="wc-col-video">Jenis Konten</th>
@@ -353,6 +405,12 @@
                  Median rule untouched: BelowMedianCount reuses the backend strict < median groups. -->
             <div class="wc-below-col">
                 <table class="wc-below-summary wc-method-table">
+                    <colgroup>
+                        <col class="wc-w-label" />
+                        <col class="wc-w-below" />
+                        <col class="wc-w-total" />
+                        <col class="wc-w-pct" />
+                    </colgroup>
                     <thead>
                         <tr>
                             <th class="wc-col-video">Cara Produksi</th>
@@ -428,7 +486,7 @@
     <!-- ============ E. Section 3 - Komposisi Konten ============ -->
     <section class="wc-section wc-composition">
         <h2>3. Komposisi Konten</h2>
-        <p class="wc-section-note">Proporsi konten per jenis konten (Non-KK/KK/Auto GMV Live), berdasarkan jumlah video &mdash; bukan views.</p>
+        <p class="wc-section-note">Proporsi konten dari 2 sudut: jenis konten (Non-KK/KK/Auto GMV Live), dan cara produksinya (AI Produce vs Self Produce, khusus konten yang kita produksi sendiri).</p>
 
         <div class="wc-composition-grid">
         @if (!Model.CompositionSummary.HasData)
@@ -629,9 +687,13 @@
         </div>
     </section>
 
-    <!-- ============ Content items binding (selected-period population) ============ -->
+    <!-- ============ Content items binding (selected-period population).
+         NOT part of the approved mockup: QA/binding aid only, shown behind ?debug=1
+         so the default page matches the mockup 1:1. No logic change. ============ -->
+    @if (Context.Request.Query["debug"].ToString() == "1")
+    {
     <section class="wc-section wc-items">
-        <h2>Konten Periode</h2>
+        <h2>Konten Periode (debug)</h2>
         <p class="wc-section-note">@Model.Items.Count konten pada periode terpilih.</p>
 
         @if (Model.Items.Count == 0)
@@ -675,6 +737,7 @@
             </div>
         }
     </section>
+    }
 </div>
 
 @section Scripts {
@@ -695,7 +758,14 @@
     let pendingEnd = appliedEnd;
 
     const parseDate = value => new Date(`${value}T00:00:00`);
-    const formatDate = value => parseDate(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    // Exact display contract (same as the server-rendered label): invariant 2-digit
+    // day/month + " - " separator. The GMT+7 suffix is added once, here, so the
+    // pending + footer labels carry it exactly like the applied button label.
+    // Deliberately NOT toLocaleDateString: locale output varies by browser/OS and once
+    // regressed the applied label.
+    const two = n => String(n).padStart(2, '0');
+    const formatDdMm = value => { const d = parseDate(value); return `${two(d.getDate())}/${two(d.getMonth() + 1)}`; };
+    const formatDate = value => `${formatDdMm(value)}`;
 
     function setPanel(panel, button, open) {
         panel.hidden = !open;
@@ -706,7 +776,7 @@
         const label = document.getElementById('pendingRangeLabel');
         const footer = document.getElementById('datePickerSelected');
         const text = pendingStart && pendingEnd
-            ? `${formatDate(pendingStart)} - ${formatDate(pendingEnd)}`
+            ? `${formatDate(pendingStart)} - ${formatDate(pendingEnd)} (GMT+7)`
             : pendingStart
                 ? `${formatDate(pendingStart)} - ...`
                 : 'Pilih rentang tanggal';

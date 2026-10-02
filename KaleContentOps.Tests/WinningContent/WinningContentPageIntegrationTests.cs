@@ -143,7 +143,8 @@ public class WinningContentPageIntegrationTests
             // picker data attributes (initialized from, shown in the dd/MM button label).
             Assert.Contains($"data-start=\"{FixedStart}\"", html);
             Assert.Contains($"data-end=\"{FixedEnd}\"", html);
-            Assert.Contains("01/09 - 07/09", html);
+            // Exact display contract (mockup): 2-digit dd/MM, " - " separator, "(GMT+7)" suffix.
+            Assert.Contains("01/09 - 07/09 (GMT+7)", html);
 
             // Real content titles from the backend model (not hard-coded samples).
             Assert.Contains("WC Top Winner", html);
@@ -194,7 +195,11 @@ public class WinningContentPageIntegrationTests
         var html = await response.Content.ReadAsStringAsync();
 
         Assert.Contains("Tidak ada konten pada periode yang dipilih", html);
-        Assert.Contains("Belum ada konten dengan Engagement Rate", html);
+        // Genuinely empty period: 0 content per type -> the leaderboard empty state
+        // matches the 0 counts (never the no-ER copy, which is only for content
+        // present but not yet eligible).
+        Assert.Contains("Tidak ada konten untuk jenis ini", html);
+        Assert.DoesNotContain("belum punya Engagement Rate", html);
         Assert.Contains("Median kategori belum tersedia", html);
     }
 
