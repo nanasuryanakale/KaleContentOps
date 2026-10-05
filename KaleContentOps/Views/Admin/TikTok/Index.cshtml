@@ -45,6 +45,37 @@
         </form>
     </div>
 
+    <!-- Single-video sync card: independent of the shops table -->
+    <div class="mb-3">
+        <div class="card p-3">
+            <h5>Sync Detail — Single Video</h5>
+            <form asp-action="SyncVideoDetailsSingle" method="post" class="form-inline" style="margin-top:8px;">
+                @Html.AntiForgeryToken()
+                <label for="contentLogId" class="sr-only">ContentLog ID</label>
+                <input type="number" name="contentLogId" id="contentLogId" placeholder="Contoh: 1" class="form-control form-control-sm" style="width:140px; display:inline-block; margin-right:8px;" />
+                <button type="submit" class="btn btn-sm btn-primary">Sync Detail</button>
+                <div class="text-muted" style="margin-top:6px;">Masukkan ContentLog ID untuk mengambil detail analytics dari satu video.</div>
+            </form>
+        </div>
+    </div>
+
+    <!-- All-P1 bulk sync card -->
+    <div class="mb-3">
+        <div class="card p-3">
+            <h5>Sync Detail — All Videos</h5>
+            <div style="margin-top:8px;">
+                <form asp-action="SyncVideoDetailsP1" method="post" class="form-inline">
+                    @Html.AntiForgeryToken()
+                    <label class="sr-only" for="p1Limit">Batch size</label>
+                    <input type="hidden" name="limit" value="10" />
+                    <span class="form-control form-control-sm" style="display:inline-block;width:120px;margin-right:8px;">Batch size: 10</span>
+                    <button type="submit" class="btn btn-sm btn-primary">Sync Detail — Next 10</button>
+                </form>
+                <div class="text-muted" style="margin-top:6px;">Mengambil analytics Details dan demographic untuk video yang masih belum ter-enrich. Proses berjalan maksimal 10 video per batch dan dapat dilanjutkan dengan menekan tombol kembali. Menggunakan kandidat P1 saat ini. Video yang berhasil akan otomatis keluar dari antrean P1.</div>
+            </div>
+        </div>
+    </div>
+
     <h4>Authorized Shops</h4>
     <table class="table table-striped">
         <thead>
@@ -69,6 +100,9 @@
                     <td>@s.ShopName</td>
                     <td>@s.Region</td>
                     <td>@s.SellerType</td>
+                    <td>
+                        <!-- Shop-related actions only (single-video sync moved above) -->
+                    </td>
                 </tr>
             }
         </tbody>

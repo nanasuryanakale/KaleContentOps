@@ -7,16 +7,27 @@
     var startDate = ViewData["StartDate"] as string ?? Model.StartDate.ToString("yyyy-MM-dd");
     var endDate = ViewData["EndDate"] as string ?? Model.EndDate.ToString("yyyy-MM-dd");
 
-    // Section helpers - binding/display only; every value comes from the backend model.
-    // NULL analytics are rendered as an em dash placeholder (never as 0).
+    // ============================================================
+    // Display helpers (binding/format ONLY - every value comes from
+    // the backend model; no analytics is computed here).
+    // Number formats follow the approved mockup: dot-grouped integers
+    // (id-ID), dot-decimal ER/multiplier (invariant), integer %.
+    // NULL analytics render as an em dash placeholder (never as 0).
+    // ============================================================
+    var IdCulture = System.Globalization.CultureInfo.GetCultureInfo("id-ID");
+    var Inv = System.Globalization.CultureInfo.InvariantCulture;
     static string Dash() => "\u2014";
-    string Er(object? er) => er is decimal d ? d.ToString("0.00%") : Dash();
-    string Multiplier(object? m) => m is decimal d ? d.ToString("0.00") + "x" : Dash();
-    string Views(object? v) => v is long l ? l.ToString("N0") : Dash();
-    string MedianViews(object? m) => m is decimal d ? d.ToString("N0") : Dash();
+    string Er(object? er) => er is decimal d ? d.ToString("0.0%", Inv) : Dash();
+    string Multiplier(object? m) => m is decimal d ? d.ToString("0.0", Inv) + "x" : Dash();
+    bool MultPositive(object? m) => m is decimal d && d >= 1m;
+    string Views(object? v) => v is long l ? l.ToString("N0", IdCulture) : Dash();
+    string MedianViews(object? m) => m is decimal d ? d.ToString("N0", IdCulture) : Dash();
+    string Count(object? c) => c is int i ? i.ToString("N0", IdCulture) : Dash();
 
     WinningContentLeaderboard? LeaderboardFor(string code) =>
         Model.Leaderboards.FirstOrDefault(l => l.ContentTypeCode == code);
+    WinningContentCompositionCategory? CategoryFor(string code) =>
+        Model.CompositionSummary.Categories.FirstOrDefault(c => c.ContentTypeCode == code);
     WinningContentBelowMedianGroup? BelowMedianFor(string code) =>
         Model.BelowMedian.FirstOrDefault(g => g.ContentTypeCode == code);
 
@@ -34,159 +45,655 @@
         "AUTO_GMV_LIVE" => "type-autogmv",
         _ => "type-nonkk"
     };
-    // Top-N badge text is presentation of the locked backend rule (NON_KK/KK = 4, AUTO = 2).
-    string TopNLabel(string code) => code == "AUTO_GMV_LIVE" ? "Top 2" : "Top 4";
+
+    // Display-only re-orders of the SAME backend Top-N entries (no re-ranking logic:
+    // eligibility, rank values and ER order all come from the service):
+    // - "Top by Views" block shows the entries by Views DESC (ties -> backend rank).
+    // - "Top by Engagement Rate" block keeps the exact backend ER DESC order.
+    System.Collections.Generic.IEnumerable<WinningContentLeaderboardEntry> ByViews(WinningContentLeaderboard lb) =>
+        lb.Entries.OrderByDescending(e => e.Views ?? long.MinValue).ThenBy(e => e.Rank);
+
+    // "Top %Full Watch" badge (mockup): the leaderboard entry with the HIGHEST
+    // FullWatchRate among the ALREADY-SELECTED Top-N entries. Pure display - the
+    // selection itself stays locked (Top-N by ER, no thresholds); ties keep the
+    // first entry (stable order). NULL when no entry has a FullWatchRate value.
+    (long logId, long views)? FullWatchBest(WinningContentLeaderboard lb)
+    {
+        var best = lb.Entries
+            .Where(e => e.FullWatchRate != null)
+            .OrderByDescending(e => e.FullWatchRate)
+            .FirstOrDefault();
+        return best == null ? null : (best.ContentLogId, best.Views ?? 0);
+    }
+
+    // Merged below-median list (presentation): all backend entries of all three
+    // groups, ordered by Views ASCENDING ("urut dari paling rendah" per mockup).
+    var belowAll = Model.BelowMedian
+        .SelectMany(g => g.Entries.Select(e => (Entry: e, Group: g)))
+        .OrderBy(x => x.Entry.Views ?? long.MinValue)
+        .ThenBy(x => x.Entry.Title)
+        .ToList();
+
+    // Donut geometry - computed server-side from the EXACT backend percentages.
+    // Zero-count categories draw nothing (0-length arc) but STAY in the legend.
+    const decimal DonutRadius = 42m;
+    var donutCircumference = 2m * (decimal)Math.PI * DonutRadius;
+    decimal donutAccumulator = 0m;
+    var donutArcs = new List<(string Code, decimal Length, decimal Offset)>();
+    foreach (var cat in Model.CompositionSummary.Categories)
+    {
+        if (cat.Percentage == null || cat.Percentage.Value <= 0m)
+        {
+            continue;   // No-data or zero-count category: nothing to draw.
+        }
+        var arcLength = Math.Round(cat.Percentage.Value / 100m * donutCircumference, 2);
+        donutArcs.Add((cat.ContentTypeCode, arcLength, donutAccumulator));
+        donutAccumulator += arcLength;
+    }
+    string Svg(decimal value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    // Display text: deterministic integer rounding (half-up) of the EXACT backend
+    // percentage; the stored percentages and the donut geometry stay unrounded.
+    string Pct(decimal? percentage) => percentage == null
+        ? Dash()
+        : Math.Round(percentage.Value, 0, MidpointRounding.AwayFromZero).ToString("0", Inv) + "%";
+    string SvgFull(decimal? percentage) => percentage == null
+        ? Dash()
+        : percentage.Value.ToString("0.####", Inv) + "%";
+
+    // Below-median share per type: pure display arithmetic on two backend numbers
+    // (Entries.Count / CompositionSummary count). 0/0 renders as a dash, never 0%.
+    string BelowSharePct(WinningContentBelowMedianGroup? group)
+    {
+        var total = CategoryFor(group?.ContentTypeCode ?? "")?.Count ?? 0;
+        var below = group?.Entries.Count ?? 0;
+        return total == 0 ? Dash() : Math.Round(below * 100m / total, 0, MidpointRounding.AwayFromZero).ToString("0", Inv) + "%";
+    }
+
+    // ============================================================
+    // Phase C additions (Features 2-5): display-only formatting of
+    // backend values - every number comes from WinningContentData
+    // .ProductionBreakdown / .Funnel / .Audience (no UI analytics).
+    // ============================================================
+    string Pct1(object? p) => p is decimal d ? d.ToString("0.0", Inv) + "%" : Dash();
+    string Pts(object? d) => d is decimal v ? v.ToString("+0.0;-0.0;0.0", Inv) + " pts" : Dash();
+    string AvgPerVideo(object? v) => v is decimal d ? d.ToString("N0", IdCulture) : Dash();
+    string BarWidth(decimal? pct) => pct is null ? "0%" : Math.Clamp(pct.Value, 0m, 100m).ToString("0.#", Inv) + "%";
+    string PctExact(decimal? p) => p is null ? Dash() : p.Value.ToString("0.##", Inv) + "%";
+
+    // Feature 2/3: AI Produce vs Self Produce rows (locked order AI first, no new methods).
+    var aiMethod = Model.ProductionBreakdown.Methods.FirstOrDefault(m => m.Code == "AI_PRODUCE")
+        ?? new WinningContentProductionMethodStats { Code = "AI_PRODUCE", Label = "AI Produce" };
+    var selfMethod = Model.ProductionBreakdown.Methods.FirstOrDefault(m => m.Code == "SELF_PRODUCE")
+        ?? new WinningContentProductionMethodStats { Code = "SELF_PRODUCE", Label = "Self Produce" };
+    var pmTotal = aiMethod.TotalCount + selfMethod.TotalCount;
+    decimal? aiPct = pmTotal == 0 ? null : aiMethod.TotalCount * 100m / pmTotal;
+
+    // Feature 3 donut: conic-gradient (two-slot composition) from the EXACT backend
+    // ratio; the empty state draws the neutral track only (never a fabricated split).
+    string PmGradient() => pmTotal == 0
+        ? "conic-gradient(#232d40 0% 100%)"
+        : aiPct >= 100m
+            ? "conic-gradient(var(--wc-blue) 0% 100%)"
+            : $"conic-gradient(var(--wc-blue) 0% {aiPct!.Value.ToString("0.##", Inv)}%, #8a94a8 {aiPct.Value.ToString("0.##", Inv)}% 100%)";
+
+    // Feature 4 funnel captions (per mockup): each stage caption is its "% dari views";
+    // only the Views row carries the honest per-video average ("avg/video").
+    string FunnelCaption(decimal? pct, decimal? avgPerVideo)
+    {
+        var parts = new List<string>();
+        if (pct != null) parts.Add(Pct1(pct) + " dari views");
+        return parts.Count == 0 ? Dash() : string.Join(" \u00b7 ", parts);
+    }
+
+    var funnelStages = new[]
+    {
+        (Label: "Views", Pct: Model.Funnel.ViewsPercent,
+         Fill: Model.Funnel.AverageViewsPerVideo == null ? (decimal?)null : 100m,
+         Caption: Model.Funnel.AverageViewsPerVideo == null ? Dash() : AvgPerVideo(Model.Funnel.AverageViewsPerVideo) + " avg/video"),
+        (Label: "Reach", Pct: Model.Funnel.ReachPercent, Fill: Model.Funnel.ReachPercent,
+         Caption: FunnelCaption(Model.Funnel.ReachPercent, Model.Funnel.AverageReachPerVideo)),
+        (Label: "Engagement", Pct: Model.Funnel.EngagementPercent, Fill: Model.Funnel.EngagementPercent,
+         Caption: FunnelCaption(Model.Funnel.EngagementPercent, Model.Funnel.AverageEngagementPerVideo))
+    };
+
+    // Feature 5 period labels (mockup pattern: "7 Agu-5 Sep 2026 vs 8 Jul-6 Agu 2026").
+    // The previous window is the EXISTING baseline window [start - 30d, start).
+    string PeriodLabel(DateTime periodStart, DateTime periodEndInclusive) =>
+        $"{periodStart.ToString("d MMM", IdCulture)}\u2013{periodEndInclusive.ToString("d MMM yyyy", IdCulture)}";
+    var audienceCurrentLabel = PeriodLabel(Model.StartDate, Model.EndDate);
+    var audiencePreviousLabel = PeriodLabel(Model.Audience.PreviousStart, Model.Audience.PreviousEndExclusive.AddDays(-1));
 }
 
 <link rel="stylesheet" href="~/css/winning-content.css" />
+<link rel="stylesheet" href="~/css/calendar-popup.css" />
 
 <div class="content-page winning-content-page" data-start="@startDate" data-end="@endDate">
 
-    <!-- ============ A. Header / page title + B. Date range controls ============ -->
+    <!-- ============ A. Header / page title + B. Date range (3E.1 parity, untouched) ============ -->
     <header class="wc-header">
         <div class="wc-title">
             <h1>Winning Content</h1>
-            <p>Periode @Model.StartDate.ToString("dd/MM/yyyy") - @Model.EndDate.ToString("dd/MM/yyyy")</p>
+            <p>Konten mana yang works, mana yang nggak, dan kenapa - semua angka di bawah dihitung dari periode yang dipilih</p>
         </div>
 
-        <form method="get" class="wc-date-range" asp-controller="WinningContent" asp-action="Index">
-            <label for="wcStartDate">Dari</label>
-            <input type="date" id="wcStartDate" name="startDate" value="@startDate" />
-            <label for="wcEndDate">s/d</label>
-            <input type="date" id="wcEndDate" name="endDate" value="@endDate" />
-            <button type="submit" class="wc-apply-button">Terapkan</button>
-        </form>
+        <div class="wc-header-anchor">
+            <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel" aria-label="Pilih rentang tanggal laporan">
+                <span class="calendar-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.4" />
+                        <path d="M16 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                        <path d="M8 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                </span>
+                @* Single display path for the period label (mockup): invariant 2-digit
+                   day/month, exact " - " separator, exact "(GMT+7)" suffix. The same
+                   format is reproduced by the picker script below - never locale Date
+                   formatting. Display only: the query window itself is unchanged. *@
+                <strong id="dateRangeLabel">@Model.StartDate.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture) - @Model.EndDate.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture) (GMT+7)</strong>
+            </button>
+
+            <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
+                <div class="date-picker-topline">
+                    <div>
+                        <strong id="pendingRangeLabel"></strong>
+                        <small>Pilih rentang tanggal laporan</small>
+                    </div>
+                    <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">×</button>
+                </div>
+                <div class="date-picker-body">
+                    <div class="preset-list" id="presetList">
+                        <div class="preset-title">PERIODE CEPAT</div>
+                        <button type="button" data-preset="today">Hari Ini</button>
+                        <button type="button" data-preset="yesterday">Kemarin</button>
+                        <button type="button" data-preset="7">1 Minggu Terakhir</button>
+                        <button type="button" data-preset="30">1 Bulan Terakhir</button>
+                        <button type="button" data-preset="90">3 Bulan Terakhir</button>
+                    </div>
+                    <div class="calendar-area">
+                        <div class="calendar-toolbar">
+                            <button type="button" id="previousMonth" aria-label="Previous month">‹</button>
+                            <strong id="calendarTitle"></strong>
+                            <button type="button" id="nextMonth" aria-label="Next month">›</button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                    </div>
+                </div>
+                <div class="date-picker-actions">
+                    <div class="date-picker-selected" id="datePickerSelected"></div>
+                    <div>
+                        <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
+                        <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
+                    </div>
+                </div>
+            </section>
+        </div>
     </header>
 
-    <!-- ============ C. Section 1 - Leaderboards (NON_KK Top 4 / KK Top 4 / AUTO_GMV_LIVE Top 2) ============ -->
+    <!-- ============ C. Section 1 - Leaderboard per Jenis Konten ============ -->
     <section class="wc-section wc-leaderboards">
-        <h2>Leaderboard</h2>
-        <p class="wc-section-note">Top Winning Content berdasarkan Engagement Rate per kategori. Multiplier hanya informasi.</p>
+        <h2>1. Leaderboard per Jenis Konten &middot; konten mana yang works</h2>
+        <p class="wc-section-note">Dipisah per jenis konten (bukan 1 ranking campuran) &mdash; Top by Views beda sama Top by Engagement Rate, karena &ldquo;paling ditonton&rdquo; dan &ldquo;paling ngena&rdquo; itu 2 hal berbeda. Kolom &amp; judul di tabel di bawah ini yang jelasin semua angkanya &mdash; nggak ada lagi istilah yang butuh keterangan tambahan buat dimengerti.</p>
 
         <div class="wc-leaderboard-grid">
             @foreach (var code in typeCodes)
             {
                 var lb = LeaderboardFor(code);
+                var typeTotal = CategoryFor(code)?.Count ?? 0;
                 <div class="wc-card wc-leaderboard @TypeClass(code)">
                     <div class="wc-leaderboard-head">
-                        <h3 class="wc-leaderboard-title">@TypeLabel(code)</h3>
-                        <span class="wc-leaderboard-sub">@TopNLabel(code) ER</span>
+                        <h3 class="wc-leaderboard-title"><span class="wc-dot" aria-hidden="true"></span>@TypeLabel(code)</h3>
+                        <span class="wc-leaderboard-count">@(Count(typeTotal)) video</span>
                     </div>
 
-                    @if (lb == null || lb.Entries.Count == 0)
+                    @* Empty states must never contradict the header count (both derive
+                       from the same backend data): 0 content of this type -> "no content"
+                       copy; content present but NONE eligible for the leaderboard (no
+                       usable ER yet - eligibility rule unchanged) -> honest "not synced
+                       yet" copy. Eligibility itself is untouched backend logic. *@
+                    @if (typeTotal == 0)
                     {
-                        <p class="wc-empty">Belum ada konten dengan Engagement Rate pada periode ini.</p>
+                        <p class="wc-empty">Tidak ada konten untuk jenis ini pada periode yang dipilih.</p>
+                    }
+                    else if (lb == null || lb.Entries.Count == 0)
+                    {
+                        <p class="wc-empty">@(Count(typeTotal)) video pada periode ini belum punya Engagement Rate (Likes/Comments/Shares belum tersinkron) &mdash; leaderboard terisi otomatis begitu datanya masuk.</p>
                     }
                     else
                     {
-                        <ol class="wc-rank-list">
-                            @foreach (var entry in lb.Entries)
-                            {
-                                <li class="wc-rank-item">
-                                    <span class="wc-rank wc-rank-@entry.Rank" aria-label="Peringkat @entry.Rank">#@entry.Rank</span>
-                                    <span class="wc-rank-info">
-                                        <span class="wc-rank-title" title="@(entry.Title ?? entry.VideoId)">@(entry.Title ?? entry.VideoId)</span>
-                                        <span class="wc-rank-meta">@entry.Username &middot; @Views(entry.Views) views</span>
-                                        @if (!string.IsNullOrWhiteSpace(entry.VideoUrl))
-                                        {
-                                            <a class="wc-rank-link" href="@entry.VideoUrl" target="_blank" rel="noopener" aria-label="Buka video @(entry.Title ?? entry.VideoId)">Video</a>
-                                        }
-                                    </span>
-                                    <span class="wc-rank-metrics">
-                                        <span class="wc-er" title="Engagement Rate ( Likes + Comments + Shares ) / Views">@Er(entry.EngagementRate)</span>
-                                        <span class="wc-er-support" title="Multiplier vs baseline kategori (informasi)">@Multiplier(entry.Multiplier)</span>
-                                        <span class="wc-er-support" title="Baseline ER kategori (30 hari sebelum periode)">base @Er(entry.BaselineEngagementRate)</span>
-                                    </span>
-                                </li>
-                            }
-                        </ol>
-                        <p class="wc-card-foot">Baseline ER kategori: <strong>@Er(lb.BaselineEngagementRate)</strong> dari @lb.BaselineVideoCount video</p>
+                        var viewsOrdered = ByViews(lb);
+                        var erFirst = lb.Entries.FirstOrDefault(e => e.Rank == 1);
+                        var viewsFirst = viewsOrdered.FirstOrDefault();
+                        // Positional number for the views block (1..N in views order).
+                        // entry.Rank is the ER ranking and would show a shuffled 1..4 here.
+                        var viewsPosition = 0;
+                        var fwBest = FullWatchBest(lb);
+
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY VIEWS</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Views</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var entry in viewsOrdered)
+                                    {
+                                        viewsPosition++;
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan @viewsPosition (urutan views)">@viewsPosition.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="@(entry.Title ?? entry.VideoId)">@(entry.Title ?? entry.VideoId)</span>
+                                                        <span class="wc-lb-badges">
+                                                        @if (entry == viewsFirst)
+                                                        {
+                                                            <span class="wc-badge">Top Views</span>
+                                                        }
+                                                        @if (erFirst != null && entry.ContentLogId == erFirst.ContentLogId)
+                                                        {
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                        }
+                                                        @if (fwBest.HasValue && entry.ContentLogId == fwBest.Value.logId)
+                                                        {
+                                                            <span class="wc-badge">Top %Full Watch</span>
+                                                        }
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">@Views(entry.Views)</td>
+                                            <td class="wc-col-mult @(MultPositive(entry.Multiplier) ? "wc-mult-pos" : "wc-mult-neg")" title="Multiplier vs baseline ER kategori (informasi)">@Multiplier(entry.Multiplier)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY ENGAGEMENT RATE</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Engagement Rate</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var entry in lb.Entries)
+                                    {
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat @entry.Rank">@entry.Rank.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="@(entry.Title ?? entry.VideoId)">@(entry.Title ?? entry.VideoId)</span>
+                                                        <span class="wc-lb-badges">
+                                                        @if (entry.Rank == 1)
+                                                        {
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                        }
+                                                        @if (viewsFirst != null && entry.ContentLogId == viewsFirst.ContentLogId)
+                                                        {
+                                                            <span class="wc-badge">Top Views</span>
+                                                        }
+                                                        @if (fwBest.HasValue && entry.ContentLogId == fwBest.Value.logId)
+                                                        {
+                                                            <span class="wc-badge">Top %Full Watch</span>
+                                                        }
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">@Er(entry.EngagementRate)</td>
+                                            <td class="wc-col-mult @(MultPositive(entry.Multiplier) ? "wc-mult-pos" : "wc-mult-neg")" title="Multiplier vs baseline ER kategori (informasi)">@Multiplier(entry.Multiplier)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
                     }
                 </div>
             }
         </div>
     </section>
 
-    <!-- ============ D. Section 2 - Distribusi di Bawah Median ============ -->
+    <!-- ============ D. Section 2 - Distribusi Konten di Bawah Median ============ -->
     <section class="wc-section wc-below-median">
-        <h2>Distribusi di Bawah Median</h2>
-        <p class="wc-section-note">Konten dengan Views di bawah median Views kategorinya (ketat: Views &lt; median). Median dihitung terpisah per kategori.</p>
+        <h2>2. Distribusi Konten di Bawah Median</h2>
+        <p class="wc-section-note">Median itu angka &ldquo;tengah&rdquo; &mdash; kalau semua video jenis yang sama diurutin dari views paling kecil ke paling besar, median adalah angka yang persis di tengah urutan itu. Bedanya sama rata-rata (average): rata-rata gampang keseret tinggi kalau ada 1-2 video yang viral banget, sedangkan median nggak kepengaruhi sama outlier kaya gitu &mdash; jadi lebih jujur buat nunjukkin performa yang &ldquo;typical&rdquo;. &ldquo;Di bawah median&rdquo; di bawah ini artinya video itu views-nya di bawah angka tengah tadi, dibandingin video lain yang jenis kontennya sama. Di volume posting seperti sekarang, sebagian besar konten memang wajar nggak seperform yang paling viral &mdash; ini bukan tanda gagal, cuma gimana algoritma kerja. Yang penting adalah pola: tipe konten apa dan cara produksi apa yang paling banyak nongol di pool &ldquo;di bawah median&rdquo; jenisnya, biar bisa ditarik kesimpulan, bukan cuma lihat 3 video terjelek.</p>
 
-        <div class="wc-below-grid">
-            @foreach (var code in typeCodes)
-            {
-                var group = BelowMedianFor(code);
-                <div class="wc-card wc-below-group @TypeClass(code)">
-                    <div class="wc-below-head">
-                        <h3 class="wc-below-title">@TypeLabel(code)</h3>
-                        <span class="wc-below-median-badge" title="Median Views kategori (30 hari)\nKonten dengan Views lebih rendah tampil di sini">
-                            Median: <strong>@MedianViews(group?.MedianViews)</strong> <small>views</small>
-                        </span>
-                    </div>
+        <div class="wc-card wc-below-panel">
+            <div class="wc-below-tables">
+            <div class="wc-below-col">
+            <table class="wc-below-summary">
+                <colgroup>
+                    <col class="wc-w-label" />
+                    <col class="wc-w-below" />
+                    <col class="wc-w-total" />
+                    <col class="wc-w-pct" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="wc-col-video">Jenis Konten</th>
+                        <th class="wc-col-num">Di Bawah Median</th>
+                        <th class="wc-col-num">Total Konten Jenis Ini</th>
+                        <th class="wc-col-num">% Di Bawah Median</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var code in typeCodes)
+                    {
+                        var group = BelowMedianFor(code);
+                        <tr class="wc-below-row">
+                            <td class="wc-col-video"><span class="wc-below-type @TypeClass(code)"><span class="wc-dot" aria-hidden="true"></span>@TypeLabel(code)</span></td>
+                            <td class="wc-col-num wc-num-strong">@(Count(group?.Entries.Count ?? 0))</td>
+                            <td class="wc-col-num">@(Count(CategoryFor(code)?.Count))</td>
+                            <td class="wc-col-num wc-num-strong">@BelowSharePct(group)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
 
-                    @if (group == null || group.MedianViews == null)
-                    {
-                        <p class="wc-empty">Median kategori belum tersedia (belum ada Views valid).</p>
-                    }
-                    else if (group.Entries.Count == 0)
-                    {
-                        <p class="wc-empty">Tidak ada konten di bawah median.</p>
-                    }
-                    else
-                    {
-                        <ul class="wc-below-list">
-                            @foreach (var entry in group.Entries)
-                            {
-                                <li class="wc-below-item">
-                                    <span class="wc-below-info">
-                                        <span class="wc-below-name" title="@(entry.Title ?? entry.VideoId)">@(entry.Title ?? entry.VideoId)</span>
-                                        <span class="wc-below-meta">@entry.Username &middot; @TypeLabel(code)</span>
+            <!-- Feature 2: Cara Produksi dimension (existing ProductionMethod, no new methods).
+                 Median rule untouched: BelowMedianCount reuses the backend strict < median groups. -->
+            <div class="wc-below-col">
+                <table class="wc-below-summary wc-method-table">
+                    <colgroup>
+                        <col class="wc-w-label" />
+                        <col class="wc-w-below" />
+                        <col class="wc-w-total" />
+                        <col class="wc-w-pct" />
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="wc-col-video">Cara Produksi</th>
+                            <th class="wc-col-num">Di Bawah Median</th>
+                            <th class="wc-col-num">Total Konten</th>
+                            <th class="wc-col-num">% Di Bawah Median</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var method in Model.ProductionBreakdown.Methods)
+                        {
+                            <tr class="wc-method-row">
+                                <td class="wc-col-video">
+                                    <span class="wc-method-name">
+                                        <span class="wc-dot pm-dot @(method.Code == "AI_PRODUCE" ? "pm-ai" : "pm-self")" aria-hidden="true"></span>@method.Label
                                     </span>
-                                    <span class="wc-below-views" title="Views konten (di bawah median kategori)">@Views(entry.Views) <small>views</small></span>
-                                    @if (!string.IsNullOrWhiteSpace(entry.VideoUrl))
-                                    {
-                                        <a class="wc-below-link" href="@entry.VideoUrl" target="_blank" rel="noopener" aria-label="Buka video @(entry.Title ?? entry.VideoId)">Video</a>
-                                    }
-                                </li>
-                            }
-                        </ul>
+                                </td>
+                                <td class="wc-col-num wc-num-strong">@Count(method.BelowMedianCount)</td>
+                                <td class="wc-col-num">@Count(method.TotalCount)</td>
+                                <td class="wc-col-num wc-num-strong">@(method.TotalCount == 0 || method.BelowMedianPercentage == null ? Dash() : Math.Round(method.BelowMedianPercentage.Value, 0, MidpointRounding.AwayFromZero).ToString("0", Inv) + "%")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            </div>
+
+            @{
+                var nullMedianTypes = typeCodes
+                    .Select(BelowMedianFor)
+                    .Where(g => g != null && g.MedianViews == null)
+                    .Select(g => g!.ContentTypeCode)
+                    .ToList();
+            }
+            @if (nullMedianTypes.Count > 0)
+            {
+                <p class="wc-below-median-note">
+                    @foreach (var code in nullMedianTypes)
+                    {
+                        <span>Median kategori belum tersedia untuk @TypeLabel(code) (belum ada Views valid).</span>
                     }
-                </div>
+                </p>
+            }
+
+            <p class="wc-below-listtitle">DAFTAR LENGKAP &middot; @(Count(belowAll.Count)) VIDEO DI BAWAH MEDIAN (URUT DARI PALING RENDAH)</p>
+            @if (belowAll.Count == 0)
+            {
+                <p class="wc-empty">Tidak ada konten di bawah median.</p>
+            }
+            else
+            {
+                <ol class="wc-below-list">
+                    @foreach (var (entry, group) in belowAll)
+                    {
+                        <li class="wc-below-item @TypeClass(entry.ContentTypeCode ?? "")">
+                            <span class="wc-dot" aria-hidden="true"></span>
+                            <span class="wc-below-name" title="@(entry.Title ?? entry.VideoId)">@(entry.Title ?? entry.VideoId)</span>
+                            <span class="wc-below-meta">
+                                <span class="wc-below-views" title="Views konten (di bawah median kategori)">@Views(entry.Views) views</span>
+                                <span class="wc-below-medianref">median @TypeLabel(entry.ContentTypeCode ?? ""): @MedianViews(group.MedianViews)</span>
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(entry.VideoUrl))
+                            {
+                                <a class="wc-below-link" href="@entry.VideoUrl" target="_blank" rel="noopener" aria-label="Buka video @(entry.Title ?? entry.VideoId)">Video</a>
+                            }
+                        </li>
+                    }
+                </ol>
             }
         </div>
     </section>
 
     <!-- ============ E. Section 3 - Komposisi Konten ============ -->
     <section class="wc-section wc-composition">
-        <h2>Komposisi Konten</h2>
-        <p class="wc-section-note">Berdasarkan jumlah konten per kategori (bukan views).</p>
+        <h2>3. Komposisi Konten</h2>
+        <p class="wc-section-note">Proporsi konten dari 2 sudut: jenis konten (Non-KK/KK/Auto GMV Live), dan cara produksinya (AI Produce vs Self Produce, khusus konten yang kita produksi sendiri).</p>
 
-        @{
-            var comp = Model.CompositionSummary;
-        }
-        @if (!comp.HasData)
+        <div class="wc-composition-grid">
+        @if (!Model.CompositionSummary.HasData)
         {
-            <p class="wc-empty">Tidak ada konten pada periode yang dipilih.</p>
+            <div class="wc-card wc-composition-card">
+                <p class="wc-comp-subtitle">KOMPOSISI JENIS KONTEN</p>
+                <p class="wc-empty">Tidak ada konten pada periode yang dipilih.</p>
+            </div>
         }
         else
         {
-            <div class="wc-composition-summary">
-                <span>Total: <strong>@comp.TotalCount</strong> konten</span>
-                @foreach (var cat in comp.Categories)
-                {
-                    <span class="wc-comp-chip @TypeClass(cat.ContentTypeCode)">
-                        @TypeLabel(cat.ContentTypeCode): <strong>@cat.Count</strong>
-                        @(cat.Percentage == null ? Dash() : cat.Percentage.Value.ToString("0.##") + "%")
-                    </span>
-                }
+            <div class="wc-card wc-composition-card">
+                <p class="wc-comp-subtitle">KOMPOSISI JENIS KONTEN</p>
+                <div class="wc-composition-body">
+                    <div class="wc-donut-wrap">
+                        <svg class="wc-donut" viewBox="0 0 120 120" role="img" aria-label="Komposisi konten per kategori">
+                            <circle class="wc-donut-track" cx="60" cy="60" r="42" />
+                            @foreach (var arc in donutArcs)
+                            {
+                                <circle class="wc-donut-arc @TypeClass(arc.Code)"
+                                        cx="60" cy="60" r="42"
+                                        stroke-dasharray="@Svg(arc.Length) @Svg(donutCircumference - arc.Length)"
+                                        stroke-dashoffset="@Svg(-arc.Offset)"
+                                        transform="rotate(-90 60 60)" />
+                            }
+                        </svg>
+                    </div>
+
+                    <!-- Legend: all three locked slots always present, zero-count included. -->
+                    <ul class="wc-legend">
+                        @foreach (var cat in Model.CompositionSummary.Categories)
+                        {
+                            <li class="wc-legend-item @TypeClass(cat.ContentTypeCode)">
+                                <span class="wc-legend-swatch" aria-hidden="true"></span>
+                                <span class="wc-legend-name">@TypeLabel(cat.ContentTypeCode)</span>
+                                <span class="wc-legend-pct" title="@SvgFull(cat.Percentage)">@Pct(cat.Percentage)</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
             </div>
-            <!-- Pie chart / SVG rendering intentionally deferred to a later UI phase. -->
         }
+
+        <!-- Card 2 (Feature 3): Komposisi & Performa - AI Produce vs Self Produce.
+             All values from Model.ProductionBreakdown (existing ProductionMethod + metrics). -->
+        <div class="wc-card wc-composition-card wc-pm-card">
+            <p class="wc-comp-subtitle">KOMPOSISI &amp; PERFORMA &middot; AI PRODUCE VS SELF PRODUCE</p>
+            @if (pmTotal == 0)
+            {
+                <p class="wc-empty">Belum ada konten ber-cara produksi (KK/Non-KK) pada periode ini.</p>
+            }
+            else
+            {
+                <div class="wc-composition-body">
+                    <div class="wc-pm-donut-wrap">
+                        <div class="wc-pm-donut" style="background:@PmGradient()" role="img" aria-label="Komposisi cara produksi: AI Produce vs Self Produce"></div>
+                    </div>
+                    <ul class="wc-pm-legend">
+                        <li class="wc-pm-legend-item">
+                            <span class="wc-pm-swatch pm-ai" aria-hidden="true"></span>
+                            <span class="wc-pm-name">AI Produce</span>
+                            <span class="wc-pm-pct">@PctExact(aiPct)</span>
+                        </li>
+                        <li class="wc-pm-legend-item">
+                            <span class="wc-pm-swatch pm-self" aria-hidden="true"></span>
+                            <span class="wc-pm-name">Self Produce</span>
+                            <span class="wc-pm-pct">@PctExact(pmTotal == 0 ? null : 100m - aiPct)</span>
+                        </li>
+                    </ul>
+                </div>
+                <p class="wc-pm-note">@aiMethod.TotalCount video AI Produce &middot; @selfMethod.TotalCount video Self Produce, dari @pmTotal total konten KK+Non-KK di periode ini.</p>
+
+                <table class="wc-pm-metrics">
+                    <thead>
+                        <tr>
+                            <th>Metrik</th>
+                            <th>AI Produce</th>
+                            <th>Self Produce</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Avg Views/Video</td>
+                            <td>@AvgPerVideo(aiMethod.AverageViewsPerVideo)</td>
+                            <td>@AvgPerVideo(selfMethod.AverageViewsPerVideo)</td>
+                        </tr>
+                        <tr>
+                            <td>Avg Engagement Rate (%)</td>
+                            <td>@Er(aiMethod.AverageEngagementRate)</td>
+                            <td>@Er(selfMethod.AverageEngagementRate)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="wc-pm-bars">
+                    <p class="wc-pm-barstitle">AVG VIEWS/VIDEO</p>
+                    @{ var maxViews = Math.Max(aiMethod.AverageViewsPerVideo ?? 0m, selfMethod.AverageViewsPerVideo ?? 0m); }
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">AI Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-ai" style="width:@BarWidth(maxViews == 0m ? null : aiMethod.AverageViewsPerVideo / maxViews * 100m)"></div></div>
+                    </div>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">Self Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-self" style="width:@BarWidth(maxViews == 0m ? null : selfMethod.AverageViewsPerVideo / maxViews * 100m)"></div></div>
+                    </div>
+
+                    <p class="wc-pm-barstitle">AVG ENGAGEMENT RATE</p>
+                    @{ var maxEr = Math.Max(aiMethod.AverageEngagementRate ?? 0m, selfMethod.AverageEngagementRate ?? 0m); }
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">AI Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-ai" style="width:@BarWidth(maxEr == 0m ? null : aiMethod.AverageEngagementRate / maxEr * 100m)"></div></div>
+                    </div>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">Self Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-self" style="width:@BarWidth(maxEr == 0m ? null : selfMethod.AverageEngagementRate / maxEr * 100m)"></div></div>
+                    </div>
+                </div>
+
+                @if (aiMethod.TotalCount <= 1)
+                {
+                    <p class="wc-pm-note">Baru @aiMethod.TotalCount video AI Produce &mdash; belum cukup buat disimpulkan, tapi tetap dipantau dari sini sampai ada tambahan.</p>
+                }
+            }
+        </div>
+        </div>
     </section>
 
-    <!-- ============ Content items binding (selected-period population) ============ -->
+    <!-- ============ F. Section 4 - Funnel Views -> Reach -> Engagement (Feature 4).
+         All stages from Model.Funnel: honest per-video averages of the active period,
+         percentages relative to Views; NULL metrics render as dash, never NaN/0. ============ -->
+    <section class="wc-section wc-funnel">
+        <h2>4. Funnel Views &rarr; Reach &rarr; Engagement</h2>
+        <p class="wc-section-note">Rata-rata per video di periode ini: dari yang nonton, berapa persen lanjut ke reach, dan berapa persen lanjut engage.</p>
+
+        <div class="wc-card wc-funnel-card">
+            @if (Model.Funnel.VideosWithViews == 0 && Model.Funnel.VideosWithReach == 0 && Model.Funnel.VideosWithEngagement == 0)
+            {
+                <p class="wc-empty">Belum ada data Views/Reach/Engagement pada periode ini.</p>
+            }
+            @foreach (var stage in funnelStages)
+            {
+                <div class="wc-funnel-row">
+                    <span class="wc-funnel-label">@stage.Label</span>
+                    <div class="wc-funnel-track"><div class="wc-funnel-fill" style="width:@BarWidth(stage.Fill)"></div></div>
+                    <div class="wc-funnel-values">
+                        <strong>@Pct1(stage.Pct)</strong>
+                        <small title="Rata-rata per video dari data periode aktif">@stage.Caption</small>
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+
+    <!-- ============ G. Section 5 - Snapshot Audiens (Feature 5).
+         Current period vs the EXISTING 30-day baseline window; deltas in percentage
+         points. Follower % has no verified source - honest unavailable state. ============ -->
+    <section class="wc-section wc-audience">
+        <h2>5. Snapshot Audiens &middot; @audienceCurrentLabel vs @audiencePreviousLabel (30 hari sebelumnya)</h2>
+        <p class="wc-section-note">Profil penonton dari video pada periode aktif, dibandingkan dengan 30 hari sebelumnya. Persentase adalah rata-rata tertimbang Views dari share penonton per video; perubahan ditampilkan dalam poin persentase (pts).</p>
+
+        <div class="wc-aud-grid">
+            @foreach (var metric in Model.Audience.Metrics)
+            {
+                <div class="wc-card wc-aud-card">
+                    <p class="wc-aud-label">@metric.Label.ToUpperInvariant()</p>
+                    @if (!metric.IsAvailable)
+                    {
+                        <p class="wc-aud-value wc-aud-na">@Dash()</p>
+                        <p class="wc-aud-unavailable">@metric.UnavailableReason</p>
+                    }
+                    else if (metric.CurrentPercentage == null)
+                    {
+                        <p class="wc-aud-value">@Dash()</p>
+                        <p class="wc-aud-delta flat">Belum ada data demografi pada periode ini</p>
+                    }
+                    else
+                    {
+                        <p class="wc-aud-value">@Pct1(metric.CurrentPercentage)</p>
+                        @if (metric.DeltaPoints == null)
+                        {
+                            <p class="wc-aud-delta flat">Tidak ada pembanding periode sebelumnya</p>
+                        }
+                        else if (metric.DeltaPoints.Value > 0)
+                        {
+                            <p class="wc-aud-delta up">&#9650; @Pts(metric.DeltaPoints) vs periode sebelumnya</p>
+                        }
+                        else if (metric.DeltaPoints.Value < 0)
+                        {
+                            <p class="wc-aud-delta down">&#9660; @Pts(metric.DeltaPoints) vs periode sebelumnya</p>
+                        }
+                        else
+                        {
+                            <p class="wc-aud-delta flat">&#177; @Pts(metric.DeltaPoints) vs periode sebelumnya</p>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </section>
+
+    <!-- ============ Content items binding (selected-period population).
+         NOT part of the approved mockup: QA/binding aid only, shown behind ?debug=1
+         so the default page matches the mockup 1:1. No logic change. ============ -->
+    @if (Context.Request.Query["debug"].ToString() == "1")
+    {
     <section class="wc-section wc-items">
-        <h2>Konten Periode</h2>
+        <h2>Konten Periode (debug)</h2>
         <p class="wc-section-note">@Model.Items.Count konten pada periode terpilih.</p>
 
         @if (Model.Items.Count == 0)
@@ -230,4 +737,104 @@
             </div>
         }
     </section>
+    }
 </div>
+
+@section Scripts {
+<script src="~/js/calendar-popup.js"></script>
+<script>
+(() => {
+    // Date-range popover: Daily Summary reference pattern (Phase 3E.1). The shared
+    // CalendarPopup module (wwwroot/js/calendar-popup.js, already used by Daily Summary
+    // and Targets) renders the two-month grid; this page owns the selection state and
+    // submits only startDate/endDate to the existing controller contract. No analytics
+    // logic here - the server remains authoritative for the business date range.
+    const page = document.querySelector('.winning-content-page');
+    const rangeButton = document.getElementById('dateRangeButton');
+    const datePanel = document.getElementById('datePickerPanel');
+    const appliedStart = page.dataset.start;
+    const appliedEnd = page.dataset.end;
+    let pendingStart = appliedStart;
+    let pendingEnd = appliedEnd;
+
+    const parseDate = value => new Date(`${value}T00:00:00`);
+    // Exact display contract (same as the server-rendered label): invariant 2-digit
+    // day/month + " - " separator. The GMT+7 suffix is added once, here, so the
+    // pending + footer labels carry it exactly like the applied button label.
+    // Deliberately NOT toLocaleDateString: locale output varies by browser/OS and once
+    // regressed the applied label.
+    const two = n => String(n).padStart(2, '0');
+    const formatDdMm = value => { const d = parseDate(value); return `${two(d.getDate())}/${two(d.getMonth() + 1)}`; };
+    const formatDate = value => `${formatDdMm(value)}`;
+
+    function setPanel(panel, button, open) {
+        panel.hidden = !open;
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function renderPendingLabel() {
+        const label = document.getElementById('pendingRangeLabel');
+        const footer = document.getElementById('datePickerSelected');
+        const text = pendingStart && pendingEnd
+            ? `${formatDate(pendingStart)} - ${formatDate(pendingEnd)} (GMT+7)`
+            : pendingStart
+                ? `${formatDate(pendingStart)} - ...`
+                : 'Pilih rentang tanggal';
+        label.textContent = text;
+        footer.textContent = pendingStart && pendingEnd ? text : '';
+    }
+
+    // Same selection rules as Daily Summary (computeRangeSelection in calendar-popup.js):
+    // click = start; second click same/later closes the range; earlier restarts; next click restarts.
+    const rangeCalendar = CalendarPopup.createRangeCalendar({
+        grid: document.getElementById('calendarGrid'),
+        titleEl: document.getElementById('calendarTitle'),
+        prevButton: document.getElementById('previousMonth'),
+        nextButton: document.getElementById('nextMonth'),
+        months: 2,
+        initialMonth: appliedStart,
+        getSelection: () => ({ start: pendingStart, end: pendingEnd }),
+        onSelectionChange: (start, end) => { pendingStart = start; pendingEnd = end; renderPendingLabel(); }
+    });
+    function renderCalendar() { rangeCalendar.render(); }
+
+    function closeAllPanels() {
+        setPanel(datePanel, rangeButton, false);
+    }
+
+    // Click-outside + Escape close the panel (same as Daily Summary).
+    document.addEventListener('click', event => {
+        const clicked = event.target instanceof Element && event.target.isConnected ? event.target : null;
+        if (!datePanel.hidden && (!clicked || !clicked.closest('.wc-header-anchor'))) setPanel(datePanel, rangeButton, false);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeAllPanels();
+    });
+
+    rangeButton.addEventListener('click', () => {
+        const open = datePanel.hidden;
+        setPanel(datePanel, rangeButton, open);
+        if (open) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    });
+    document.getElementById('closeDatePicker').addEventListener('click', closeAllPanels);
+    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; closeAllPanels(); });
+    document.getElementById('applyDatePicker').addEventListener('click', () => {
+        if (!pendingStart || !pendingEnd) return;
+        // Winning Content takes no other parameters: submit the same contract the old
+        // form used - /WinningContent?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd.
+        window.location.assign(`/WinningContent?startDate=${encodeURIComponent(pendingStart)}&endDate=${encodeURIComponent(pendingEnd)}`);
+    });
+    document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+        const today = new Date();
+        const preset = button.dataset.preset;
+        const end = new Date(today);
+        const start = new Date(today);
+        if (preset === 'yesterday') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); }
+        else if (preset !== 'today') start.setDate(start.getDate() - Number(preset) + 1);
+        pendingStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+        pendingEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+        renderPendingLabel(); renderCalendar();
+    }));
+})();
+</script>
+}

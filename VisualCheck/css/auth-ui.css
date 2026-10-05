@@ -1,0 +1,31 @@
+/* Topbar user area (authenticated layout) - appended to layout styles */
+
+.topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-username {
+    font-size: 13px;
+    color: #fff;
+    opacity: 0.85;
+}
+
+.topbar-logout-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.topbar-logout {
+    font-size: 12px;
+    padding: 2px 10px;
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #dce6f2;
+}
+
+.topbar-logout:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
+}

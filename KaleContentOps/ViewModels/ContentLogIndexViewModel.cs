@@ -19,6 +19,12 @@ public class ContentLogIndexViewModel
 
     public string SelectedContentType { get; set; } = string.Empty;
 
+    // Date range filter on VideoPostTime (ISO yyyy-MM-dd when set). Kept in the view model
+    // so pills, pagination and the search form can all round-trip the selection.
+    public string DateFrom { get; set; } = string.Empty;
+
+    public string DateTo { get; set; } = string.Empty;
+
     public List<ContentType> ContentTypes { get; set; } = new List<ContentType>();
 
     public List<MasterPic> MasterPics { get; set; } = new List<MasterPic>();

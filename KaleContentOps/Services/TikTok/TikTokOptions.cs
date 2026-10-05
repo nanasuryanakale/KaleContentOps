@@ -28,6 +28,12 @@ public class TikTokOptions
     // and rate-limit safe: 0 or negative disables details sync entirely.
     public int DetailsSyncBatchSize { get; set; } = 20;
 
+    // Historical P1 scheduler configuration
+    // Default disabled to avoid accidental API flood on deploy
+    public bool EnableHistoricalDetailsP1Scheduler { get; set; } = false;
+    public int HistoricalDetailsP1BatchSize { get; set; } = 10;
+    public int HistoricalDetailsP1IntervalMinutes { get; set; } = 15;
+
     // Request signing salt or other flags can be added later
     // OAuth configuration
     public string? ServiceId { get; set; }

@@ -1,8 +1,9 @@
 /*
- * Winning Content page styles - Phase 3B (Leaderboard UI).
+ * Winning Content page styles.
  * EVERY selector is scoped under .winning-content-page so no other page is affected.
- * Uses the application's existing visual language (dark panels, category colors).
- * Below Median / Composition get their dedicated visual pass in later phases.
+ * Visual language follows the approved Winning Content mockup: numbered section
+ * headings, per-category leaderboard cards with TOP BY VIEWS / TOP BY ENGAGEMENT
+ * RATE tables, one merged below-median panel, donut + percentage legend.
  */
 
 .winning-content-page {
@@ -22,7 +23,7 @@
     color: var(--wc-text);
 }
 
-/* ============ Header (structure only - dedicated pass comes later) ============ */
+/* ============ Header ============ */
 .winning-content-page .wc-header {
     display: flex;
     justify-content: space-between;
@@ -33,230 +34,242 @@
 }
 
 .winning-content-page .wc-title h1 { margin: 0 0 4px; font-size: 23px; font-weight: 700; letter-spacing: -.3px; }
-.winning-content-page .wc-title p { margin: 0; font-size: 12px; color: var(--wc-muted); }
+.winning-content-page .wc-title p { margin: 0; font-size: 12.5px; color: var(--wc-muted); max-width: 760px; }
 
-.winning-content-page .wc-date-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.winning-content-page .wc-date-range label { font-size: 12px; color: var(--wc-muted); }
-.winning-content-page .wc-date-range input[type="date"] {
-    height: 36px;
-    background: #151b29;
-    border: 1px solid #2d374b;
-    border-radius: 9px;
-    color: #e7ecf7;
-    padding: 0 10px;
-}
-.winning-content-page .wc-apply-button {
-    height: 36px;
-    padding: 0 16px;
-    border: 0;
+/* ============ Date range (Phase 3E.1: Daily Summary parity - unchanged) ============ */
+.winning-content-page .wc-header-anchor { position: relative; flex: 0 0 auto; }
+.winning-content-page .date-range-button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    color: var(--wc-text);
+    background: #111a27;
+    border: 1px solid #263346;
     border-radius: 8px;
-    background: #6f90f7;
-    color: #fff;
-    font-weight: 700;
     cursor: pointer;
 }
+.winning-content-page .date-range-button:hover { border-color: #52657e; background: #151f2e; }
+.winning-content-page .date-range-button strong { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.winning-content-page .date-range-button small { color: var(--wc-muted); font-size: 10.5px; white-space: nowrap; }
+.winning-content-page .calendar-icon { display: inline-flex; color: var(--wc-blue); }
+
+.winning-content-page .date-picker-panel {
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(680px, calc(100vw - 48px));
+    padding: 16px;
+    position: absolute;
+    z-index: 30;
+    background: #172232;
+    border: 1px solid #34445a;
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .5);
+}
+.winning-content-page .date-picker-topline { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
+.winning-content-page .date-picker-topline strong { display: block; color: #f0f5fa; font-size: 14px; }
+.winning-content-page .date-picker-topline small { display: block; margin-top: 3px; color: var(--wc-muted); font-size: 11px; }
+.winning-content-page .close-button { color: #aab7c7; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; }
+.winning-content-page .close-button:hover { color: white; }
+
+.winning-content-page .date-picker-body { display: flex; gap: 18px; align-items: stretch; }
+.winning-content-page .preset-list { flex: 0 0 170px; display: flex; flex-direction: column; gap: 6px; padding-right: 16px; border-right: 1px solid #1e2a3d; }
+.winning-content-page .preset-title { margin-bottom: 4px; color: #8795a9; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.winning-content-page .preset-list button { padding: 8px 11px; color: #cbd6e5; text-align: left; font-size: 12px; background: transparent; border: 1px solid #263346; border-radius: 6px; cursor: pointer; }
+.winning-content-page .preset-list button:hover { color: white; border-color: var(--wc-blue); background: rgba(77, 159, 255, .08); }
+
+.winning-content-page .calendar-area { flex: 1 1 auto; min-width: 0; }
+
+.winning-content-page .date-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #1e2a3d; }
+.winning-content-page .date-picker-selected { color: #cbd6e5; font-size: 12px; }
+.winning-content-page .button-secondary,
+.winning-content-page .button-primary { padding: 7px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; }
+.winning-content-page .button-secondary { color: #cbd6e5; background: transparent; border: 1px solid #263346; }
+.winning-content-page .button-secondary:hover { color: white; border-color: #52657e; }
+.winning-content-page .button-primary { color: white; font-weight: 600; background: #356fc0; border: 1px solid #356fc0; }
+.winning-content-page .button-primary:hover { background: #3f7fd4; border-color: #3f7fd4; }
 
 /* ============ Sections ============ */
-.winning-content-page .wc-section { margin-bottom: 26px; }
-.winning-content-page .wc-section h2 { margin: 0 0 2px; font-size: 17px; font-weight: 700; }
-.winning-content-page .wc-section-note { margin: 0 0 12px; font-size: 12px; color: var(--wc-muted); }
+.winning-content-page .wc-section { margin-bottom: 30px; }
+.winning-content-page .wc-section h2 { margin: 0 0 6px; font-size: 16.5px; font-weight: 700; }
+.winning-content-page .wc-section-note { margin: 0 0 14px; font-size: 12px; line-height: 1.65; color: #9aa5bd; max-width: 1180px; }
 
-/* ============ Leaderboard grid: one independent card per category ============ */
-.winning-content-page .wc-leaderboards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 14px;
+/* ============ Category dot (shared accent) ============ */
+.winning-content-page .wc-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--wc-border);
+    margin-right: 8px;
+    flex: 0 0 auto;
 }
-/* Keep three equal columns on wide screens, wrap on narrower desktop/tablet widths. */
-@media (min-width: 1100px) {
-    .winning-content-page .wc-leaderboards { grid-template-columns: repeat(3, 1fr); }
+.winning-content-page .type-nonkk .wc-dot, .winning-content-page .wc-below-item.type-nonkk > .wc-dot { background: var(--wc-blue); }
+.winning-content-page .type-kk .wc-dot, .winning-content-page .wc-below-item.type-kk > .wc-dot { background: var(--wc-yellow); }
+.winning-content-page .type-autogmv .wc-dot, .winning-content-page .wc-below-item.type-autogmv > .wc-dot { background: var(--wc-purple); }
+
+/* ============ Card base ============ */
+.winning-content-page .wc-card {
+    background: var(--wc-panel);
+    border: 1px solid var(--wc-border);
+    border-radius: var(--wc-radius);
+    padding: 18px;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, .12);
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
 }
-/* The section wrapper carries the heading; the grid lives on the cards container. */
-.winning-content-page section.wc-leaderboards { display: block; }
+
+/* ============ Section 1 - Leaderboard per Jenis Konten ============ */
 .winning-content-page .wc-leaderboard-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    align-items: start;
 }
 @media (min-width: 1100px) {
     .winning-content-page .wc-leaderboard-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
-/* ============ Leaderboard card ============ */
-.winning-content-page .wc-card {
-    background: var(--wc-panel);
-    border: 1px solid var(--wc-border);
-    border-radius: var(--wc-radius);
-    padding: 14px 14px 12px;
-    box-shadow: 0 10px 35px rgba(0, 0, 0, .12);
-    box-sizing: border-box;
-    min-width: 0;
-}
-
 .winning-content-page .wc-leaderboard-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--wc-border-soft);
 }
-.winning-content-page .wc-leaderboard-title { font-size: 13.5px; font-weight: 700; margin: 0; }
-.winning-content-page .wc-leaderboard-sub { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--wc-muted); text-transform: uppercase; white-space: nowrap; }
-
-/* Category accents (existing application category colors) */
+.winning-content-page .wc-leaderboard-title { display: flex; align-items: center; font-size: 13.5px; font-weight: 700; margin: 0; }
 .winning-content-page .type-nonkk .wc-leaderboard-title { color: var(--wc-blue); }
 .winning-content-page .type-kk .wc-leaderboard-title { color: var(--wc-yellow); }
 .winning-content-page .type-autogmv .wc-leaderboard-title { color: var(--wc-purple); }
-.winning-content-page .type-nonkk { border-top: 2px solid var(--wc-blue); }
-.winning-content-page .type-kk { border-top: 2px solid var(--wc-yellow); }
-.winning-content-page .type-autogmv { border-top: 2px solid var(--wc-purple); }
+.winning-content-page .wc-leaderboard-count { font-size: 11px; color: var(--wc-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* ============ Rank list ============ */
-.winning-content-page .wc-rank-list { list-style: none; margin: 0; padding: 0; }
+.winning-content-page .wc-lb-block { margin-top: 14px; }
+.winning-content-page .wc-lb-subtitle {
+    margin: 0 0 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    color: #7e8aa5;
+}
 
-.winning-content-page .wc-rank-item {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-areas:
-        "rank info metrics"
-        "rank link  metrics";
-    align-items: center;
-    column-gap: 11px;
-    row-gap: 2px;
-    padding: 10px 4px;
+/* Mockup table: airy rows, thin separators, numeric columns right-aligned.
+   Cells clip their own content (fixed layout + ellipsis on the title): an
+   unbreakable title must never widen the table or push the page horizontally. */
+.winning-content-page .wc-lb-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.winning-content-page .wc-lb-table th,
+.winning-content-page .wc-lb-table td { overflow: hidden; }
+.winning-content-page .wc-lb-table th {
+    padding: 6px 6px;
+    color: #7e8aa5;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    text-align: left;
     border-bottom: 1px solid var(--wc-border-soft);
 }
-.winning-content-page .wc-rank-item:last-child { border-bottom: 0; }
+.winning-content-page .wc-lb-table th.wc-col-num, .winning-content-page .wc-lb-table th.wc-col-mult { text-align: right; }
+.winning-content-page .wc-lb-table td { padding: 9px 6px; border-bottom: 1px solid var(--wc-border-soft); vertical-align: middle; }
+.winning-content-page .wc-lb-table tr:last-child td { border-bottom: 0; }
+.winning-content-page .wc-col-video { width: 56%; }
+.winning-content-page .wc-col-num { width: 20%; text-align: right; }
+.winning-content-page .wc-col-mult { width: 24%; text-align: right; }
 
-.winning-content-page .wc-rank {
-    grid-area: rank;
-    align-self: center;
-    min-width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9px;
-    font-size: 13px;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    background: var(--wc-panel-2);
-    border: 1px solid var(--wc-border);
-    color: var(--wc-text);
-}
-/* Rank prominence: #1 strongest, then #2, #3 - consistent with leaderboard semantics. */
-.winning-content-page .wc-rank-1 { background: #6f90f7; border-color: #7ea0ff; color: #fff; }
-.winning-content-page .wc-rank-2 { background: #33518f; border-color: #41649f; color: #eaf1ff; }
-.winning-content-page .wc-rank-3 { background: var(--wc-panel-2); border-color: #46557a; color: #dbe4f7; }
-
-.winning-content-page .wc-rank-info { grid-area: info; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.winning-content-page .wc-rank-title {
+.winning-content-page .wc-lb-ident { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.winning-content-page .wc-lb-rank { flex: 0 0 auto; min-width: 16px; font-size: 12px; font-weight: 700; color: var(--wc-muted); font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-lb-titles { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; max-width: 100%; }
+.winning-content-page .wc-lb-title { min-width: 0; max-width: 100%; }
+.winning-content-page .wc-lb-title {
     font-size: 12.5px;
     font-weight: 600;
     color: #e9eefb;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 100%;
 }
-.winning-content-page .wc-rank-meta { font-size: 11px; color: var(--wc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Primary metric emphasis: ER leads, multiplier/baseline are supporting. */
-.winning-content-page .wc-rank-metrics {
-    grid-area: metrics;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
-    text-align: right;
-}
-.winning-content-page .wc-er { font-size: 14px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
-.winning-content-page .wc-er-support { font-size: 10.5px; color: var(--wc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-.winning-content-page .wc-rank-link {
-    grid-area: link;
-    justify-self: start;
-    font-size: 11px;
-    color: #8cb0ff;
-    text-decoration: underline;
-}
-.winning-content-page .wc-rank-link:hover { color: #b3ccff; }
-
-.winning-content-page .wc-card-foot {
-    margin: 10px 4px 0;
-    padding-top: 9px;
-    border-top: 1px solid var(--wc-border-soft);
-    font-size: 11px;
-    color: var(--wc-muted);
-}
-.winning-content-page .wc-card-foot strong { color: #cfe0ff; font-variant-numeric: tabular-nums; }
-
-/* ============ Empty states (leaderboard) ============ */
-.winning-content-page .wc-empty { margin: 8px 4px 4px; font-size: 12px; color: var(--wc-muted); }
-
-/* ============ Section 2 - Distribusi di Bawah Median (Phase 3C) ============ */
-.winning-content-page .wc-below-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 14px;
-}
-@media (min-width: 1100px) {
-    .winning-content-page .wc-below-grid { grid-template-columns: repeat(3, 1fr); }
-}
-
-/* Same card language as the leaderboard (Phase 3B) so both sections read as one page. */
-.winning-content-page .wc-below-group {
-    border-top: 2px solid var(--wc-border);
-    display: flex;
-    flex-direction: column;
-}
-.winning-content-page .wc-below-group.type-nonkk { border-top-color: var(--wc-blue); }
-.winning-content-page .wc-below-group.type-kk { border-top-color: var(--wc-yellow); }
-.winning-content-page .wc-below-group.type-autogmv { border-top-color: var(--wc-purple); }
-
-.winning-content-page .wc-below-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
-    flex-wrap: wrap;
-}
-.winning-content-page .wc-below-title { margin: 0; font-size: 13.5px; font-weight: 700; min-width: 0; }
-.winning-content-page .type-nonkk .wc-below-title { color: var(--wc-blue); }
-.winning-content-page .type-kk .wc-below-title { color: var(--wc-yellow); }
-.winning-content-page .type-autogmv .wc-below-title { color: var(--wc-purple); }
-
-/* Median reference: prominent, per category, straight from the backend value. */
-.winning-content-page .wc-below-median-badge {
+/* Badge row (mockup): badges sit side-by-side under the title. */
+.winning-content-page .wc-lb-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.winning-content-page .wc-badge {
     display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-    padding: 4px 9px;
-    border: 1px solid var(--wc-border);
-    border-radius: 14px;
-    background: var(--wc-panel-2);
-    font-size: 11px;
-    color: #c3c9d8;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-}
-.winning-content-page .wc-below-median-badge strong { color: #fff; font-size: 12px; }
-.winning-content-page .wc-below-median-badge small { color: var(--wc-muted); font-size: 10px; }
-
-/* Rows: Views is the PRIMARY metric of this section (strongest emphasis). */
-.winning-content-page .wc-below-list { list-style: none; margin: 0; padding: 0; }
-.winning-content-page .wc-below-item {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
     align-items: center;
-    column-gap: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: #a9c4ff;
+    background: rgba(120, 166, 255, .14);
+    border: 1px solid rgba(120, 166, 255, .25);
+    white-space: nowrap;
+}
+
+.winning-content-page .wc-num-strong { font-size: 13px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-col-mult { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.winning-content-page .wc-mult-pos { color: #45d483; }
+.winning-content-page .wc-mult-neg { color: #f47777; }
+
+/* ============ Section 2 - Distribusi Konten di Bawah Median (merged panel) ============ */
+.winning-content-page .wc-below-panel { padding: 18px; }
+.winning-content-page .wc-below-summary { width: 100%; border-collapse: collapse; }
+/* Mockup: fixed column widths (colgroup classes) so headers sit exactly over their
+   body columns; header text wraps within its own column instead of stretching the
+   table or being clipped. */
+.winning-content-page .wc-below-summary { table-layout: fixed; }
+.winning-content-page .wc-below-summary th {
+    padding: 6px 8px;
+    color: #7e8aa5;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    text-align: right;
+    border-bottom: 1px solid var(--wc-border-soft);
+}
+.winning-content-page .wc-below-summary .wc-w-label { width: 34%; }
+.winning-content-page .wc-below-summary .wc-w-below { width: 20%; }
+.winning-content-page .wc-below-summary .wc-w-total { width: 26%; }
+.winning-content-page .wc-below-summary .wc-w-pct { width: 20%; }
+.winning-content-page .wc-below-summary td.wc-col-num { overflow: hidden; text-overflow: ellipsis; }
+.winning-content-page .wc-below-summary th.wc-col-video { text-align: left; }
+.winning-content-page .wc-below-summary td { padding: 10px 8px; border-bottom: 1px solid var(--wc-border-soft); }
+.winning-content-page .wc-below-summary tr:last-child td { border-bottom: 0; }
+.winning-content-page .wc-below-type { display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 600; color: #e9eefb; }
+.winning-content-page .wc-below-summary .wc-col-num { font-size: 13px; color: #c6d1e0; text-align: right; font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-below-summary td.wc-num-strong { color: #fff; font-weight: 700; }
+
+.winning-content-page .wc-below-median-note { margin: 8px 0 0; font-size: 11.5px; color: var(--wc-muted); }
+.winning-content-page .wc-below-median-note span { display: block; }
+
+.winning-content-page .wc-below-listtitle {
+    margin: 18px 0 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    color: #7e8aa5;
+}
+.winning-content-page .wc-below-list { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; }
+.winning-content-page .wc-below-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 9px 4px;
     border-bottom: 1px solid var(--wc-border-soft);
 }
+/* Long titles wrap inside the row instead of pushing the views/median/link cluster
+   out of the card (mockup: one row per video, meta stays right-aligned). */
+.winning-content-page .wc-below-item .wc-below-name { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+    .winning-content-page .wc-below-item { flex-wrap: wrap; }
+    .winning-content-page .wc-below-item .wc-below-meta { margin-left: 19px; }
+}
 .winning-content-page .wc-below-item:last-child { border-bottom: 0; }
-
-.winning-content-page .wc-below-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .winning-content-page .wc-below-name {
+    flex: 1 1 auto;
+    min-width: 0;
     font-size: 12.5px;
     font-weight: 600;
     color: #e9eefb;
@@ -264,25 +277,155 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.winning-content-page .wc-below-meta { font-size: 11px; color: var(--wc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.winning-content-page .wc-below-views {
-    font-size: 14px;
-    font-weight: 800;
-    color: #fff;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-.winning-content-page .wc-below-views small { font-size: 10px; font-weight: 600; color: var(--wc-muted); }
-
-.winning-content-page .wc-below-link { font-size: 11px; color: #8cb0ff; text-decoration: underline; }
+.winning-content-page .wc-below-meta { flex: 0 0 auto; display: flex; align-items: baseline; gap: 12px; font-size: 11.5px; }
+.winning-content-page .wc-below-views { font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.winning-content-page .wc-below-medianref { color: var(--wc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.winning-content-page .wc-below-link { flex: 0 0 auto; font-size: 11px; color: #8cb0ff; text-decoration: underline; }
 .winning-content-page .wc-below-link:hover { color: #b3ccff; }
 
-.winning-content-page .wc-composition-summary { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #c3c9d8; }
-.winning-content-page .wc-comp-chip { padding: 6px 10px; border: 1px solid var(--wc-border); border-radius: 16px; background: var(--wc-panel); font-variant-numeric: tabular-nums; }
-.winning-content-page .wc-comp-chip strong { color: #fff; }
+/* ============ Empty states ============ */
+.winning-content-page .wc-empty { margin: 8px 4px 4px; font-size: 12px; color: var(--wc-muted); }
 
+/* ============ Feature 2 - Cara Produksi (below-median second table) ============ */
+.winning-content-page .wc-below-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
+.winning-content-page .wc-method-table .wc-method-name { display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 600; color: #e9eefb; }
+.winning-content-page .pm-dot.pm-ai { background: var(--wc-blue); }
+.winning-content-page .pm-dot.pm-self { background: #8a94a8; }
+
+/* ============ Feature 3 - two-card composition grid ============ */
+.winning-content-page .wc-composition-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; align-items: stretch; }
+.winning-content-page .wc-pm-donut-wrap { width: 150px; height: 150px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+.winning-content-page .wc-pm-donut { width: 132px; height: 132px; border-radius: 50%; position: relative; }
+.winning-content-page .wc-pm-donut::after { content: ""; position: absolute; inset: 26px; border-radius: 50%; background: var(--wc-panel); }
+.winning-content-page .wc-pm-legend { list-style: none; margin: 0; padding: 0; flex: 1 1 220px; }
+.winning-content-page .wc-pm-legend-item { display: flex; align-items: center; gap: 10px; padding: 7px 2px; }
+.winning-content-page .wc-pm-swatch { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; }
+.winning-content-page .wc-pm-swatch.pm-ai, .winning-content-page .wc-pm-fill.pm-ai { background: var(--wc-blue); }
+.winning-content-page .wc-pm-swatch.pm-self, .winning-content-page .wc-pm-fill.pm-self { background: #8a94a8; }
+.winning-content-page .wc-pm-name { flex: 1 1 auto; font-size: 12.5px; font-weight: 600; color: #e9eefb; }
+.winning-content-page .wc-pm-pct { font-size: 12.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-pm-note { margin: 12px 2px 2px; font-size: 11.5px; color: var(--wc-muted); }
+
+.winning-content-page .wc-pm-metrics { width: 100%; margin-top: 14px; border-collapse: collapse; }
+.winning-content-page .wc-pm-metrics th {
+    padding: 6px 8px; color: #7e8aa5; font-size: 9.5px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; text-align: right; border-bottom: 1px solid var(--wc-border-soft);
+}
+.winning-content-page .wc-pm-metrics th:first-child { text-align: left; }
+.winning-content-page .wc-pm-metrics td { padding: 9px 8px; border-bottom: 1px solid var(--wc-border-soft); font-size: 12.5px; text-align: right; color: #c6d1e0; font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-pm-metrics td:first-child { text-align: left; color: #e9eefb; font-weight: 600; }
+
+.winning-content-page .wc-pm-bars { margin-top: 16px; }
+.winning-content-page .wc-pm-barstitle { margin: 12px 0 6px; font-size: 10px; font-weight: 700; letter-spacing: .09em; color: #7e8aa5; }
+.winning-content-page .wc-pm-bar { display: flex; align-items: center; gap: 10px; padding: 3px 0; }
+.winning-content-page .wc-pm-bar-label { flex: 0 0 84px; font-size: 11.5px; color: #c6d1e0; }
+.winning-content-page .wc-pm-track { flex: 1 1 auto; height: 8px; border-radius: 6px; background: var(--wc-panel-2); overflow: hidden; }
+.winning-content-page .wc-pm-fill { height: 100%; border-radius: 6px; }
+
+/* ============ Feature 4 - Funnel ============ */
+.winning-content-page .wc-funnel-card { display: flex; flex-direction: column; gap: 12px; }
+.winning-content-page .wc-funnel-row { display: flex; align-items: center; gap: 14px; }
+.winning-content-page .wc-funnel-label { flex: 0 0 92px; font-size: 12.5px; font-weight: 600; color: #e9eefb; }
+.winning-content-page .wc-funnel-track { flex: 1 1 auto; height: 14px; border-radius: 8px; background: var(--wc-panel-2); overflow: hidden; }
+.winning-content-page .wc-funnel-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #78a6ff, #5c8df0); }
+.winning-content-page .wc-funnel-values { flex: 0 0 220px; display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; }
+.winning-content-page .wc-funnel-values strong { font-size: 13px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.winning-content-page .wc-funnel-values small { font-size: 11px; color: var(--wc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ============ Feature 5 - Snapshot Audiens ============ */
+.winning-content-page .wc-aud-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.winning-content-page .wc-aud-card { padding: 14px 16px; }
+.winning-content-page .wc-aud-label { margin: 0 0 6px; font-size: 10px; font-weight: 700; letter-spacing: .09em; color: #7e8aa5; }
+.winning-content-page .wc-aud-value { margin: 0 0 6px; font-size: 22px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-aud-na { color: var(--wc-muted); }
+.winning-content-page .wc-aud-delta { margin: 0; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.winning-content-page .wc-aud-delta.up { color: #45d483; }
+.winning-content-page .wc-aud-delta.down { color: #f47777; }
+.winning-content-page .wc-aud-delta.flat { color: var(--wc-muted); font-weight: 500; }
+.winning-content-page .wc-aud-unavailable { margin: 0; font-size: 11px; line-height: 1.55; color: var(--wc-muted); }
+
+/* ============ Section 3 - Komposisi Konten ============ */
+.winning-content-page .wc-composition-card { padding: 18px; }
+.winning-content-page .wc-comp-subtitle {
+    margin: 0 0 14px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    color: #7e8aa5;
+}
+.winning-content-page .wc-composition-body { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+.winning-content-page .wc-donut-wrap { position: relative; width: 150px; height: 150px; flex: 0 0 auto; }
+.winning-content-page .wc-donut { width: 150px; height: 150px; display: block; }
+.winning-content-page .wc-donut-track {
+    fill: none;
+    stroke: var(--wc-panel-2);
+    stroke-width: 15;
+}
+.winning-content-page .wc-donut-arc {
+    fill: none;
+    stroke-width: 15;
+    stroke-linecap: butt;
+}
+.winning-content-page .wc-donut-arc.type-nonkk { stroke: var(--wc-blue); }
+.winning-content-page .wc-donut-arc.type-kk { stroke: var(--wc-yellow); }
+.winning-content-page .wc-donut-arc.type-autogmv { stroke: var(--wc-purple); }
+
+/* Legend: all three locked slots always present, zero-count categories stay visible. */
+.winning-content-page .wc-legend { list-style: none; margin: 0; padding: 0; flex: 1 1 220px; }
+.winning-content-page .wc-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 2px;
+}
+.winning-content-page .wc-legend-swatch {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    background: var(--wc-border);
+    flex: 0 0 auto;
+}
+.winning-content-page .wc-legend-item.type-nonkk .wc-legend-swatch { background: var(--wc-blue); }
+.winning-content-page .wc-legend-item.type-kk .wc-legend-swatch { background: var(--wc-yellow); }
+.winning-content-page .wc-legend-item.type-autogmv .wc-legend-swatch { background: var(--wc-purple); }
+.winning-content-page .wc-legend-name { flex: 1 1 auto; font-size: 12.5px; font-weight: 600; color: #e9eefb; }
+.winning-content-page .wc-legend-pct { font-size: 12.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ============ Konten Periode table ============ */
 .winning-content-page .wc-table-wrap { background: var(--wc-panel); border: 1px solid var(--wc-border); border-radius: var(--wc-radius); overflow: auto; }
 .winning-content-page .wc-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
 .winning-content-page .wc-table th, .winning-content-page .wc-table td { padding: 9px 10px; border-bottom: 1px solid #263043; white-space: nowrap; text-align: left; }
 .winning-content-page .wc-table th { color: #8ea6df; font-size: 11px; letter-spacing: .3px; }
+
+/* ============ Responsive (new sections) ============ */
+@media (max-width: 1000px) {
+    .winning-content-page .wc-composition-grid { grid-template-columns: 1fr; }
+    .winning-content-page .wc-below-tables { grid-template-columns: 1fr; }
+    .winning-content-page .wc-aud-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ============ Responsive ============ */
+@media (max-width: 900px) {
+    .winning-content-page .date-picker-body { flex-direction: column; }
+    .winning-content-page .preset-list {
+        flex: 0 0 auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding-right: 0;
+        border-right: 0;
+        border-bottom: 1px solid #1e2a3d;
+        padding-bottom: 12px;
+    }
+    .winning-content-page .preset-title { width: 100%; }
+    .winning-content-page .wc-col-mult { display: none; }
+    .winning-content-page .wc-lb-table th.wc-col-mult { display: none; }
+}
+@media (max-width: 700px) {
+    .winning-content-page .wc-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+    .winning-content-page .date-picker-panel { right: 0; }
+    .winning-content-page .wc-below-meta { flex-direction: column; align-items: flex-end; gap: 2px; }
+    .winning-content-page .wc-aud-grid { grid-template-columns: 1fr; }
+    .winning-content-page .wc-funnel-row { flex-wrap: wrap; }
+    .winning-content-page .wc-funnel-values { flex: 1 1 100%; justify-content: flex-start; }
+    .winning-content-page .wc-pm-donut-wrap { margin: 0 auto; }
+}

@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Winning Content - KaleContentOps</title>
+    
+    <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/site.css?v=j6fhJSuuyLpOSLuPJU0TsDV0iNjor5S3rDnvxJrt4bg" />
+    <link rel="stylesheet" href="/css/layout.css?v=hORzHwr14vBkMo_sOh-7Bf2u_napwoeUwzNjW-Q-zsc" />
+    <link rel="stylesheet" href="/css/auth-ui.css?v=s34BkC2QJiDKAEWGdrnNVBliTsqpoBOggtV3gVMNpQk" />
+    
+</head>
+<body>
+    <div b-ch5g2sg2fg class="topbar">
+        <div b-ch5g2sg2fg class="topbar-left">
+            <span b-ch5g2sg2fg class="app-title">KALE Content Ops</span>
+        </div>
+            <div b-ch5g2sg2fg class="topbar-right topbar-user">
+                <span b-ch5g2sg2fg class="topbar-username">vc.capture</span>
+                <form method="post" class="topbar-logout-form" action="/Account/Logout">
+                    
+                    <button b-ch5g2sg2fg type="submit" class="btn btn-sm btn-outline-light topbar-logout">Logout</button>
+                <input name="__RequestVerificationToken" type="hidden" value="CfDJ8EsFTNBnFoZNqzOIhSwGCV4aEDWJKVIvXvv707zTRtILWbuaWt5TOzUmAAjKstE044SNrcevhHuTLO44Lmc_Sf4_xu7kcrEqK-AsGlb0GZvFIaFk-tBR79k2DHl8v95M3Yc1jLbrm_bbB3FY5QVnwEfzbLA53410nNtZIw6F1mreJEvaql0dwbWkXHyOPLvxuw" /></form>
+            </div>
+    </div>
+
+    <aside class="app-sidebar">
+    <div class="brand">
+        <div class="brand-icon">K</div>
+        <div class="brand-text">
+            <div class="title">KALE Content Ops</div>
+            <div class="subtitle">TikTok · Content Log</div>
+        </div>
+    </div>
+
+    <nav class="menu">
+        <div class="menu-section">TIKTOK CONTENT</div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link " href="/ContentLog">
+                    <span class="nav-icon" aria-hidden="true">
+                        <!-- list / table icon -->
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.5" />
+                            <path d="M7 9H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M7 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span class="nav-text">Content Log</span>
+                </a>
+            </li>
+            <li class="nav-item"><a class="nav-link " href="/DailySummary"><span class="nav-icon" aria-hidden="true">
+                        <!-- calendar icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.2" />
+                            <path d="M16 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                            <path d="M8 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                        </svg>
+                    </span> <span class="nav-text">Daily Summary</span></a></li>
+            <li class="nav-item"><a class="nav-link " href="/Targets"><span class="nav-icon" aria-hidden="true">
+                        <!-- target icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.2" />
+                            <circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.2" />
+                        </svg>
+                    </span> <span class="nav-text">Targets</span></a></li>
+            <li class="nav-item"><a class="nav-link active" href="/WinningContent"><span class="nav-icon" aria-hidden="true">
+                        <!-- star / trophy icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2l2.6 5.3L20 9l-4 3.6L17 20l-5-2.6L7 20l1-7.4L4 9l5.4-1.7L12 2z" stroke="currentColor" stroke-width="0.8" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Winning Content</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="#"><span class="nav-icon" aria-hidden="true">
+                        <!-- team icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zM4 18c0-2.2 3.6-3.5 6-3.5s6 1.3 6 3.5v1H4v-1z" stroke="currentColor" stroke-width="0.9" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Team Performance</span></a></li>
+        </ul>
+
+
+        <div class="menu-section">CREATIVE PERFORMANCE</div>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Daily</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Weekly</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Monthly</a></li>
+        </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+    <div class="muted"></div>
+</div>
+
+</aside>
+
+
+    <main b-ch5g2sg2fg class="app-main">
+        <div b-ch5g2sg2fg class="container-fluid">
+            
+<link rel="stylesheet" href="/css/winning-content.css" />
+<link rel="stylesheet" href="/css/calendar-popup.css" />
+
+<div class="content-page winning-content-page" data-start="2026-09-07" data-end="2026-09-27">
+
+    <!-- ============ A. Header / page title + B. Date range (3E.1 parity, untouched) ============ -->
+    <header class="wc-header">
+        <div class="wc-title">
+            <h1>Winning Content</h1>
+            <p>Konten mana yang works, mana yang nggak, dan kenapa - semua angka di bawah dihitung dari periode yang dipilih</p>
+        </div>
+
+        <div class="wc-header-anchor">
+            <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel" aria-label="Pilih rentang tanggal laporan">
+                <span class="calendar-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.4" />
+                        <path d="M16 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                        <path d="M8 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <strong id="dateRangeLabel">07/09 - 27/09 (GMT+7)</strong>
+            </button>
+
+            <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
+                <div class="date-picker-topline">
+                    <div>
+                        <strong id="pendingRangeLabel"></strong>
+                        <small>Pilih rentang tanggal laporan</small>
+                    </div>
+                    <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">×</button>
+                </div>
+                <div class="date-picker-body">
+                    <div class="preset-list" id="presetList">
+                        <div class="preset-title">PERIODE CEPAT</div>
+                        <button type="button" data-preset="today">Hari Ini</button>
+                        <button type="button" data-preset="yesterday">Kemarin</button>
+                        <button type="button" data-preset="7">1 Minggu Terakhir</button>
+                        <button type="button" data-preset="30">1 Bulan Terakhir</button>
+                        <button type="button" data-preset="90">3 Bulan Terakhir</button>
+                    </div>
+                    <div class="calendar-area">
+                        <div class="calendar-toolbar">
+                            <button type="button" id="previousMonth" aria-label="Previous month">‹</button>
+                            <strong id="calendarTitle"></strong>
+                            <button type="button" id="nextMonth" aria-label="Next month">›</button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                    </div>
+                </div>
+                <div class="date-picker-actions">
+                    <div class="date-picker-selected" id="datePickerSelected"></div>
+                    <div>
+                        <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
+                        <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </header>
+
+    <!-- ============ C. Section 1 - Leaderboard per Jenis Konten ============ -->
+    <section class="wc-section wc-leaderboards">
+        <h2>1. Leaderboard per Jenis Konten &middot; konten mana yang works</h2>
+        <p class="wc-section-note">Dipisah per jenis konten (bukan 1 ranking campuran) &mdash; Top by Views beda sama Top by Engagement Rate, karena &ldquo;paling ditonton&rdquo; dan &ldquo;paling ngena&rdquo; itu 2 hal berbeda. Kolom &amp; judul di tabel di bawah ini yang jelasin semua angkanya &mdash; nggak ada lagi istilah yang butuh keterangan tambahan buat dimengerti.</p>
+
+        <div class="wc-leaderboard-grid">
+                <div class="wc-card wc-leaderboard type-nonkk">
+                    <div class="wc-leaderboard-head">
+                        <h3 class="wc-leaderboard-title"><span class="wc-dot" aria-hidden="true"></span>Non-KK</h3>
+                        <span class="wc-leaderboard-count">9 video</span>
+                    </div>
+
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY VIEWS</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Views</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 1 (urutan views)">1.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Cerita di balik koleksi Dorian Corduroy">Cerita di balik koleksi Dorian Corduroy</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Views</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">4.738</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.3x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 2 (urutan views)">2.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Teaser drop baru bulan depan">Teaser drop baru bulan depan</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">3.641</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.2x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 3 (urutan views)">3.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Uji coba pertama AI Produce: 100% dibikin Google Flow">Uji coba pertama AI Produce: 100% dibikin Google Flow</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">2.673</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.4x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 4 (urutan views)">4.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Live shopping recap minggu ini">Live shopping recap minggu ini</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">1.978</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.5x</td>
+                                        </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY ENGAGEMENT RATE</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Engagement Rate</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 1">1.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Live shopping recap minggu ini">Live shopping recap minggu ini</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">16.4%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.5x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 2">2.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Uji coba pertama AI Produce: 100% dibikin Google Flow">Uji coba pertama AI Produce: 100% dibikin Google Flow</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">12.8%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.4x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 3">3.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Cerita di balik koleksi Dorian Corduroy">Cerita di balik koleksi Dorian Corduroy</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Views</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">9.6%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.3x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 4">4.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Teaser drop baru bulan depan">Teaser drop baru bulan depan</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">8.2%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.2x</td>
+                                        </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                </div>
+                <div class="wc-card wc-leaderboard type-kk">
+                    <div class="wc-leaderboard-head">
+                        <h3 class="wc-leaderboard-title"><span class="wc-dot" aria-hidden="true"></span>Keranjang Kuning</h3>
+                        <span class="wc-leaderboard-count">4 video</span>
+                    </div>
+
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY VIEWS</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Views</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 1 (urutan views)">1.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Cara rawat kain corduroy biar awet">Cara rawat kain corduroy biar awet</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Views</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">6.817</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.0x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 2 (urutan views)">2.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Flash sale hari ini - Denim fest">Flash sale hari ini - Denim fest</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">4.741</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.1x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 3 (urutan views)">3.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Barclay Hoodie - warna baru">Barclay Hoodie - warna baru</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">3.554</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.2x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 4 (urutan views)">4.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Weston Sweater, cocok buat cuaca sekarang">Weston Sweater, cocok buat cuaca sekarang</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">3.290</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.1x</td>
+                                        </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY ENGAGEMENT RATE</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Engagement Rate</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 1">1.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Barclay Hoodie - warna baru">Barclay Hoodie - warna baru</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">11.0%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.2x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 2">2.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Flash sale hari ini - Denim fest">Flash sale hari ini - Denim fest</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">2.9%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.1x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 3">3.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Weston Sweater, cocok buat cuaca sekarang">Weston Sweater, cocok buat cuaca sekarang</span>
+                                                        <span class="wc-lb-badges">
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">2.5%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.1x</td>
+                                        </tr>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 4">4.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Cara rawat kain corduroy biar awet">Cara rawat kain corduroy biar awet</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Views</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">1.4%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">0.0x</td>
+                                        </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                </div>
+                <div class="wc-card wc-leaderboard type-autogmv">
+                    <div class="wc-leaderboard-head">
+                        <h3 class="wc-leaderboard-title"><span class="wc-dot" aria-hidden="true"></span>Auto GMV Live</h3>
+                        <span class="wc-leaderboard-count">1 video</span>
+                    </div>
+
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY VIEWS</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Views</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Urutan 1 (urutan views)">1.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Cardigan favorit bulan ini, cek keranjang kuning">Cardigan favorit bulan ini, cek keranjang kuning</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Views</span>
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">640</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">&#x2014;</td>
+                                        </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="wc-lb-block">
+                            <p class="wc-lb-subtitle">TOP BY ENGAGEMENT RATE</p>
+                            <table class="wc-lb-table">
+                                <thead>
+                                    <tr>
+                                        <th class="wc-col-video">Video</th>
+                                        <th class="wc-col-num">Engagement Rate</th>
+                                        <th class="wc-col-mult">vs rata-rata 30 hari sebelumnya</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                        <tr class="wc-lb-row">
+                                            <td class="wc-col-video">
+                                                <span class="wc-lb-ident">
+                                                    <span class="wc-lb-rank" aria-label="Peringkat 1">1.</span>
+                                                    <span class="wc-lb-titles">
+                                                        <span class="wc-lb-title" title="Cardigan favorit bulan ini, cek keranjang kuning">Cardigan favorit bulan ini, cek keranjang kuning</span>
+                                                        <span class="wc-lb-badges">
+                                                            <span class="wc-badge">Top Engagement</span>
+                                                            <span class="wc-badge">Top Views</span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="wc-col-num wc-num-strong">48.4%</td>
+                                            <td class="wc-col-mult wc-mult-neg" title="Multiplier vs baseline ER kategori (informasi)">&#x2014;</td>
+                                        </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                </div>
+        </div>
+    </section>
+
+    <!-- ============ D. Section 2 - Distribusi Konten di Bawah Median ============ -->
+    <section class="wc-section wc-below-median">
+        <h2>2. Distribusi Konten di Bawah Median</h2>
+        <p class="wc-section-note">Median itu angka &ldquo;tengah&rdquo; &mdash; kalau semua video jenis yang sama diurutin dari views paling kecil ke paling besar, median adalah angka yang persis di tengah urutan itu. Bedanya sama rata-rata (average): rata-rata gampang keseret tinggi kalau ada 1-2 video yang viral banget, sedangkan median nggak kepengaruhi sama outlier kaya gitu &mdash; jadi lebih jujur buat nunjukkin performa yang &ldquo;typical&rdquo;. &ldquo;Di bawah median&rdquo; di bawah ini artinya video itu views-nya di bawah angka tengah tadi, dibandingin video lain yang jenis kontennya sama. Di volume posting seperti sekarang, sebagian besar konten memang wajar nggak seperform yang paling viral &mdash; ini bukan tanda gagal, cuma gimana algoritma kerja. Yang penting adalah pola: tipe konten apa dan cara produksi apa yang paling banyak nongol di pool &ldquo;di bawah median&rdquo; jenisnya, biar bisa ditarik kesimpulan, bukan cuma lihat 3 video terjelek.</p>
+
+        <div class="wc-card wc-below-panel">
+            <div class="wc-below-tables">
+            <div class="wc-below-col">
+            <table class="wc-below-summary">
+                <colgroup>
+                    <col class="wc-w-label" />
+                    <col class="wc-w-below" />
+                    <col class="wc-w-total" />
+                    <col class="wc-w-pct" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="wc-col-video">Jenis Konten</th>
+                        <th class="wc-col-num">Di Bawah Median</th>
+                        <th class="wc-col-num">Total Konten Jenis Ini</th>
+                        <th class="wc-col-num">% Di Bawah Median</th>
+                    </tr>
+                </thead>
+                <tbody>
+                        <tr class="wc-below-row">
+                            <td class="wc-col-video"><span class="wc-below-type type-nonkk"><span class="wc-dot" aria-hidden="true"></span>Non-KK</span></td>
+                            <td class="wc-col-num wc-num-strong">4</td>
+                            <td class="wc-col-num">9</td>
+                            <td class="wc-col-num wc-num-strong">44%</td>
+                        </tr>
+                        <tr class="wc-below-row">
+                            <td class="wc-col-video"><span class="wc-below-type type-kk"><span class="wc-dot" aria-hidden="true"></span>Keranjang Kuning</span></td>
+                            <td class="wc-col-num wc-num-strong">2</td>
+                            <td class="wc-col-num">4</td>
+                            <td class="wc-col-num wc-num-strong">50%</td>
+                        </tr>
+                        <tr class="wc-below-row">
+                            <td class="wc-col-video"><span class="wc-below-type type-autogmv"><span class="wc-dot" aria-hidden="true"></span>Auto GMV Live</span></td>
+                            <td class="wc-col-num wc-num-strong">0</td>
+                            <td class="wc-col-num">1</td>
+                            <td class="wc-col-num wc-num-strong">0%</td>
+                        </tr>
+                </tbody>
+            </table>
+            </div>
+
+            <!-- Feature 2: Cara Produksi dimension (existing ProductionMethod, no new methods).
+                 Median rule untouched: BelowMedianCount reuses the backend strict < median groups. -->
+            <div class="wc-below-col">
+                <table class="wc-below-summary wc-method-table">
+                    <colgroup>
+                        <col class="wc-w-label" />
+                        <col class="wc-w-below" />
+                        <col class="wc-w-total" />
+                        <col class="wc-w-pct" />
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="wc-col-video">Cara Produksi</th>
+                            <th class="wc-col-num">Di Bawah Median</th>
+                            <th class="wc-col-num">Total Konten</th>
+                            <th class="wc-col-num">% Di Bawah Median</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                            <tr class="wc-method-row">
+                                <td class="wc-col-video">
+                                    <span class="wc-method-name">
+                                        <span class="wc-dot pm-dot pm-ai" aria-hidden="true"></span>AI Produce
+                                    </span>
+                                </td>
+                                <td class="wc-col-num wc-num-strong">1</td>
+                                <td class="wc-col-num">2</td>
+                                <td class="wc-col-num wc-num-strong">50%</td>
+                            </tr>
+                            <tr class="wc-method-row">
+                                <td class="wc-col-video">
+                                    <span class="wc-method-name">
+                                        <span class="wc-dot pm-dot pm-self" aria-hidden="true"></span>Self Produce
+                                    </span>
+                                </td>
+                                <td class="wc-col-num wc-num-strong">5</td>
+                                <td class="wc-col-num">11</td>
+                                <td class="wc-col-num wc-num-strong">45%</td>
+                            </tr>
+                    </tbody>
+                </table>
+            </div>
+            </div>
+
+
+            <p class="wc-below-listtitle">DAFTAR LENGKAP &middot; 6 VIDEO DI BAWAH MEDIAN (URUT DARI PALING RENDAH)</p>
+                <ol class="wc-below-list">
+                        <li class="wc-below-item type-nonkk">
+                            <span class="wc-dot" aria-hidden="true"></span>
+                            <span class="wc-below-name" title="Live shopping recap minggu ini">Live shopping recap minggu ini</span>
+                            <span class="wc-below-meta">
+                                <span class="wc-below-views" title="Views konten (di bawah median kategori)">1.978 views</span>
+                                <span class="wc-below-medianref">median Non-KK: 4.738</span>
+                            </span>
+                                <a class="wc-below-link" href="https://www.tiktok.com/@kaleofficial/video/115990184" target="_blank" rel="noopener" aria-label="Buka video Live shopping recap minggu ini">Video</a>
+                        </li>
+                        <li class="wc-below-item type-nonkk">
+                            <span class="wc-dot" aria-hidden="true"></span>
+                            <span class="wc-below-name" title="Uji coba pertama AI Produce: 100% dibikin Google Flow">Uji coba pertama AI Produce: 100% dibikin Google Flow</span>
+                            <span class="wc-below-meta">
+                                <span class="wc-below-views" title="Views konten (di bawah median kategori)">1.978 views</span>
+                                <span class="wc-below-medianref">median Non-KK: 4.738</span>
+                            </span>
+                        </li>
+                        <li class="wc-below-item type-nonkk">
+                            <span class="wc-dot" aria-hidden="true"></span>
+                            <span class="wc-below-name" title="Uji coba pertama AI Produce: 100% dibikin Google Flow">Uji coba pertama AI Produce: 100% dibikin Google Flow</span>
+                            <span class="wc-below-meta">
+                                <span class="wc-below-views" title="Views konten (di bawah median kategori)">2.673 views</span>
+                                <span class="wc-below-medianref">median Non-KK: 4.738</span>
+                            </span>
+                                <a class="wc-below-link" href="https://www.tiktok.com/@kaleofficial/video/263121796" target="_blank" rel="noopener" aria-label="Buka video Uji coba pertama AI Produce: 100% dibikin Google Flow">Video</a>
+                        </li>
+                        <li class="wc-below-item type-kk">
+                            <span class="wc-dot" aria-hidden="true"></span>
+                            <span class="wc-below-name" title="Weston Sweater, cocok buat cuaca sekarang">Weston Sweater, cocok buat cuaca sekarang</span>
+                            <span class="wc-below-meta">
+                                <span class="wc-below-views" title="Views konten (di bawah median kategori)">3.290 views</span>
+                                <span class="wc-below-medianref">median Keranjang Kuning: 4.148</span>
+                            </span>
+                                <a class="wc-below-link" href="https://www.tiktok.com/@kaleofficial/video/801182654" target="_blank" rel="noopener" aria-label="Buka video Weston Sweater, cocok buat cuaca sekarang">Video</a>
+                        </li>
+                        <li class="wc-below-item type-kk">
+                            <span class="wc-dot" aria-hidden="true"></span>
+                            <span class="wc-below-name" title="Barclay Hoodie - warna baru">Barclay Hoodie - warna baru</span>
+                            <span class="wc-below-meta">
+                                <span class="wc-below-views" title="Views konten (di bawah median kategori)">3.554 views</span>
+                                <span class="wc-below-medianref">median Keranjang Kuning: 4.148</span>
+                            </span>
+                                <a class="wc-below-link" href="https://www.tiktok.com/@kaleofficial/video/237351918" target="_blank" rel="noopener" aria-label="Buka video Barclay Hoodie - warna baru">Video</a>
+                        </li>
+                        <li class="wc-below-item type-nonkk">
+                            <span class="wc-dot" aria-hidden="true"></span>
+                            <span class="wc-below-name" title="Teaser drop baru bulan depan">Teaser drop baru bulan depan</span>
+                            <span class="wc-below-meta">
+                                <span class="wc-below-views" title="Views konten (di bawah median kategori)">3.641 views</span>
+                                <span class="wc-below-medianref">median Non-KK: 4.738</span>
+                            </span>
+                                <a class="wc-below-link" href="https://www.tiktok.com/@kaleofficial/video/558880660" target="_blank" rel="noopener" aria-label="Buka video Teaser drop baru bulan depan">Video</a>
+                        </li>
+                </ol>
+        </div>
+    </section>
+
+    <!-- ============ E. Section 3 - Komposisi Konten ============ -->
+    <section class="wc-section wc-composition">
+        <h2>3. Komposisi Konten</h2>
+        <p class="wc-section-note">Proporsi konten dari 2 sudut: jenis konten (Non-KK/KK/Auto GMV Live), dan cara produksinya (AI Produce vs Self Produce, khusus konten yang kita produksi sendiri).</p>
+
+        <div class="wc-composition-grid">
+            <div class="wc-card wc-composition-card">
+                <p class="wc-comp-subtitle">KOMPOSISI JENIS KONTEN</p>
+                <div class="wc-composition-body">
+                    <div class="wc-donut-wrap">
+                        <svg class="wc-donut" viewBox="0 0 120 120" role="img" aria-label="Komposisi konten per kategori">
+                            <circle class="wc-donut-track" cx="60" cy="60" r="42" />
+                                <circle class="wc-donut-arc type-nonkk"
+                                        cx="60" cy="60" r="42"
+                                        stroke-dasharray="169.65 94.24"
+                                        stroke-dashoffset="0"
+                                        transform="rotate(-90 60 60)" />
+                                <circle class="wc-donut-arc type-kk"
+                                        cx="60" cy="60" r="42"
+                                        stroke-dasharray="75.4 188.49"
+                                        stroke-dashoffset="-169.65"
+                                        transform="rotate(-90 60 60)" />
+                                <circle class="wc-donut-arc type-autogmv"
+                                        cx="60" cy="60" r="42"
+                                        stroke-dasharray="18.85 245.04"
+                                        stroke-dashoffset="-245.05"
+                                        transform="rotate(-90 60 60)" />
+                        </svg>
+                    </div>
+
+                    <!-- Legend: all three locked slots always present, zero-count included. -->
+                    <ul class="wc-legend">
+                            <li class="wc-legend-item type-nonkk">
+                                <span class="wc-legend-swatch" aria-hidden="true"></span>
+                                <span class="wc-legend-name">Non-KK</span>
+                                <span class="wc-legend-pct" title="64.2857%">64%</span>
+                            </li>
+                            <li class="wc-legend-item type-kk">
+                                <span class="wc-legend-swatch" aria-hidden="true"></span>
+                                <span class="wc-legend-name">Keranjang Kuning</span>
+                                <span class="wc-legend-pct" title="28.5714%">29%</span>
+                            </li>
+                            <li class="wc-legend-item type-autogmv">
+                                <span class="wc-legend-swatch" aria-hidden="true"></span>
+                                <span class="wc-legend-name">Auto GMV Live</span>
+                                <span class="wc-legend-pct" title="7.1429%">7%</span>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+
+        <!-- Card 2 (Feature 3): Komposisi & Performa - AI Produce vs Self Produce.
+             All values from Model.ProductionBreakdown (existing ProductionMethod + metrics). -->
+        <div class="wc-card wc-composition-card wc-pm-card">
+            <p class="wc-comp-subtitle">KOMPOSISI &amp; PERFORMA &middot; AI PRODUCE VS SELF PRODUCE</p>
+                <div class="wc-composition-body">
+                    <div class="wc-pm-donut-wrap">
+                        <div class="wc-pm-donut" style="background:conic-gradient(var(--wc-blue) 0% 15.38%, #8a94a8 15.38% 100%)" role="img" aria-label="Komposisi cara produksi: AI Produce vs Self Produce"></div>
+                    </div>
+                    <ul class="wc-pm-legend">
+                        <li class="wc-pm-legend-item">
+                            <span class="wc-pm-swatch pm-ai" aria-hidden="true"></span>
+                            <span class="wc-pm-name">AI Produce</span>
+                            <span class="wc-pm-pct">15.38%</span>
+                        </li>
+                        <li class="wc-pm-legend-item">
+                            <span class="wc-pm-swatch pm-self" aria-hidden="true"></span>
+                            <span class="wc-pm-name">Self Produce</span>
+                            <span class="wc-pm-pct">84.62%</span>
+                        </li>
+                    </ul>
+                </div>
+                <p class="wc-pm-note">2 video AI Produce &middot; 11 video Self Produce, dari 13 total konten KK+Non-KK di periode ini.</p>
+                <table class="wc-pm-metrics">
+                    <thead>
+                        <tr>
+                            <th>Metrik</th>
+                            <th>AI Produce</th>
+                            <th>Self Produce</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Avg Views/Video</td>
+                            <td>8.214</td>
+                            <td>6.252</td>
+                        </tr>
+                        <tr>
+                            <td>Avg Engagement Rate (%)</td>
+                            <td>4.9%</td>
+                            <td>6.5%</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="wc-pm-bars">
+                    <p class="wc-pm-barstitle">AVG VIEWS/VIDEO</p>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">AI Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-ai" style="width:100%"></div></div>
+                    </div>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">Self Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-self" style="width:76.1%"></div></div>
+                    </div>
+
+                    <p class="wc-pm-barstitle">AVG ENGAGEMENT RATE</p>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">AI Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-ai" style="width:74.5%"></div></div>
+                    </div>
+                    <div class="wc-pm-bar">
+                        <span class="wc-pm-bar-label">Self Produce</span>
+                        <div class="wc-pm-track"><div class="wc-pm-fill pm-self" style="width:100%"></div></div>
+                    </div>
+                </div>
+        </div>
+        </div>
+    </section>
+
+    <!-- ============ F. Section 4 - Funnel Views -> Reach -> Engagement (Feature 4).
+         All stages from Model.Funnel: honest per-video averages of the active period,
+         percentages relative to Views; NULL metrics render as dash, never NaN/0. ============ -->
+    <section class="wc-section wc-funnel">
+        <h2>4. Funnel Views &rarr; Reach &rarr; Engagement</h2>
+        <p class="wc-section-note">Rata-rata per video di periode ini: dari yang nonton, berapa persen lanjut ke reach, dan berapa persen lanjut engage.</p>
+
+        <div class="wc-card wc-funnel-card">
+                <div class="wc-funnel-row">
+                    <span class="wc-funnel-label">Views</span>
+                    <div class="wc-funnel-track"><div class="wc-funnel-fill" style="width:100%"></div></div>
+                    <div class="wc-funnel-values">
+                        <strong>100.0%</strong>
+                        <small title="Rata-rata per video dari data periode aktif">6.131 avg/video</small>
+                    </div>
+                </div>
+                <div class="wc-funnel-row">
+                    <span class="wc-funnel-label">Reach</span>
+                    <div class="wc-funnel-track"><div class="wc-funnel-fill" style="width:50.6%"></div></div>
+                    <div class="wc-funnel-values">
+                        <strong>50.6%</strong>
+                        <small title="Rata-rata per video dari data periode aktif">50.6% dari views</small>
+                    </div>
+                </div>
+                <div class="wc-funnel-row">
+                    <span class="wc-funnel-label">Engagement</span>
+                    <div class="wc-funnel-track"><div class="wc-funnel-fill" style="width:4.4%"></div></div>
+                    <div class="wc-funnel-values">
+                        <strong>4.4%</strong>
+                        <small title="Rata-rata per video dari data periode aktif">4.4% dari views</small>
+                    </div>
+                </div>
+        </div>
+    </section>
+
+    <!-- ============ G. Section 5 - Snapshot Audiens (Feature 5).
+         Current period vs the EXISTING 30-day baseline window; deltas in percentage
+         points. Follower % has no verified source - honest unavailable state. ============ -->
+    <section class="wc-section wc-audience">
+        <h2>5. Snapshot Audiens &middot; 7 Sep&#x2013;27 Sep 2026 vs 8 Agu&#x2013;6 Sep 2026 (30 hari sebelumnya)</h2>
+        <p class="wc-section-note">Profil penonton dari video pada periode aktif, dibandingkan dengan 30 hari sebelumnya. Persentase adalah rata-rata tertimbang Views dari share penonton per video; perubahan ditampilkan dalam poin persentase (pts).</p>
+
+        <div class="wc-aud-grid">
+                <div class="wc-card wc-aud-card">
+                    <p class="wc-aud-label">FOLLOWER</p>
+                        <p class="wc-aud-value wc-aud-na">&#x2014;</p>
+                        <p class="wc-aud-unavailable">Data persentase follower belum tersedia di sistem (hanya jumlah NewFollowers yang tersinkron).</p>
+                </div>
+                <div class="wc-card wc-aud-card">
+                    <p class="wc-aud-label">MALE</p>
+                        <p class="wc-aud-value">48.0%</p>
+                            <p class="wc-aud-delta down">&#9660; -3.2 pts vs periode sebelumnya</p>
+                </div>
+                <div class="wc-card wc-aud-card">
+                    <p class="wc-aud-label">FEMALE</p>
+                        <p class="wc-aud-value">43.6%</p>
+                            <p class="wc-aud-delta down">&#9660; -0.5 pts vs periode sebelumnya</p>
+                </div>
+                <div class="wc-card wc-aud-card">
+                    <p class="wc-aud-label">USIA 18-34</p>
+                        <p class="wc-aud-value">43.7%</p>
+                            <p class="wc-aud-delta down">&#9660; -0.4 pts vs periode sebelumnya</p>
+                </div>
+        </div>
+    </section>
+
+    <!-- ============ Content items binding (selected-period population).
+         NOT part of the approved mockup: QA/binding aid only, shown behind ?debug=1
+         so the default page matches the mockup 1:1. No logic change. ============ -->
+</div>
+
+
+        </div>
+    </main>
+
+    <footer b-ch5g2sg2fg class="app-footer">
+        <div b-ch5g2sg2fg class="container-fluid">
+            <div b-ch5g2sg2fg class="footer-left text-center">&copy; 2026 - KaleContentOps</div>
+        </div>
+    </footer>
+    <script src="/lib/jquery/dist/jquery.min.js"></script>
+    <script src="/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/site.js?v=hRQyftXiu1lLX2P9Ly9xa4gHJgLeR1uGN5qegUobtGo"></script>
+    
+<script src="/js/calendar-popup.js"></script>
+<script>
+(() => {
+    // Date-range popover: Daily Summary reference pattern (Phase 3E.1). The shared
+    // CalendarPopup module (wwwroot/js/calendar-popup.js, already used by Daily Summary
+    // and Targets) renders the two-month grid; this page owns the selection state and
+    // submits only startDate/endDate to the existing controller contract. No analytics
+    // logic here - the server remains authoritative for the business date range.
+    const page = document.querySelector('.winning-content-page');
+    const rangeButton = document.getElementById('dateRangeButton');
+    const datePanel = document.getElementById('datePickerPanel');
+    const appliedStart = page.dataset.start;
+    const appliedEnd = page.dataset.end;
+    let pendingStart = appliedStart;
+    let pendingEnd = appliedEnd;
+
+    const parseDate = value => new Date(`${value}T00:00:00`);
+    // Exact display contract (same as the server-rendered label): invariant 2-digit
+    // day/month + " - " separator. The GMT+7 suffix is added once, here, so the
+    // pending + footer labels carry it exactly like the applied button label.
+    // Deliberately NOT toLocaleDateString: locale output varies by browser/OS and once
+    // regressed the applied label.
+    const two = n => String(n).padStart(2, '0');
+    const formatDdMm = value => { const d = parseDate(value); return `${two(d.getDate())}/${two(d.getMonth() + 1)}`; };
+    const formatDate = value => `${formatDdMm(value)}`;
+
+    function setPanel(panel, button, open) {
+        panel.hidden = !open;
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function renderPendingLabel() {
+        const label = document.getElementById('pendingRangeLabel');
+        const footer = document.getElementById('datePickerSelected');
+        const text = pendingStart && pendingEnd
+            ? `${formatDate(pendingStart)} - ${formatDate(pendingEnd)} (GMT+7)`
+            : pendingStart
+                ? `${formatDate(pendingStart)} - ...`
+                : 'Pilih rentang tanggal';
+        label.textContent = text;
+        footer.textContent = pendingStart && pendingEnd ? text : '';
+    }
+
+    // Same selection rules as Daily Summary (computeRangeSelection in calendar-popup.js):
+    // click = start; second click same/later closes the range; earlier restarts; next click restarts.
+    const rangeCalendar = CalendarPopup.createRangeCalendar({
+        grid: document.getElementById('calendarGrid'),
+        titleEl: document.getElementById('calendarTitle'),
+        prevButton: document.getElementById('previousMonth'),
+        nextButton: document.getElementById('nextMonth'),
+        months: 2,
+        initialMonth: appliedStart,
+        getSelection: () => ({ start: pendingStart, end: pendingEnd }),
+        onSelectionChange: (start, end) => { pendingStart = start; pendingEnd = end; renderPendingLabel(); }
+    });
+    function renderCalendar() { rangeCalendar.render(); }
+
+    function closeAllPanels() {
+        setPanel(datePanel, rangeButton, false);
+    }
+
+    // Click-outside + Escape close the panel (same as Daily Summary).
+    document.addEventListener('click', event => {
+        const clicked = event.target instanceof Element && event.target.isConnected ? event.target : null;
+        if (!datePanel.hidden && (!clicked || !clicked.closest('.wc-header-anchor'))) setPanel(datePanel, rangeButton, false);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeAllPanels();
+    });
+
+    rangeButton.addEventListener('click', () => {
+        const open = datePanel.hidden;
+        setPanel(datePanel, rangeButton, open);
+        if (open) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    });
+    document.getElementById('closeDatePicker').addEventListener('click', closeAllPanels);
+    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; closeAllPanels(); });
+    document.getElementById('applyDatePicker').addEventListener('click', () => {
+        if (!pendingStart || !pendingEnd) return;
+        // Winning Content takes no other parameters: submit the same contract the old
+        // form used - /WinningContent?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd.
+        window.location.assign(`/WinningContent?startDate=${encodeURIComponent(pendingStart)}&endDate=${encodeURIComponent(pendingEnd)}`);
+    });
+    document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+        const today = new Date();
+        const preset = button.dataset.preset;
+        const end = new Date(today);
+        const start = new Date(today);
+        if (preset === 'yesterday') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); }
+        else if (preset !== 'today') start.setDate(start.getDate() - Number(preset) + 1);
+        pendingStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+        pendingEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+        renderPendingLabel(); renderCalendar();
+    }));
+})();
+</script>
+
+</body>
+</html>

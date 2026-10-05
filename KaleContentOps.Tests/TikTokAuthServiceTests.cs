@@ -120,9 +120,4 @@ public class TikTokAuthServiceTests
     }
 }
 
-internal class SimpleHttpClientFactory : IHttpClientFactory
-{
-    private readonly HttpClient _client;
-    public SimpleHttpClientFactory(HttpClient client) => _client = client;
-    public HttpClient CreateClient(string name) => _client;
-}
+// SimpleHttpClientFactory moved to shared test helpers to be reused across test files.

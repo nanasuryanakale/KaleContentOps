@@ -172,4 +172,52 @@ public class ContentLogDemographicsMappingTests
         Assert.Null(item.Age18_24);
         Assert.Null(item.Age55Plus);
     }
+
+    [Fact]
+    public async Task RealViewers_Demographics_With_Countries_Are_Mapped()
+    {
+        // Shape produced by the verified TikTok parser for the real VIEWERS profile
+        // (VideoId 7687996887235890452): countries as an object of code -> 0..1 share.
+        var db = CreateDb();
+        var log = SeedLog(db);
+        db.ContentMetrics.Add(new ContentMetric
+        {
+            ContentLogId = log.Id,
+            Views = 477,
+            DemographicsJson = "{\"male\":0.684,\"female\":0.316,\"ages\":{\"35-44\":0.167,\"25-34\":0.5,\"45-54\":0.056,\"18-24\":0.278},\"countries\":{\"ID\":1.0}}",
+            CapturedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var item = await GetFirstItemAsync(db);
+
+        Assert.NotNull(item.Countries);
+        Assert.Single(item.Countries!);
+        Assert.Equal("ID", item.Countries![0].Key);
+        Assert.Equal(1.0m, item.Countries[0].Value);
+
+        // Gender/age still mapped from the same JSON
+        Assert.Equal(0.684m, item.Male);
+        Assert.Equal(0.316m, item.Female);
+        Assert.Equal(0.5m, item.Age25_34);
+    }
+
+    [Fact]
+    public async Task Missing_Countries_Key_Leaves_Countries_Null()
+    {
+        var db = CreateDb();
+        var log = SeedLog(db);
+        db.ContentMetrics.Add(new ContentMetric
+        {
+            ContentLogId = log.Id,
+            Views = 9,
+            DemographicsJson = "{\"male\":0.5,\"female\":0.5}", // no countries object
+            CapturedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var item = await GetFirstItemAsync(db);
+
+        Assert.Null(item.Countries);
+    }
 }

@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Content Log - KaleContentOps</title>
+    
+    <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/site.css?v=j6fhJSuuyLpOSLuPJU0TsDV0iNjor5S3rDnvxJrt4bg" />
+    <link rel="stylesheet" href="/css/layout.css?v=hORzHwr14vBkMo_sOh-7Bf2u_napwoeUwzNjW-Q-zsc" />
+    <link rel="stylesheet" href="/css/auth-ui.css?v=s34BkC2QJiDKAEWGdrnNVBliTsqpoBOggtV3gVMNpQk" />
+    
+    <link rel="stylesheet" href="/css/content-log.css?v=Fw2Vq6qC1UTV8NNXPFTZ7Trfcj2i2j2Oq60D0Il1TFg" />
+
+</head>
+<body>
+    <div b-ch5g2sg2fg class="topbar">
+        <div b-ch5g2sg2fg class="topbar-left">
+            <span b-ch5g2sg2fg class="app-title">KALE Content Ops</span>
+        </div>
+            <div b-ch5g2sg2fg class="topbar-right topbar-user">
+                <span b-ch5g2sg2fg class="topbar-username">cl.capture</span>
+                <form method="post" class="topbar-logout-form" action="/Account/Logout">
+                    
+                    <button b-ch5g2sg2fg type="submit" class="btn btn-sm btn-outline-light topbar-logout">Logout</button>
+                <input name="__RequestVerificationToken" type="hidden" value="CfDJ8EsFTNBnFoZNqzOIhSwGCV4Ln8lhvln4LoR9JRtJ3MUafgntJhy9j6JtfEIXSupYxeLNGNFTloWb0JI3Nw8ce2kvrru8fDQmrhI2OxU15UunZ0uuvWtPVDLxHqqJx0aFMT8AquKmRt7LbZl8LCski03vnG4DvyBmbatQy4zCPxt8QxHug41nCycnIhAqK15fYg" /></form>
+            </div>
+    </div>
+
+    <aside class="app-sidebar">
+    <div class="brand">
+        <div class="brand-icon">K</div>
+        <div class="brand-text">
+            <div class="title">KALE Content Ops</div>
+            <div class="subtitle">TikTok · Content Log</div>
+        </div>
+    </div>
+
+    <nav class="menu">
+        <div class="menu-section">TIKTOK CONTENT</div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="/ContentLog">
+                    <span class="nav-icon" aria-hidden="true">
+                        <!-- list / table icon -->
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.5" />
+                            <path d="M7 9H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M7 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span class="nav-text">Content Log</span>
+                </a>
+            </li>
+            <li class="nav-item"><a class="nav-link " href="/DailySummary"><span class="nav-icon" aria-hidden="true">
+                        <!-- calendar icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.2" />
+                            <path d="M16 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                            <path d="M8 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                        </svg>
+                    </span> <span class="nav-text">Daily Summary</span></a></li>
+            <li class="nav-item"><a class="nav-link " href="/Targets"><span class="nav-icon" aria-hidden="true">
+                        <!-- target icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.2" />
+                            <circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.2" />
+                        </svg>
+                    </span> <span class="nav-text">Targets</span></a></li>
+            <li class="nav-item"><a class="nav-link " href="/WinningContent"><span class="nav-icon" aria-hidden="true">
+                        <!-- star / trophy icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2l2.6 5.3L20 9l-4 3.6L17 20l-5-2.6L7 20l1-7.4L4 9l5.4-1.7L12 2z" stroke="currentColor" stroke-width="0.8" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Winning Content</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="#"><span class="nav-icon" aria-hidden="true">
+                        <!-- team icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zM4 18c0-2.2 3.6-3.5 6-3.5s6 1.3 6 3.5v1H4v-1z" stroke="currentColor" stroke-width="0.9" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Team Performance</span></a></li>
+        </ul>
+
+
+        <div class="menu-section">CREATIVE PERFORMANCE</div>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Daily</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Weekly</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Monthly</a></li>
+        </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+    <div class="muted"></div>
+</div>
+
+</aside>
+
+
+    <main b-ch5g2sg2fg class="app-main">
+        <div b-ch5g2sg2fg class="container-fluid">
+            
+<div class="content-page">
+    <div class="page-head">
+        <div>
+            <h1>Content Log</h1>
+            <div class="page-meta">
+                <b>2</b> video ditampilkan dari <b>2</b> total
+            </div>
+        </div>
+    </div>
+
+    <div class="toolbar-row">
+        <div class="filter-pills">
+            <a class="filter-pill active"
+               href="/ContentLog">
+                ● Semua
+            </a>
+
+                <a class="filter-pill blue "
+                   href="/ContentLog?contentType=NON_KK">
+                    ● Non-KK
+                </a>
+        </div>
+
+        <div class="toolbar-actions">
+            <button class="ghost-btn" type="button" onclick="togglePanel('columnsCard')">
+                ▦&nbsp; Kolom
+            </button>
+
+            <button class="ghost-btn" type="button" onclick="togglePanel('picCard')">
+                ♙&nbsp; Master PIC
+            </button>
+
+            <span class="legend-item yellow-text">
+                <i></i>Keranjang Kuning
+            </span>
+
+            <span class="legend-item blue-text">
+                <i></i>Non-KK
+            </span>
+
+            <span class="legend-item purple-text">
+                <i></i>Auto GMV Live
+            </span>
+        </div>
+    </div>
+
+    <div class="search-row">
+        <form method="get" class="search-box-wrap" action="/ContentLog">
+            <span class="search-icon">⌕</span>
+
+            <input class="search-box"
+                   type="text"
+                   name="search"
+                   value=""
+                   placeholder="Cari judul konten..." />
+
+            <input type="hidden"
+                   name="contentType"
+                   value="" />
+        </form>
+    </div>
+
+    <!-- CARD 1: KOLOM -->
+    <div id="columnsCard" class="utility-card">
+        <div class="utility-panel">
+            <div class="panel-title">PILIH KOLOM YANG DITAMPILKAN</div>
+
+            <div class="column-grid">
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="production" />
+                        <span>Cara Produksi</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="pic" />
+                        <span>PIC</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="link" />
+                        <span>Link</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="views" />
+                        <span>Views</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="reach" />
+                        <span>Reach</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="avgwatch" />
+                        <span>Average Watch</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="fullwatch" />
+                        <span>% Full Watch</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="likes" />
+                        <span>Like</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="comments" />
+                        <span>Comment</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="save" />
+                        <span>Save</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="share" />
+                        <span>Share</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="follower" />
+                        <span>Follower</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="nonfollower" />
+                        <span>Non-Follower</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="male" />
+                        <span>Male</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="female" />
+                        <span>Female</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="nongender" />
+                        <span>Non-Gender</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age18" />
+                        <span>18-24</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age25" />
+                        <span>25-34</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age35" />
+                        <span>35-44</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age45" />
+                        <span>45-54</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="age55" />
+                        <span>55&#x2B;</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="country" />
+                        <span>Country</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               checked="checked"
+                               class="col-toggle"
+                               data-col-key="gmv" />
+                        <span>GMV</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="items" />
+                        <span>Items Sold</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="sku" />
+                        <span>SKU Orders</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="avgcust" />
+                        <span>Avg Customers</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="ctr" />
+                        <span>CTR</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="hashtags" />
+                        <span>Hashtags</span>
+                    </label>
+                    <label class="column-check">
+                        <input type="checkbox"
+                               class="col-toggle"
+                               data-col-key="products" />
+                        <span>Products</span>
+                    </label>
+            </div>
+
+            <div class="panel-note">
+                Kolom Metrics &amp; Data Penonton mengikuti struktur Daily Content Performance Log.
+                Pengaturan ini hanya mengatur tampilan tabel, bukan request API baru.
+            </div>
+        </div>
+    </div>
+
+    <!-- CARD 2: MASTER PIC -->
+    <div id="picCard" class="utility-card">
+        <div class="utility-panel">
+            <div class="panel-title">
+                MASTER PIC · NAMA YANG BISA DIPILIH DI KOLOM PIC
+            </div>
+
+            <div class="pic-chips" id="picChips">
+            </div>
+
+            <div class="pic-add-row">
+                <input id="newPicName"
+                       type="text"
+                       placeholder="Nama PIC baru..." />
+
+                <button class="primary-btn"
+                        id="addPicBtn"
+                        type="button">
+                    Tambah
+                </button>
+            </div>
+
+            <div class="panel-note">
+                Daftar ini murni data internal Content Ops, bukan dari API TikTok.
+            </div>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table class="content-table">
+            <thead>
+                <tr>
+                    <th colspan="7" class="group-head">KONTEN</th>
+                    <th colspan="8" class="group-head metrics-head">METRICS</th>
+                    <th colspan="11" class="group-head audience-head">DATA PENONTON (%)</th>
+                    <th colspan="7" class="group-head commerce-head">KOMERSIL &amp; ATRIBUT</th>
+                </tr>
+
+                <tr class="column-head">
+                    <th>No</th>
+                    <th>Tanggal</th>
+                    <th>Jenis Konten</th>
+
+                    <th data-col="production">Cara Produksi</th>
+                    <th data-col="pic">PIC</th>
+
+                    <th class="title-col">Judul</th>
+
+                    <th data-col="link">Link</th>
+
+                    <th data-col="views">Views</th>
+                    <th data-col="reach">Reach</th>
+
+                    <th data-col="avgwatch">
+                        Average<br />Watch
+                    </th>
+
+                    <th data-col="fullwatch">
+                        % Full<br />Watch
+                    </th>
+
+                    <th data-col="likes">Like</th>
+                    <th data-col="comments">Comment</th>
+                    <th data-col="save">Save</th>
+                    <th data-col="share">Share</th>
+
+                    <th data-col="follower">Follower</th>
+                    <th data-col="nonfollower">Non-Follower</th>
+                    <th data-col="male">Male</th>
+                    <th data-col="female">Female</th>
+                    <th data-col="nongender">Non-Gender</th>
+                    <th data-col="age18">18-24</th>
+                    <th data-col="age25">25-34</th>
+                    <th data-col="age35">35-44</th>
+                    <th data-col="age45">45-54</th>
+                    <th data-col="age55">55+</th>
+                    <th data-col="country">Country</th>
+                    <th data-col="gmv">GMV</th>
+                    <th data-col="items">Items Sold</th>
+                    <th data-col="sku">SKU Orders</th>
+                    <th data-col="avgcust">Avg<br />Customers</th>
+                    <th data-col="ctr">CTR</th>
+                    <th data-col="hashtags">Hashtags</th>
+                    <th data-col="products">Products</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                        <tr data-content-id="1">
+                            <td>1</td>
+
+                            <td>
+                                28-09-2026
+                            </td>
+
+                            <td>
+                                <select class="content-type-select"
+                                        data-content-id="1">
+                                    <option value="">
+                                        Belum diklasifikasikan
+                                    </option>
+
+                                        <option value="1" selected="selected">
+                                            Non-KK
+                                        </option>
+                                </select>
+                            </td>
+
+                            <td data-col="production">
+
+                                    <button type="button"
+                                            class="production-toggle production-pill prod-self"
+                                            data-content-log-id="1"
+                                            data-production-method-id="">
+                                        ↔ Self Produce
+                                    </button>
+                            </td>
+
+                            <td data-col="pic">
+                                <select class="pic-select">
+                                    <option value="0">—</option>
+
+                                </select>
+                            </td>
+
+                            <td class="title-cell"
+                                title="Dengan demographics (VIEWERS)">
+                                Dengan demographics (VIEWERS)
+                            </td>
+
+                            <td data-col="link">
+                                    <span class="muted">—</span>
+                            </td>
+
+                            <td data-col="views">
+                                477
+                            </td>
+
+                            <td data-col="reach">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="avgwatch">
+                                &#x2014;s
+                            </td>
+
+                            <td data-col="fullwatch">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="likes">
+                                15
+                            </td>
+
+                            <td data-col="comments">
+                                0
+                            </td>
+
+                            <td data-col="save">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="share">
+                                0
+                            </td>
+
+                            <td data-col="follower">
+                                1
+                            </td>
+
+                            <td data-col="nonfollower">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="male">
+                                68.4%
+                            </td>
+
+                            <td data-col="female">
+                                31.6%
+                            </td>
+
+                            <td data-col="nongender">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age18">
+                                27.8%
+                            </td>
+
+                            <td data-col="age25">
+                                50.0%
+                            </td>
+
+                            <td data-col="age35">
+                                16.7%
+                            </td>
+
+                            <td data-col="age45">
+                                5.6%
+                            </td>
+
+                            <td data-col="age55">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="country" class="cell-wrap">
+                                ID 100.0%
+                            </td>
+
+                            <td data-col="gmv">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="items">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="sku">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="avgcust">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="ctr">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="hashtags" class="cell-wrap">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="products" class="cell-wrap">
+                                &#x2014;
+                            </td>
+                        </tr>
+                        <tr data-content-id="2">
+                            <td>2</td>
+
+                            <td>
+                                27-09-2026
+                            </td>
+
+                            <td>
+                                <select class="content-type-select"
+                                        data-content-id="2">
+                                    <option value="">
+                                        Belum diklasifikasikan
+                                    </option>
+
+                                        <option value="1" selected="selected">
+                                            Non-KK
+                                        </option>
+                                </select>
+                            </td>
+
+                            <td data-col="production">
+
+                                    <button type="button"
+                                            class="production-toggle production-pill prod-self"
+                                            data-content-log-id="2"
+                                            data-production-method-id="">
+                                        ↔ Self Produce
+                                    </button>
+                            </td>
+
+                            <td data-col="pic">
+                                <select class="pic-select">
+                                    <option value="0">—</option>
+
+                                </select>
+                            </td>
+
+                            <td class="title-cell"
+                                title="Tanpa demographics (NULL state)">
+                                Tanpa demographics (NULL state)
+                            </td>
+
+                            <td data-col="link">
+                                    <span class="muted">—</span>
+                            </td>
+
+                            <td data-col="views">
+                                120
+                            </td>
+
+                            <td data-col="reach">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="avgwatch">
+                                &#x2014;s
+                            </td>
+
+                            <td data-col="fullwatch">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="likes">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="comments">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="save">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="share">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="follower">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="nonfollower">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="male">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="female">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="nongender">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age18">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age25">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age35">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age45">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="age55">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="country" class="cell-wrap">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="gmv">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="items">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="sku">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="avgcust">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="ctr">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="hashtags" class="cell-wrap">
+                                &#x2014;
+                            </td>
+
+                            <td data-col="products" class="cell-wrap">
+                                &#x2014;
+                            </td>
+                        </tr>
+            </tbody>
+        </table>
+
+        <div class="table-scrollbar-hint"></div>
+    </div>
+
+    <div class="pagination-row">
+        <div class="pagination-info">
+            Page 1 of 1
+        </div>
+
+        <div class="pagination-controls">
+                <span class="page-link disabled">
+                    ◀ Prev
+                </span>
+
+            <span class="current-page">
+                1
+            </span>
+
+                <span class="page-link disabled">
+                    Next ▶
+                </span>
+        </div>
+    </div>
+
+    <div class="notes-block">
+        <div class="note">
+            <span>✏</span>
+            <div>
+                <b>Catatan buat programmer:</b>
+                Auto GMV Live diarsipkan otomatis menjadi private
+                ("Hanya Saya") setelah sesi LIVE selesai.
+                Link tetap ditampilkan di kolom Link.
+                Status archived/private hanya dipakai sebagai sinyal deteksi kandidat,
+                bukan pengganti link maupun field Jenis Konten.
+            </div>
+        </div>
+
+        <div class="note">
+            <span>✏</span>
+            <div>
+                <b>Cara Produksi (AI Produce / Self Produce)</b>
+                diisi manual langsung di tabel.
+                Default historical content = Self Produce.
+                AI Produce dipilih ketika video benar-benar dibuat dengan AI video generator.
+                Data ini tidak disimpulkan dari <code>author_type</code>.
+            </div>
+        </div>
+
+        <div class="note">
+            <span>✏</span>
+            <div>
+                <b>PIC diisi manual</b>
+                karena satu account TikTok dapat dipakai bersama beberapa orang.
+                Master PIC adalah data internal dan tidak berasal dari TikTok API.
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
+
+        </div>
+    </main>
+
+    <footer b-ch5g2sg2fg class="app-footer">
+        <div b-ch5g2sg2fg class="container-fluid">
+            <div b-ch5g2sg2fg class="footer-left text-center">&copy; 2026 - KaleContentOps</div>
+        </div>
+    </footer>
+    <script src="/lib/jquery/dist/jquery.min.js"></script>
+    <script src="/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/site.js?v=hRQyftXiu1lLX2P9Ly9xa4gHJgLeR1uGN5qegUobtGo"></script>
+    
+    <script>
+        // Toggle panel individual: Membuka card pilihan dan menutup card lain jika sedang terbuka
+        function togglePanel(targetCardId) {
+            var target = document.getElementById(targetCardId);
+
+            if (!target) {
+                return;
+            }
+
+            target.classList.toggle('open');
+        }
+
+        // =========================================================
+        // COLUMN VISIBILITY
+        // =========================================================
+        (function () {
+            var key = 'contentlog_columns_visibility_v2';
+
+            var defaults = {};
+
+            document.querySelectorAll('.col-toggle').forEach(function (cb) {
+                var k = cb.getAttribute('data-col-key');
+
+                if (k) {
+                    defaults[k] = cb.checked;
+                }
+            });
+
+        // =========================================================
+        // PRODUCTION METHOD TOGGLE -> SAVE VIA AJAX
+        // =========================================================
+        document.addEventListener('click', function (e) {
+            if (!e.target.classList.contains('production-toggle')) return;
+
+            var btn = e.target;
+            var contentId = btn.getAttribute('data-content-log-id');
+            if (!contentId) return;
+
+            // disable to prevent double-click
+            btn.disabled = true;
+            var originalText = btn.textContent;
+            btn.textContent = '⏳';
+
+            fetch('/ContentLog/ToggleProductionMethod', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'id=' + encodeURIComponent(contentId)
+            })
+            .then(function (res) {
+                if (!res.ok) return res.text().then(function (t) { throw new Error(t); });
+                return res.json();
+            })
+            .then(function (json) {
+                if (json && json.success) {
+                    // update text and class
+                    var name = json.productionMethodName || originalText;
+                    btn.textContent = '↔ ' + name;
+
+                    // update class
+                    if (name === 'AI Produce') {
+                        btn.classList.remove('prod-self');
+                        btn.classList.add('prod-ai');
+                    } else {
+                        btn.classList.remove('prod-ai');
+                        btn.classList.add('prod-self');
+                    }
+                } else {
+                    throw new Error((json && json.message) || 'Unknown error');
+                }
+            })
+            .catch(function (err) {
+                alert('Gagal mengubah Cara Produksi: ' + err.message);
+                btn.textContent = originalText;
+            })
+            .finally(function () {
+                btn.disabled = false;
+            });
+        });
+
+            var state = {};
+
+            try {
+                state = JSON.parse(
+                    localStorage.getItem(key) || '{}'
+                );
+            }
+            catch {
+                state = {};
+            }
+
+            Object.keys(defaults).forEach(function (k) {
+                if (state[k] === undefined) {
+                    state[k] = defaults[k];
+                }
+            });
+
+            function applyState() {
+                document.querySelectorAll('[data-col]').forEach(function (el) {
+                    var col = el.getAttribute('data-col');
+
+                    if (!col) return;
+
+                    var visible = true;
+
+                    if (Object.prototype.hasOwnProperty.call(state, col)) {
+                        visible = state[col];
+                    }
+
+                    el.style.display = visible ? '' : 'none';
+                });
+
+                document.querySelectorAll('.col-toggle').forEach(function (cb) {
+                    var k = cb.getAttribute('data-col-key');
+
+                    if (k) {
+                        cb.checked = !!state[k];
+                    }
+                });
+            }
+
+            document.addEventListener('change', function (e) {
+                if (!e.target.classList.contains('col-toggle')) {
+                    return;
+                }
+
+                var k = e.target.getAttribute('data-col-key');
+
+                if (!k) return;
+
+                state[k] = e.target.checked;
+
+                localStorage.setItem(
+                    key,
+                    JSON.stringify(state)
+                );
+
+                applyState();
+            });
+
+            applyState();
+        })();
+
+        // =========================================================
+        // PIC SELECT -> SAVE VIA AJAX
+        // =========================================================
+        document.addEventListener('change', function (e) {
+            if (!e.target.classList.contains('pic-select')) {
+                return;
+            }
+
+            var select = e.target;
+            var rowEl = select.closest('tr');
+
+            if (!rowEl) return;
+
+            var contentId = rowEl.getAttribute('data-content-id');
+            var picId = select.value;
+
+            if (!contentId) return;
+
+            fetch('/ContentLog/SetPic', {
+                method: 'POST',
+                headers: {
+                    'Content-Type':
+                        'application/x-www-form-urlencoded'
+                },
+                body:
+                    'id=' + encodeURIComponent(contentId) +
+                    '&picId=' + encodeURIComponent(picId)
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.text().then(function (text) {
+                        throw new Error(text);
+                    });
+                }
+
+                return response.json();
+            })
+            .then(function (json) {
+                console.log('PIC saved', json);
+            })
+            .catch(function (err) {
+                alert(
+                    'Gagal menyimpan PIC: ' +
+                    err.message
+                );
+            });
+        });
+
+        // =========================================================
+        // CONTENT TYPE SELECT -> SAVE VIA AJAX
+        // =========================================================
+        document.addEventListener('change', function (e) {
+            if (!e.target.classList.contains('content-type-select')) {
+                return;
+            }
+
+            var select = e.target;
+            var contentId = select.getAttribute('data-content-id');
+
+            if (!contentId) {
+                return;
+            }
+
+            var contentTypeId = select.value;
+
+            fetch('/ContentLog/SetContentType', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body:
+                    'id=' + encodeURIComponent(contentId) +
+                    '&contentTypeId=' + encodeURIComponent(contentTypeId)
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.text().then(function (text) {
+                        throw new Error(text);
+                    });
+                }
+
+                return response.json();
+            })
+            .then(function (json) {
+                // Update the production cell in the same row without reloading
+                try {
+                    var row = document.querySelector('tr[data-content-id="' + contentId + '"]');
+                    if (row) {
+                        var prodCell = row.querySelector('td[data-col="production"]');
+                        if (prodCell) {
+                            if (json.isAutoGmv) {
+                                prodCell.innerHTML = '<span class="production-disabled">—</span>';
+                            } else {
+                                // build button HTML using returned productionMethodName (or default)
+                                var name = json.productionMethodName || 'Self Produce';
+                                var pmId = json.productionMethodId || '';
+                                var cls = (name === 'AI Produce') ? 'prod-ai' : 'prod-self';
+                                prodCell.innerHTML = '<button type="button" class="production-toggle production-pill ' + cls + '" data-content-log-id="' + contentId + '" data-production-method-id="' + pmId + '">↔ ' + name + '</button>';
+                            }
+                        }
+                    }
+                }
+                catch (ex) {
+                    console.error('Failed updating production cell', ex);
+                }
+            })
+            .catch(function (err) {
+                alert(
+                    'Gagal menyimpan Jenis Konten: ' +
+                    err.message
+                );
+            });
+        });
+
+        // =========================================================
+        // ADD NEW PIC VIA AJAX
+        // =========================================================
+        var addPicBtn = document.getElementById('addPicBtn');
+        var newPicName = document.getElementById('newPicName');
+        var picChips = document.getElementById('picChips');
+
+        if (addPicBtn && newPicName && picChips) {
+            addPicBtn.addEventListener('click', function () {
+                var name = newPicName.value &&
+                    newPicName.value.trim();
+
+                if (!name) {
+                    alert('Nama PIC tidak boleh kosong');
+                    return;
+                }
+
+                fetch('/MasterPic/CreateAjax', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: name
+                    })
+                })
+                .then(function (response) {
+                    if (response.status === 409) {
+                        return response.json().then(function (json) {
+                            throw new Error(
+                                json.error || 'Duplicate'
+                            );
+                        });
+                    }
+
+                    if (!response.ok) {
+                        return response.text().then(function (text) {
+                            throw new Error(text);
+                        });
+                    }
+
+                    return response.json();
+                })
+                .then(function (json) {
+                    var chip = document.createElement('span');
+
+                    chip.className = 'pic-chip';
+                    chip.setAttribute(
+                        'data-pic-id',
+                        json.id
+                    );
+
+                    chip.innerHTML =
+                        json.name +
+                        ' <b data-action="remove">×</b>';
+
+                    picChips.appendChild(chip);
+
+                    document
+                        .querySelectorAll('select.pic-select')
+                        .forEach(function (select) {
+                            var option =
+                                document.createElement('option');
+
+                            option.value = json.id;
+                            option.textContent = json.name;
+
+                            select.appendChild(option);
+                        });
+
+                    newPicName.value = '';
+                })
+                .catch(function (err) {
+                    alert(
+                        'Gagal menambahkan PIC: ' +
+                        err.message
+                    );
+                });
+            });
+
+            // =====================================================
+            // REMOVE PIC CHIP FROM UI (soft-deactivate via AJAX)
+            // =====================================================
+            picChips.addEventListener('click', function (e) {
+                if (e.target.getAttribute('data-action') !== 'remove') {
+                    return;
+                }
+
+                var chip = e.target.closest('.pic-chip');
+                if (!chip) return;
+
+                var picId = chip.getAttribute('data-pic-id');
+                if (!picId) return;
+
+                fetch('/MasterPic/DeactivateAjax', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: parseInt(picId, 10) })
+                })
+                .then(function (res) {
+                    if (!res.ok) return res.text().then(function (t) { throw new Error(t); });
+                    return res.json();
+                })
+                .then(function (json) {
+                    // remove chip from master list
+                    chip.remove();
+
+                    // update selects: if an option is selected in a row, keep it but update label to indicate removal;
+                    // otherwise remove the option so it can't be assigned to new rows
+                    document.querySelectorAll('select.pic-select').forEach(function (select) {
+                        var opt = select.querySelector('option[value="' + picId + '"]');
+                        if (!opt) return;
+
+                        if (select.value === picId) {
+                            // keep selected option but update label to show it's removed from master
+                            var name = opt.textContent || '';
+                            // avoid duplicating suffix
+                            if (name.indexOf('(dihapus dari master)') === -1) {
+                                opt.textContent = name + ' (dihapus dari master)';
+                            }
+                        } else {
+                            // remove option for selectable lists
+                            opt.remove();
+                        }
+                    });
+                })
+                .catch(function (err) {
+                    alert('Gagal menonaktifkan PIC: ' + err.message);
+                });
+            });
+        }
+    </script>
+
+</body>
+</html>

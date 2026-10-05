@@ -133,15 +133,18 @@ public class WinningContentPageIntegrationTests
         {
             var html = await GetPageHtmlAsync(client);
 
-            // Page structure.
+            // Page structure (mockup headings).
             Assert.Contains("Winning Content", html);
-            Assert.Contains("Leaderboard", html);
-            Assert.Contains("Distribusi di Bawah Median", html);
+            Assert.Contains("Leaderboard per Jenis Konten", html);
+            Assert.Contains("Distribusi Konten di Bawah Median", html);
             Assert.Contains("Komposisi Konten", html);
 
-            // Date-range binding: the selected range is echoed into the inputs.
-            Assert.Contains($"value=\"{FixedStart}\"", html);
-            Assert.Contains($"value=\"{FixedEnd}\"", html);
+            // Date-range binding (Phase 3E.1): the selected range is echoed into the
+            // picker data attributes (initialized from, shown in the dd/MM button label).
+            Assert.Contains($"data-start=\"{FixedStart}\"", html);
+            Assert.Contains($"data-end=\"{FixedEnd}\"", html);
+            // Exact display contract (mockup): 2-digit dd/MM, " - " separator, "(GMT+7)" suffix.
+            Assert.Contains("01/09 - 07/09 (GMT+7)", html);
 
             // Real content titles from the backend model (not hard-coded samples).
             Assert.Contains("WC Top Winner", html);
@@ -150,11 +153,10 @@ public class WinningContentPageIntegrationTests
             Assert.Contains("WC KK Item", html);
             Assert.Contains("WC AutoGMV Live", html);
 
-            // Leaderboard foot with baseline (all three categories render a card).
-            Assert.Contains("Baseline ER kategori", html);
+            // Leaderboard: the mockup's two blocks render for all three categories.
+            Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(html, "TOP BY VIEWS").Count);
 
-            // Composition: NON_KK 3 / KK 1 / AUTO 1 -> total 5, NON_KK 60% exact.
-            Assert.Contains("5</strong> konten", html);
+            // Composition: NON_KK 3 / KK 1 / AUTO 1 -> NON_KK 60% exact.
             Assert.Contains("60%", html);
 
             // All three category labels present.
@@ -193,7 +195,11 @@ public class WinningContentPageIntegrationTests
         var html = await response.Content.ReadAsStringAsync();
 
         Assert.Contains("Tidak ada konten pada periode yang dipilih", html);
-        Assert.Contains("Belum ada konten dengan Engagement Rate", html);
+        // Genuinely empty period: 0 content per type -> the leaderboard empty state
+        // matches the 0 counts (never the no-ER copy, which is only for content
+        // present but not yet eligible).
+        Assert.Contains("Tidak ada konten untuk jenis ini", html);
+        Assert.DoesNotContain("belum punya Engagement Rate", html);
         Assert.Contains("Median kategori belum tersedia", html);
     }
 

@@ -193,6 +193,32 @@ public class TikTokVideoService : ITikTokVideoService
                             }
                         }
 
+                        // country_distribution[]
+                        if (profile.TryGetProperty("country_distribution", out var cdist) && cdist.ValueKind == JsonValueKind.Array)
+                        {
+                            var countries = new Dictionary<string, decimal?>();
+                            foreach (var c in cdist.EnumerateArray())
+                            {
+                                if (c.ValueKind != JsonValueKind.Object) continue;
+                                var code = c.TryGetProperty("country_code", out var ccode) && ccode.ValueKind == JsonValueKind.String ? ccode.GetString() : null;
+                                decimal? cperc = null;
+                                if (c.TryGetProperty("percentage", out var cp))
+                                {
+                                    if (cp.ValueKind == JsonValueKind.String && decimal.TryParse(cp.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var dcp)) cperc = dcp;
+                                    else if (cp.ValueKind == JsonValueKind.Number && cp.TryGetDecimal(out var dcnum)) cperc = dcnum;
+                                }
+                                // Skip blank country codes (real payload contains "" entries) and unparseable percentages:
+                                // do not invent missing data.
+                                if (string.IsNullOrWhiteSpace(code) || !cperc.HasValue) continue;
+                                countries[code] = cperc;
+                            }
+                            if (countries.Count > 0)
+                            {
+                                result.Countries = countries;
+                                if (result.CountriesPath == null) result.CountriesPath = "data.performance.viewer_profile[type==\"VIEWERS\"].country_distribution";
+                            }
+                        }
+
                         // stop after first VIEWERS profile
                         break;
                     }
@@ -246,6 +272,17 @@ public class TikTokVideoService : ITikTokVideoService
         if (dm.Age55.HasValue) { ages["55+"] = dm.Age55.Value; anyDemo = true; }
 
         if (ages.Count > 0) demoObj["ages"] = ages;
+
+        if (dm.Countries is { Count: > 0 })
+        {
+            var countries = new Dictionary<string, decimal?>();
+            foreach (var kv in dm.Countries)
+            {
+                if (string.IsNullOrWhiteSpace(kv.Key) || !kv.Value.HasValue) continue;
+                countries[kv.Key] = kv.Value.Value;
+            }
+            if (countries.Count > 0) { demoObj["countries"] = countries; anyDemo = true; }
+        }
 
         if (anyDemo)
         {

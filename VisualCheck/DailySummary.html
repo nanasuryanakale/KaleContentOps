@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Daily Summary - KaleContentOps</title>
+    
+    <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/site.css?v=j6fhJSuuyLpOSLuPJU0TsDV0iNjor5S3rDnvxJrt4bg" />
+    <link rel="stylesheet" href="/css/layout.css?v=hORzHwr14vBkMo_sOh-7Bf2u_napwoeUwzNjW-Q-zsc" />
+    <link rel="stylesheet" href="/css/auth-ui.css?v=s34BkC2QJiDKAEWGdrnNVBliTsqpoBOggtV3gVMNpQk" />
+    
+</head>
+<body>
+    <div b-ch5g2sg2fg class="topbar">
+        <div b-ch5g2sg2fg class="topbar-left">
+            <span b-ch5g2sg2fg class="app-title">KALE Content Ops</span>
+        </div>
+            <div b-ch5g2sg2fg class="topbar-right topbar-user">
+                <span b-ch5g2sg2fg class="topbar-username">vc.user</span>
+                <form method="post" class="topbar-logout-form" action="/Account/Logout">
+                    
+                    <button b-ch5g2sg2fg type="submit" class="btn btn-sm btn-outline-light topbar-logout">Logout</button>
+                <input name="__RequestVerificationToken" type="hidden" value="CfDJ8EsFTNBnFoZNqzOIhSwGCV506FsYY41rl8q1SzO-p9zInw-E1dt6Vf_k6CoOHeq2j4vkLJ3ohfSKtO41ZP3W98ZGYTgVO_D07V7-_6nUgdtFzgDGn3rrJx9VuvZyXCsCiKvATEtwScXZAG576dvV_Keks2vy7Hifxh9w4zkHcS56QJT0BouNjgK04Mb4NP_9lw" /></form>
+            </div>
+    </div>
+
+    <aside class="app-sidebar">
+    <div class="brand">
+        <div class="brand-icon">K</div>
+        <div class="brand-text">
+            <div class="title">KALE Content Ops</div>
+            <div class="subtitle">TikTok · Content Log</div>
+        </div>
+    </div>
+
+    <nav class="menu">
+        <div class="menu-section">TIKTOK CONTENT</div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link " href="/ContentLog">
+                    <span class="nav-icon" aria-hidden="true">
+                        <!-- list / table icon -->
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.5" />
+                            <path d="M7 9H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M7 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span class="nav-text">Content Log</span>
+                </a>
+            </li>
+            <li class="nav-item"><a class="nav-link active" href="/DailySummary"><span class="nav-icon" aria-hidden="true">
+                        <!-- calendar icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.2" />
+                            <path d="M16 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                            <path d="M8 3V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                        </svg>
+                    </span> <span class="nav-text">Daily Summary</span></a></li>
+            <li class="nav-item"><a class="nav-link " href="/Targets"><span class="nav-icon" aria-hidden="true">
+                        <!-- target icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.2" />
+                            <circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.2" />
+                        </svg>
+                    </span> <span class="nav-text">Targets</span></a></li>
+            <li class="nav-item"><a class="nav-link " href="/WinningContent"><span class="nav-icon" aria-hidden="true">
+                        <!-- star / trophy icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2l2.6 5.3L20 9l-4 3.6L17 20l-5-2.6L7 20l1-7.4L4 9l5.4-1.7L12 2z" stroke="currentColor" stroke-width="0.8" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Winning Content</span></a></li>
+            <li class="nav-item"><a class="nav-link" href="#"><span class="nav-icon" aria-hidden="true">
+                        <!-- team icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zM4 18c0-2.2 3.6-3.5 6-3.5s6 1.3 6 3.5v1H4v-1z" stroke="currentColor" stroke-width="0.9" fill="none" />
+                        </svg>
+                    </span> <span class="nav-text">Team Performance</span></a></li>
+        </ul>
+
+
+        <div class="menu-section">CREATIVE PERFORMANCE</div>
+        <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Daily</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Weekly</a></li>
+            <li class="nav-item"><a class="nav-link menu-chart" href="#">Monthly</a></li>
+        </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+    <div class="muted"></div>
+</div>
+
+</aside>
+
+
+    <main b-ch5g2sg2fg class="app-main">
+        <div b-ch5g2sg2fg class="container-fluid">
+            <link rel="stylesheet" href="/css/daily-summary.css" />
+<link rel="stylesheet" href="/css/calendar-popup.css" />
+
+<div class="content-page daily-summary-page" data-start="2026-09-01" data-end="2026-09-07">
+    <header class="summary-header">
+        <div class="summary-title">
+            <h1>Daily Summary</h1>
+            <p>Jumlah konten &amp; total views per hari berdasarkan tanggal video diposting.</p>
+        </div>
+        <div class="header-anchor">
+            <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel">
+                <span class="calendar-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.4" />
+                        <path d="M16 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                        <path d="M8 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <strong id="dateRangeLabel">01-09 - 07-09</strong>
+                <small>GMT+7</small>
+            </button>
+
+            <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
+                <div class="date-picker-topline">
+                    <div>
+                        <strong id="pendingRangeLabel"></strong>
+                        <small>Pilih rentang tanggal laporan</small>
+                    </div>
+                    <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">×</button>
+                </div>
+                <div class="date-picker-body">
+                    <div class="preset-list" id="presetList">
+                        <div class="preset-title">PERIODE CEPAT</div>
+                        <button type="button" data-preset="today">Hari Ini</button>
+                        <button type="button" data-preset="yesterday">Kemarin</button>
+                        <button type="button" data-preset="7">1 Minggu Terakhir</button>
+                        <button type="button" data-preset="30">1 Bulan Terakhir</button>
+                        <button type="button" data-preset="90">3 Bulan Terakhir</button>
+                    </div>
+                    <div class="calendar-area">
+                        <div class="calendar-toolbar">
+                            <button type="button" id="previousMonth" aria-label="Previous month">‹</button>
+                            <strong id="calendarTitle"></strong>
+                            <button type="button" id="nextMonth" aria-label="Next month">›</button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                    </div>
+                </div>
+                <div class="date-picker-actions">
+                    <div class="date-picker-selected" id="datePickerSelected"></div>
+                    <div>
+                        <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
+                        <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </header>
+
+    <div class="daily-toolbar">
+        <!-- Top row: controls (button, checkboxes, legend) -->
+        <div class="toolbar-top">
+            <div class="toolbar-left">
+                <div class="toolbar-anchor">
+                    <button type="button" class="toolbar-button" id="columnsButton" aria-expanded="false" aria-controls="columnPanel">
+                        <span aria-hidden="true">▤</span> Kolom
+                    </button>
+                </div>
+                <label class="check-control">
+                    <input id="includeAutoGmv" type="checkbox" checked />
+                    Termasuk Auto GMV Live di kolom Total
+                </label>
+                <label class="check-control check-control-muted">
+                    <input id="includeArchived" type="checkbox"  />
+                    Include Archived
+                </label>
+            </div>
+
+            <div class="legend-row">
+                <span><i class="category-dot kk"></i> Keranjang Kuning</span>
+                <span><i class="category-dot nonkk"></i> Non-KK</span>
+                <span><i class="category-dot autogmv"></i> Auto GMV Live</span>
+            </div>
+        </div>
+
+        <!-- Second row: column filter card (kept out of the top row so it appears on its own line) -->
+        <section class="popover-panel column-panel" id="columnPanel" hidden>
+            <div class="popover-title">PILIH JENIS KONTEN YANG DITAMPILKAN</div>
+            <div class="column-body">
+                <div class="checkbox-row">
+                    <label><input type="checkbox" data-column="nonkk" checked="checked" /> Non-KK</label>
+                    <label><input type="checkbox" data-column="kk" checked="checked" /> Keranjang Kuning</label>
+                    <label><input type="checkbox" data-column="autogmv" checked="checked" /> Auto GMV Live</label>
+                </div>
+                <div class="column-note">Tiap jenis konten nampilin 2 kolom sekaligus (Jumlah Konten &amp; Total Views) — matching panel toggle di sheet rancangan baru.</div>
+            </div>
+        </section>
+    </div>
+
+    <section class="table-card daily-table-card mt-3">
+        <div class="table-scroll">
+            <table class="daily-summary-table">
+                <thead>
+                    <tr class="group-row">
+                        <th class="index-column"></th>
+                        <th class="date-column"></th>
+                        <th class="group-total" colspan="2" id="totalGroupHeader">TOTAL (NON-KK &#x2B; KK &#x2B; AUTO GMV LIVE)</th>
+                        <th class="group-nonkk col-nonkk" colspan="2">NON-KK</th>
+                        <th class="group-kk col-kk" colspan="2">KERANJANG KUNING</th>
+                        <th class="group-autogmv col-autogmv" colspan="2">AUTO GMV LIVE</th>
+                    </tr>
+                    <tr class="column-row">
+                        <th class="index-column">No</th>
+                        <th class="date-column">Tanggal</th>
+                        <th>Jumlah Konten</th><th>Total Views</th>
+                        <th class="col-nonkk">Jumlah Konten</th><th class="col-nonkk">Total Views</th>
+                        <th class="col-kk">Jumlah Konten</th><th class="col-kk">Total Views</th>
+                        <th class="col-autogmv">Jumlah Konten</th><th class="col-autogmv">Total Views</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="index-column">1</td>
+                        <td class="date-column">01 Sep 2026</td>
+                        <td class="total-content tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-content-target="0">0</td>
+                        <td class="total-views number tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-views-target="0">0</td>
+                        <td class="col-nonkk tgt-above">0</td>
+                        <td class="col-nonkk number tgt-above">0</td>
+                        <td class="col-kk tgt-above">0</td>
+                        <td class="col-kk number tgt-above">0</td>
+                        <td class="col-autogmv">0</td>
+                        <td class="col-autogmv number">0</td>
+                    </tr>
+                    <tr>
+                        <td class="index-column">2</td>
+                        <td class="date-column">02 Sep 2026</td>
+                        <td class="total-content tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-content-target="0">0</td>
+                        <td class="total-views number tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-views-target="0">0</td>
+                        <td class="col-nonkk tgt-above">0</td>
+                        <td class="col-nonkk number tgt-above">0</td>
+                        <td class="col-kk tgt-above">0</td>
+                        <td class="col-kk number tgt-above">0</td>
+                        <td class="col-autogmv">0</td>
+                        <td class="col-autogmv number">0</td>
+                    </tr>
+                    <tr>
+                        <td class="index-column">3</td>
+                        <td class="date-column">03 Sep 2026</td>
+                        <td class="total-content tgt-above" data-nonkk="8" data-kk="4" data-autogmv="0" data-total-content-target="0">12</td>
+                        <td class="total-views number tgt-above" data-nonkk="70179" data-kk="18402" data-autogmv="0" data-total-views-target="0">88,581</td>
+                        <td class="col-nonkk tgt-above">8</td>
+                        <td class="col-nonkk number tgt-above">70,179</td>
+                        <td class="col-kk tgt-above">4</td>
+                        <td class="col-kk number tgt-above">18,402</td>
+                        <td class="col-autogmv">0</td>
+                        <td class="col-autogmv number">0</td>
+                    </tr>
+                    <tr>
+                        <td class="index-column">4</td>
+                        <td class="date-column">04 Sep 2026</td>
+                        <td class="total-content tgt-above" data-nonkk="0" data-kk="1" data-autogmv="2" data-total-content-target="0">3</td>
+                        <td class="total-views number tgt-above" data-nonkk="0" data-kk="1200" data-autogmv="1511" data-total-views-target="0">2,711</td>
+                        <td class="col-nonkk tgt-above">0</td>
+                        <td class="col-nonkk number tgt-above">0</td>
+                        <td class="col-kk tgt-above">1</td>
+                        <td class="col-kk number tgt-above">1,200</td>
+                        <td class="col-autogmv">2</td>
+                        <td class="col-autogmv number">1,511</td>
+                    </tr>
+                    <tr>
+                        <td class="index-column">5</td>
+                        <td class="date-column">05 Sep 2026</td>
+                        <td class="total-content tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-content-target="0">0</td>
+                        <td class="total-views number tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-views-target="0">0</td>
+                        <td class="col-nonkk tgt-above">0</td>
+                        <td class="col-nonkk number tgt-above">0</td>
+                        <td class="col-kk tgt-above">0</td>
+                        <td class="col-kk number tgt-above">0</td>
+                        <td class="col-autogmv">0</td>
+                        <td class="col-autogmv number">0</td>
+                    </tr>
+                    <tr>
+                        <td class="index-column">6</td>
+                        <td class="date-column">06 Sep 2026</td>
+                        <td class="total-content tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-content-target="0">0</td>
+                        <td class="total-views number tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-views-target="0">0</td>
+                        <td class="col-nonkk tgt-above">0</td>
+                        <td class="col-nonkk number tgt-above">0</td>
+                        <td class="col-kk tgt-above">0</td>
+                        <td class="col-kk number tgt-above">0</td>
+                        <td class="col-autogmv">0</td>
+                        <td class="col-autogmv number">0</td>
+                    </tr>
+                    <tr>
+                        <td class="index-column">7</td>
+                        <td class="date-column">07 Sep 2026</td>
+                        <td class="total-content tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-content-target="0">0</td>
+                        <td class="total-views number tgt-above" data-nonkk="0" data-kk="0" data-autogmv="0" data-total-views-target="0">0</td>
+                        <td class="col-nonkk tgt-above">0</td>
+                        <td class="col-nonkk number tgt-above">0</td>
+                        <td class="col-kk tgt-above">0</td>
+                        <td class="col-kk number tgt-above">0</td>
+                        <td class="col-autogmv">0</td>
+                        <td class="col-autogmv number">0</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="summary-layout">
+        <section class="report-card summary-card">
+            <div class="card-heading summary-card-heading">
+                RINGKASAN · 1 SEP–7 SEP 2026
+            </div>
+            <div class="table-scroll">
+                <table class="report-table summary-table">
+                    <thead>
+                        <tr>
+                            <th>JENIS KONTEN</th>
+                            <th>AVG KONTEN/HARI</th>
+                            <th>AVG VIEWS/HARI</th>
+                            <th>TOTAL KONTEN</th>
+                            <th>TOTAL VIEWS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="col-jenis">
+                                <span class="category-dot nonkk"></span>
+                                <strong>Non-KK</strong>
+                            </td>
+                            <td class="col-avg">1,1</td>
+                            <td class="col-avg">10.026</td>
+                            <td class="col-total">8</td>
+                            <td class="col-total">70,179</td>
+                        </tr>
+                        <tr>
+                            <td class="col-jenis">
+                                <span class="category-dot kk"></span>
+                                <strong>Keranjang Kuning</strong>
+                            </td>
+                            <td class="col-avg">0,7</td>
+                            <td class="col-avg">2.800</td>
+                            <td class="col-total">5</td>
+                            <td class="col-total">19,602</td>
+                        </tr>
+                        <tr>
+                            <td class="col-jenis">
+                                <span class="category-dot autogmv"></span>
+                                <strong>Auto GMV Live</strong>
+                            </td>
+                            <td class="col-avg">0,3</td>
+                            <td class="col-avg">216</td>
+                            <td class="col-total">2</td>
+                            <td class="col-total">1,511</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="report-card composition-card">
+            <div class="card-heading composition-card-heading">
+                KOMPOSISI JENIS KONTEN · 1 SEP–7 SEP 2026
+            </div>
+    
+            <div class="composition-content">
+                <div class="donut" id="compositionDonut"></div>
+                <div class="composition-legend">
+                    <div>
+                        <span><i class="category-dot nonkk"></i>Non-KK</span>
+                        <strong>53%</strong>
+                    </div>
+                    <div>
+                        <span><i class="category-dot kk"></i>Keranjang Kuning</span>
+                        <strong>33%</strong>
+                    </div>
+                    <div>
+                        <span><i class="category-dot autogmv"></i>Auto GMV Live</span>
+                        <strong>13%</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="report-card target-card">
+        <div class="card-heading">
+            PENCAPAIAN VS TARGET · 1 SEP–7 SEP 2026
+        </div>
+        <div class="table-scroll">
+            <table class="report-table target-table">
+                <thead>
+                    <tr>
+                        <th>JENIS KONTEN</th>
+                        <th>METRIK</th>
+                        <th>TARGET PERIODE INI</th>
+                        <th>ACTUAL</th>
+                        <th>SELISIH</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <span class="category-dot nonkk"></span>
+                            Non-KK
+                        </td>
+                        <td>Jumlah Konten</td>
+                        <td>0</td>
+                        <td>8</td>
+                        <td class="tgt-above">&#x2B;8</td>
+                        <td><span class="status-pill status-achieved">Tercapai</span></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span class="category-dot nonkk"></span>
+                            Non-KK
+                        </td>
+                        <td>Total Views</td>
+                        <td>0</td>
+                        <td>70,179</td>
+                        <td class="tgt-above">&#x2B;70179</td>
+                        <td><span class="status-pill status-achieved">Tercapai</span></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span class="category-dot kk"></span>
+                            Keranjang Kuning
+                        </td>
+                        <td>Jumlah Konten</td>
+                        <td>0</td>
+                        <td>5</td>
+                        <td class="tgt-above">&#x2B;5</td>
+                        <td><span class="status-pill status-achieved">Tercapai</span></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span class="category-dot kk"></span>
+                            Keranjang Kuning
+                        </td>
+                        <td>Total Views</td>
+                        <td>0</td>
+                        <td>19,602</td>
+                        <td class="tgt-above">&#x2B;19602</td>
+                        <td><span class="status-pill status-achieved">Tercapai</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <aside class="info-note">
+        <strong>Catatan perhitungan</strong>
+        <span>Rentang tanggal yang dipilih menentukan periode target. Target periode dihitung berdasarkan jumlah hari kalender yang dipilih. Status merah berarti actual masih di bawah target harian; status hijau berarti target tercapai atau terlampaui. Views yang ditampilkan adalah akumulasi terbaru.</span>
+    </aside>
+</div>
+
+
+        </div>
+    </main>
+
+    <footer b-ch5g2sg2fg class="app-footer">
+        <div b-ch5g2sg2fg class="container-fluid">
+            <div b-ch5g2sg2fg class="footer-left text-center">&copy; 2026 - KaleContentOps</div>
+        </div>
+    </footer>
+    <script src="/lib/jquery/dist/jquery.min.js"></script>
+    <script src="/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/site.js?v=hRQyftXiu1lLX2P9Ly9xa4gHJgLeR1uGN5qegUobtGo"></script>
+    
+<script src="/js/calendar-popup.js"></script>
+<script>
+(() => {
+    const page = document.querySelector('.daily-summary-page');
+    const rangeButton = document.getElementById('dateRangeButton');
+    const datePanel = document.getElementById('datePickerPanel');
+    const columnPanel = document.getElementById('columnPanel');
+    const columnsButton = document.getElementById('columnsButton');
+    const appliedStart = page.dataset.start;
+    const appliedEnd = page.dataset.end;
+    let pendingStart = appliedStart;
+    let pendingEnd = appliedEnd;
+    const parseDate = value => new Date(`${value}T00:00:00`);
+    const isoDate = date => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    const formatDate = value => parseDate(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    const formatNumber = value => Number(value || 0).toLocaleString('id-ID');
+
+    function setPanel(panel, button, open) {
+        panel.hidden = !open;
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function renderPendingLabel() {
+        const label = document.getElementById('pendingRangeLabel');
+        if (pendingStart && pendingEnd) label.textContent = `${formatDate(pendingStart)} - ${formatDate(pendingEnd)}`;
+        else if (pendingStart && !pendingEnd) label.textContent = `${formatDate(pendingStart)} - ...`;
+        else label.textContent = 'Pilih rentang tanggal';
+        // footer short label
+        const footer = document.getElementById('datePickerSelected');
+        if (footer) {
+            if (pendingStart && pendingEnd) footer.textContent = `${formatDate(pendingStart)} - ${formatDate(pendingEnd)}`;
+            else if (pendingStart) footer.textContent = `${formatDate(pendingStart)} - ...`;
+            else footer.textContent = '';
+        }
+    }
+
+    // Shared calendar module (calendar-popup.js) renders the two-month grid with the exact
+    // visual style now shared with the Targets "Berlaku Mulai" picker. Range selection rules
+    // and state ownership stay in this page, unchanged.
+    const rangeCalendar = CalendarPopup.createRangeCalendar({
+        grid: document.getElementById('calendarGrid'),
+        titleEl: document.getElementById('calendarTitle'),
+        prevButton: document.getElementById('previousMonth'),
+        nextButton: document.getElementById('nextMonth'),
+        months: 2,
+        initialMonth: appliedStart,
+        getSelection: () => ({ start: pendingStart, end: pendingEnd }),
+        onSelectionChange: (start, end) => { pendingStart = start; pendingEnd = end; renderPendingLabel(); }
+    });
+    function renderCalendar() { rangeCalendar.render(); }
+
+    function updateTotals() {
+        const includeAuto = document.getElementById('includeAutoGmv').checked;
+        document.querySelectorAll('.total-content').forEach(cell => {
+            const nonkk = Number(cell.dataset.nonkk) || 0;
+            const kk = Number(cell.dataset.kk) || 0;
+            const autogmv = Number(cell.dataset.autogmv) || 0;
+            const value = nonkk + kk + (includeAuto ? autogmv : 0);
+            cell.textContent = formatNumber(value);
+
+            // Update status class to match server-side GetStatus (actual >= target => above)
+            const target = Number(cell.dataset.totalContentTarget) || 0;
+            cell.classList.remove('tgt-above', 'tgt-below');
+            const cls = value >= target ? 'tgt-above' : 'tgt-below';
+            cell.classList.add(cls);
+        });
+
+        document.querySelectorAll('.total-views').forEach(cell => {
+            const nonkk = Number(cell.dataset.nonkk) || 0;
+            const kk = Number(cell.dataset.kk) || 0;
+            const autogmv = Number(cell.dataset.autogmv) || 0;
+            const value = nonkk + kk + (includeAuto ? autogmv : 0);
+            cell.textContent = formatNumber(value);
+
+            const target = Number(cell.dataset.totalViewsTarget) || 0;
+            cell.classList.remove('tgt-above', 'tgt-below');
+            const cls = value >= target ? 'tgt-above' : 'tgt-below';
+            cell.classList.add(cls);
+        });
+
+        // Keep the TOTAL group header label in sync with the Include Auto GMV state.
+        // Label only - the numeric TOTAL values and tgt-above/tgt-below above are unchanged.
+        const totalHeader = document.getElementById('totalGroupHeader');
+        if (totalHeader) {
+            totalHeader.textContent = includeAuto
+                ? 'TOTAL (NON-KK + KK + AUTO GMV LIVE)'
+                : 'TOTAL (NON-KK + KK)';
+        }
+    }
+
+    function getColumnState() {
+        const state = { nonkk: true, kk: true, autogmv: true };
+        document.querySelectorAll('[data-column]').forEach(input => { state[input.dataset.column] = input.checked; });
+        return state;
+    }
+
+    function buildReloadUrl() {
+        const url = new URL(window.location.href);
+        const columns = getColumnState();
+        url.searchParams.set('startDate', appliedStart);
+        url.searchParams.set('endDate', appliedEnd);
+        url.searchParams.set('includeArchived', document.getElementById('includeArchived').checked ? 'true' : 'false');
+        url.searchParams.set('includeAutoGmvInTotal', document.getElementById('includeAutoGmv').checked ? 'true' : 'false');
+        url.searchParams.set('showNonKkColumns', columns.nonkk ? 'true' : 'false');
+        url.searchParams.set('showKkColumns', columns.kk ? 'true' : 'false');
+        url.searchParams.set('showAutoGmvColumns', columns.autogmv ? 'true' : 'false');
+
+        const isColumnPanelOpen = !document.getElementById('columnPanel').hidden;
+        url.searchParams.set('openColumnPanel', isColumnPanelOpen ? 'true' : 'false');
+
+        return url.toString();
+    }
+
+    function reloadForArchive() {
+        window.location.assign(buildReloadUrl());
+    }
+
+    function closeAllPanels() {
+        setPanel(columnPanel, columnsButton, false);
+        setPanel(datePanel, rangeButton, false);
+    }
+
+    // click-outside + escape closes floating cards
+    // Note: if the clicked element was detached from the DOM during handling (e.g. calendar re-render),
+    // closest() returns null - treat that as an inside click so the panel stays open.
+    document.addEventListener('click', event => {
+        const clicked = event.target instanceof Element && event.target.isConnected ? event.target : null;
+        if (!columnPanel.hidden && (!clicked || !clicked.closest('.toolbar-anchor'))) setPanel(columnPanel, columnsButton, false);
+        if (!datePanel.hidden && (!clicked || !clicked.closest('.header-anchor'))) setPanel(datePanel, rangeButton, false);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeAllPanels();
+    });
+
+    rangeButton.addEventListener('click', () => {
+        const open = datePanel.hidden;
+        setPanel(datePanel, rangeButton, open);
+        setPanel(columnPanel, columnsButton, false);
+        if (open) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    });
+    document.getElementById('closeDatePicker').addEventListener('click', closeAllPanels);
+    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; closeAllPanels(); });
+    document.getElementById('applyDatePicker').addEventListener('click', () => {
+        if (!pendingStart || !pendingEnd) return;
+        const form = document.createElement('form');
+        form.method = 'get';
+        const columns = getColumnState();
+        [['startDate', pendingStart], ['endDate', pendingEnd], ['includeArchived', document.getElementById('includeArchived').checked], ['includeAutoGmvInTotal', document.getElementById('includeAutoGmv').checked], ['showNonKkColumns', columns.nonkk], ['showKkColumns', columns.kk], ['showAutoGmvColumns', columns.autogmv]].forEach(([name, value]) => { const input = document.createElement('input'); input.name = name; input.value = value; form.appendChild(input); });
+        document.body.appendChild(form);
+        form.submit();
+    });
+    document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+        const today = new Date();
+        const preset = button.dataset.preset;
+        const end = new Date(today);
+        const start = new Date(today);
+        if (preset === 'yesterday') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); }
+        else if (preset !== 'today') start.setDate(start.getDate() - Number(preset) + 1);
+        pendingStart = isoDate(start); pendingEnd = isoDate(end); renderPendingLabel(); renderCalendar();
+    }));
+
+    columnsButton.addEventListener('click', () => {
+        setPanel(columnPanel, columnsButton, columnPanel.hidden);
+        setPanel(datePanel, rangeButton, false);
+    });
+    // Prevent checkbox interactions from closing the panel due to event bubbling.
+    document.querySelectorAll('[data-column]').forEach(input => {
+        // stop clicks on the input itself from bubbling up to document click handler
+        input.addEventListener('click', event => event.stopPropagation());
+        // stop clicks on the label (if present) as well
+        const lbl = input.closest('label');
+        if (lbl) lbl.addEventListener('click', event => event.stopPropagation());
+        // handle change while preventing propagation
+        input.addEventListener('change', event => {
+            event.stopPropagation();
+            document.querySelectorAll(`.col-${input.dataset.column}`).forEach(cell => cell.hidden = !input.checked);
+        });
+    });
+
+    const includeAuto = document.getElementById('includeAutoGmv');
+    if (includeAuto) {
+        includeAuto.addEventListener('click', event => event.stopPropagation());
+        includeAuto.addEventListener('change', event => { event.stopPropagation(); updateTotals(); });
+        const lblAuto = includeAuto.closest('label');
+        if (lblAuto) lblAuto.addEventListener('click', event => event.stopPropagation());
+    }
+
+    const includeArchivedEl = document.getElementById('includeArchived');
+    if (includeArchivedEl) {
+        includeArchivedEl.addEventListener('click', event => event.stopPropagation());
+        includeArchivedEl.addEventListener('change', event => {
+            // prevent bubbling so document click-outside doesn't close the panel
+            event.stopPropagation();
+            // Include Archived is server-side state: the whole Daily Summary (table, Ringkasan,
+            // Composition, Pencapaian) is recalculated by DailySummaryService.BuildAsync, so a
+            // real navigation is required. buildReloadUrl() preserves startDate, endDate,
+            // includeAutoGmvInTotal and column visibility in the new URL.
+            reloadForArchive();
+        });
+        const lblArch = includeArchivedEl.closest('label');
+        if (lblArch) lblArch.addEventListener('click', event => event.stopPropagation());
+    }
+
+    const composition = [{"percentage":53.33,"code":"NON_KK"},{"percentage":33.33,"code":"KK"},{"percentage":13.33,"code":"AUTO_GMV_LIVE"}];
+    const colors = { NON_KK: '#4d9fff', KK: '#e8b83f', AUTO_GMV_LIVE: '#a975e8' };
+    const donut = document.getElementById('compositionDonut');
+    const totalPercentage = composition.reduce((sum, item) => sum + (Number(item.percentage) || 0), 0);
+    if (totalPercentage > 0) {
+        let offset = 0;
+        const segments = composition.map(item => { const segment = `${colors[item.code] || '#64748b'} ${offset}% ${offset + item.percentage}%`; offset += item.percentage; return segment; });
+        donut.style.background = `conic-gradient(${segments.join(',')})`;
+    } else {
+        donut.classList.add('donut-empty');
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('openColumnPanel') === 'true') {
+        setPanel(columnPanel, columnsButton, true);
+    }
+
+    updateTotals();
+})();
+</script>
+
+</body>
+</html>

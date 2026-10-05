@@ -91,6 +91,96 @@ public static class WinningContentCalculator
     }
 
     /// <summary>
+    /// Funnel averages (Feature 4). Each average covers exactly the videos whose latest
+    /// metric HAS the field - nulls are excluded from both numerator and denominator
+    /// (never treated as 0):
+    ///     AverageViewsPerVideo      = SUM(Views) / COUNT(videos with Views)
+    ///     AverageReachPerVideo      = SUM(Reach) / COUNT(videos with Reach)
+    ///     AverageEngagementPerVideo = SUM(Likes+Comments+Shares) / COUNT(videos with all three)
+    /// Engagement amount reuses the EXISTING engagement definition (the ER numerator) -
+    /// no new formula. NULL when the population is empty; decimal math only, so no
+    /// integer truncation and no NaN/Infinity is ever produced.
+    /// </summary>
+    public static (decimal? Views, decimal? Reach, decimal? Engagement) ComputeFunnelAverages(
+        IEnumerable<(long? Views, long? Reach, long? Likes, long? Comments, long? Shares)> videos)
+    {
+        var views = new List<long>();
+        var reach = new List<long>();
+        var engagement = new List<long>();
+
+        foreach (var v in videos ?? Enumerable.Empty<(long?, long?, long?, long?, long?)>())
+        {
+            if (v.Views.HasValue) views.Add(v.Views.Value);
+            if (v.Reach.HasValue) reach.Add(v.Reach.Value);
+            if (v.Likes.HasValue && v.Comments.HasValue && v.Shares.HasValue)
+            {
+                engagement.Add(v.Likes.Value + v.Comments.Value + v.Shares.Value);
+            }
+        }
+
+        return (
+            views.Count == 0 ? null : views.Sum() / (decimal)views.Count,
+            reach.Count == 0 ? null : reach.Sum() / (decimal)reach.Count,
+            engagement.Count == 0 ? null : engagement.Sum() / (decimal)engagement.Count);
+    }
+
+    /// <summary>
+    /// Funnel percentage of a stage relative to the Views average (mockup definition:
+    /// "51.3% dari views"). NULL when either side is NULL or the Views average is 0 -
+    /// safe against divide-by-zero, never NaN/Infinity.
+    /// </summary>
+    public static decimal? ComputeFunnelPercent(decimal? stageAverage, decimal? viewsAverage)
+    {
+        if (stageAverage is null || viewsAverage is null || viewsAverage.Value == 0m)
+        {
+            return null;
+        }
+
+        return stageAverage.Value / viewsAverage.Value * 100m;
+    }
+
+    /// <summary>
+    /// Views-weighted average of per-video viewer shares (Feature 5 aggregation).
+    /// Shares are 0..1 (DemographicsJson scale). Each video contributes
+    /// share x Views; the denominator is the SUM of those same videos' Views, so
+    /// videos WITHOUT demographics contribute nothing at all (excluded from both sides
+    /// - never diluted, never averaged as 0). Returns 0..100, or NULL when no video
+    /// qualifies (no demographics or no positive Views).
+    /// Rationale (documented in WinningContentAudienceSnapshot): demographics are
+    /// per-video shares, so a plain unweighted average would give a 200-view video the
+    /// same voice as a 100k-view video; Views weighting reproduces "share of the
+    /// audience the period actually reached" - the mockup intent.
+    /// </summary>
+    public static decimal? ComputeWeightedSharePercent(
+        IEnumerable<(long? Views, decimal? Share)> videos)
+    {
+        decimal weightedSum = 0m;
+        long viewsSum = 0;
+
+        foreach (var v in videos ?? Enumerable.Empty<(long?, decimal?)>())
+        {
+            if (v.Share.HasValue && v.Views.HasValue && v.Views.Value > 0)
+            {
+                weightedSum += v.Share.Value * v.Views.Value;
+                viewsSum += v.Views.Value;
+            }
+        }
+
+        return viewsSum == 0 ? null : weightedSum / viewsSum * 100m;
+    }
+
+    /// <summary>
+    /// Period comparison delta in PERCENTAGE POINTS (Feature 5): current - previous.
+    /// NOT relative growth. NULL when either side is NULL (missing data never becomes 0).
+    /// </summary>
+    public static decimal? ComputeDeltaPoints(decimal? currentPercentage, decimal? previousPercentage)
+    {
+        return currentPercentage is null || previousPercentage is null
+            ? null
+            : currentPercentage.Value - previousPercentage.Value;
+    }
+
+    /// <summary>
     /// Content Composition (Phase 2D, locked rules 2-7): percentages from CONTENT COUNTS,
     /// never from Views/ER/engagement. Single authoritative percentage calculation -
     /// do not duplicate the formula in services, controllers or UI.
