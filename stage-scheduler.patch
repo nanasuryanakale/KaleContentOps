@@ -1,0 +1,12 @@
+--- a/KaleContentOps/Program.cs
++++ b/KaleContentOps/Program.cs
+@@
+ if (builder.Configuration.GetValue<bool>("TikTok:EnableDailySync", false))
+ {
+     builder.Services.AddHostedService<TikTokDailySyncService>();
+ }
++
++if (builder.Configuration.GetValue<bool>("TikTok:EnableHistoricalDetailsP1Scheduler", false))
++{
++    builder.Services.AddHostedService<TikTokHistoricalDetailsP1Worker>();
++}

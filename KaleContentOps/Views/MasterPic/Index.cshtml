@@ -1,0 +1,190 @@
+@model KaleContentOps.ViewModels.MasterPicPageViewModel
+@{
+    ViewData["Title"] = "Master PIC";
+    var todayIso = Model.BusinessToday.ToString("yyyy-MM-dd");
+    var successMessage = TempData["MasterPicSuccess"] as string;
+    var errorMessage = TempData["MasterPicError"] as string;
+}
+
+@section Styles {
+    <link rel="stylesheet"
+          href="~/css/master-pic.css"
+          asp-append-version="true" />
+}
+
+@* Phase 2B - canonical Master PIC lifecycle management screen.
+   Active AND inactive PICs are both listed (historical visibility is required). *@
+<div class="master-pic-page">
+    <header class="mp-header">
+        <div class="mp-title">
+            <h1>Master PIC</h1>
+            <p>
+                Kelola data PIC: tanggal gabung (JoinDate), tanggal resign (ResignDate), dan status aktif.
+                Tanggal bisnis hari ini: <strong>@todayIso (Asia/Jakarta)</strong>.
+            </p>
+        </div>
+        <button type="button" class="mp-button mp-button-primary" id="mpBtnNew">+ PIC Baru</button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="mp-banner mp-banner-success" id="mpSuccessBanner">@successMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="mp-banner mp-banner-error" id="mpErrorBanner">@errorMessage</div>
+    }
+    @* Rejected Create/Edit input is re-rendered here (server-side validation feedback). *@
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div class="mp-banner mp-banner-error" id="mpValidationErrors">
+            <ul>
+                @foreach (var entry in ViewData.ModelState)
+                {
+                    foreach (var error in entry.Value.Errors)
+                    {
+                        <li>@(string.IsNullOrWhiteSpace(error.ErrorMessage) ? (error.Exception?.Message ?? "Input tidak valid.") : error.ErrorMessage)</li>
+                    }
+                }
+            </ul>
+        </div>
+    }
+
+    @if (Model.Pics.Count == 0)
+    {
+        <div class="mp-empty" id="mpEmptyState">
+            <p class="mp-empty-title">Belum ada Master PIC.</p>
+            <p class="mp-empty-hint">Klik <strong>+ PIC Baru</strong> untuk menambahkan PIC pertama.</p>
+        </div>
+    }
+    else
+    {
+        <section class="mp-card">
+            <div class="mp-table-scroll">
+                <table class="mp-table" id="mpTable">
+                    <thead>
+                        <tr>
+                            <th>NAMA</th>
+                            <th>JOIN DATE</th>
+                            <th>RESIGN DATE</th>
+                            <th>STATUS</th>
+                            <th>DIBUAT</th>
+                            <th>DIPERBARUI</th>
+                            <th class="mp-actions-col">AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in Model.Pics)
+                        {
+                            <tr data-pic="@p.Id"
+                                data-name="@p.Name"
+                                data-join="@(p.JoinDate.ToString("yyyy-MM-dd"))"
+                                data-resign="@(p.ResignDate?.ToString("yyyy-MM-dd"))">
+                                <td class="mp-name">@p.Name</td>
+                                <td class="mp-mono">@p.JoinDate.ToString("dd-MM-yyyy")</td>
+                                <td class="mp-mono">@(p.ResignDate?.ToString("dd-MM-yyyy") ?? "-")</td>
+                                <td>
+                                    @if (p.IsActive)
+                                    {
+                                        <span class="mp-pill mp-pill-active">Aktif</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="mp-pill mp-pill-inactive">Nonaktif</span>
+                                    }
+                                </td>
+                                <td class="mp-muted">@p.CreatedAt.ToString("dd-MM-yyyy")</td>
+                                <td class="mp-muted">@p.UpdatedAt.ToString("dd-MM-yyyy")</td>
+                                <td class="mp-actions-col">
+                                    <button type="button" class="mp-action js-mp-edit" data-id="@p.Id">Edit</button>
+                                    @if (p.IsActive)
+                                    {
+                                        <button type="button" class="mp-action mp-action-danger js-mp-deactivate" data-id="@p.Id">Nonaktifkan</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="mp-action js-mp-reactivate" data-id="@p.Id">Aktifkan</button>
+                                        @if (p.ResignDate.HasValue)
+                                        {
+                                            <span class="mp-note">periode tertutup</span>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <p class="mp-hint">
+            Nonaktifkan menutup masa kerja dengan tanggal bisnis hari ini (Asia/Jakarta).
+            PIC dengan ResignDate terisi tidak dapat diaktifkan kembali otomatis - koreksi data
+            lifecycle lewat <strong>Edit</strong> bila diperlukan.
+        </p>
+    }
+
+    @* ---------------- Create ---------------- *@
+    <section class="mp-modal" id="mpCreateModal" hidden>
+        <div class="mp-modal-top">
+            <div>
+                <strong>PIC Baru</strong>
+                <small>Tambahkan PIC baru. JoinDate kosong = tanggal bisnis hari ini (@todayIso).</small>
+            </div>
+            <button type="button" class="mp-close" data-mp-close aria-label="Close">&times;</button>
+        </div>
+
+        <form asp-controller="MasterPic" asp-action="Create" method="post" class="mp-form">
+            <label class="mp-field">
+                <span>Nama PIC *</span>
+                <input type="text" name="name" maxlength="100" autocomplete="off" required />
+            </label>
+            <label class="mp-field">
+                <span>JoinDate *</span>
+                <input type="date" name="joinDate" value="@todayIso" max="@todayIso" />
+                <small>Format YYYY-MM-DD. Tidak boleh melewati tanggal bisnis hari ini.</small>
+            </label>
+            <div class="mp-form-actions">
+                <button type="button" class="mp-button mp-button-secondary" data-mp-close>Batal</button>
+                <button type="submit" class="mp-button mp-button-primary">Simpan</button>
+            </div>
+        </form>
+    </section>
+
+    @* ---------------- Edit ---------------- *@
+    <section class="mp-modal" id="mpEditModal" hidden>
+        <div class="mp-modal-top">
+            <div>
+                <strong id="mpEditTitle">Edit PIC</strong>
+                <small>Nama, JoinDate, dan ResignDate. Status aktif diatur lewat aksi Nonaktifkan/Aktifkan.</small>
+            </div>
+            <button type="button" class="mp-close" data-mp-close aria-label="Close">&times;</button>
+        </div>
+
+        <form asp-controller="MasterPic" asp-action="Edit" method="post" class="mp-form">
+            <input type="hidden" name="id" id="mpEditId" value="" />
+            <label class="mp-field">
+                <span>Nama PIC *</span>
+                <input type="text" name="name" id="mpEditName" maxlength="100" autocomplete="off" required />
+            </label>
+            <label class="mp-field">
+                <span>JoinDate *</span>
+                <input type="date" name="joinDate" id="mpEditJoin" value="" />
+                <small>Tanggal pertama PIC bergabung (YYYY-MM-DD, tidak boleh di masa depan).</small>
+            </label>
+            <label class="mp-field">
+                <span>ResignDate</span>
+                <input type="date" name="resignDate" id="mpEditResign" value="" />
+                <small>Kosongkan bila tidak ada tanggal resign. Harus >= JoinDate.</small>
+            </label>
+            <div class="mp-form-actions">
+                <button type="button" class="mp-button mp-button-secondary" data-mp-close>Batal</button>
+                <button type="submit" class="mp-button mp-button-primary">Simpan</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/master-pic.js" asp-append-version="true"></script>
+}

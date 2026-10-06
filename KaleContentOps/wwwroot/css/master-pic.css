@@ -1,0 +1,358 @@
+/*
+ * Phase 2B - Master PIC lifecycle management page.
+ * Every selector is scoped under .master-pic-page so this stylesheet cannot
+ * leak into other pages (content-log / winning-content / daily-summary /
+ * targets / team-performance are intentionally untouched).
+ * Palette mirrors the existing Kale dark theme used by admin.css/daily-summary.css.
+ */
+.master-pic-page {
+    --mp-card: #111a27;
+    --mp-card-2: #151f2e;
+    --mp-line: #263346;
+    --mp-line-soft: #1e2a3d;
+    --mp-muted: #8996a8;
+    --mp-text: #e7edf5;
+    --mp-blue: #356fc0;
+    --mp-green: #45d483;
+    --mp-red: #f47777;
+    max-width: 1280px;
+    margin: 0 auto;
+    color: var(--mp-text);
+}
+
+/* ============ Header ============ */
+.master-pic-page .mp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 18px;
+}
+
+.master-pic-page .mp-title h1 {
+    margin: 0;
+    color: #f4f7fb;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.master-pic-page .mp-title p {
+    margin: 6px 0 0;
+    color: var(--mp-muted);
+    font-size: 12.5px;
+}
+
+/* ============ Banners / validation feedback ============ */
+.master-pic-page .mp-banner {
+    margin-bottom: 14px;
+    padding: 9px 12px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    white-space: pre-wrap;
+}
+
+.master-pic-page .mp-banner ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.master-pic-page .mp-banner-error {
+    color: #ffc9c9;
+    background: rgba(244, 119, 119, .12);
+    border: 1px solid rgba(244, 119, 119, .35);
+}
+
+.master-pic-page .mp-banner-success {
+    color: #bff5d7;
+    background: rgba(69, 212, 131, .12);
+    border: 1px solid rgba(69, 212, 131, .32);
+}
+
+/* ============ Empty state ============ */
+.master-pic-page .mp-empty {
+    padding: 42px 24px;
+    text-align: center;
+    background: var(--mp-card);
+    border: 1px dashed var(--mp-line);
+    border-radius: 10px;
+}
+
+.master-pic-page .mp-empty-title {
+    margin: 0;
+    color: #e7edf5;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.master-pic-page .mp-empty-hint {
+    margin: 8px 0 0;
+    color: var(--mp-muted);
+    font-size: 12.5px;
+}
+
+/* ============ Table card ============ */
+.master-pic-page .mp-card {
+    background: var(--mp-card);
+    border: 1px solid var(--mp-line);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.master-pic-page .mp-table-scroll {
+    overflow-x: auto;
+}
+
+.master-pic-page .mp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    min-width: 860px;
+}
+
+.master-pic-page .mp-table th {
+    padding: 10px 14px;
+    color: #8795a9;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-align: left;
+    background: var(--mp-card-2);
+    border-bottom: 1px solid var(--mp-line);
+    white-space: nowrap;
+}
+
+.master-pic-page .mp-table td {
+    padding: 11px 14px;
+    color: #dce5f0;
+    border-bottom: 1px solid var(--mp-line-soft);
+    white-space: nowrap;
+}
+
+.master-pic-page .mp-table tbody tr:hover td {
+    background: rgba(255, 255, 255, .025);
+}
+
+.master-pic-page .mp-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.master-pic-page .mp-name {
+    font-weight: 600;
+    color: #f0f5fa;
+}
+
+.master-pic-page .mp-mono {
+    font-variant-numeric: tabular-nums;
+    color: #c6d1e0;
+}
+
+.master-pic-page .mp-muted {
+    color: var(--mp-muted);
+}
+
+.master-pic-page .mp-actions-col {
+    text-align: right;
+}
+
+/* ============ Status pill ============ */
+.master-pic-page .mp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.master-pic-page .mp-pill::before {
+    content: '\25CF';
+    font-size: 9px;
+}
+
+.master-pic-page .mp-pill-active {
+    color: var(--mp-green);
+    background: rgba(69, 212, 131, .12);
+}
+
+.master-pic-page .mp-pill-inactive {
+    color: var(--mp-red);
+    background: rgba(244, 119, 119, .12);
+}
+
+.master-pic-page .mp-note {
+    display: inline-block;
+    margin-left: 6px;
+    color: #d8b96a;
+    font-size: 10.5px;
+}
+
+/* ============ Buttons ============ */
+.master-pic-page .mp-button,
+.master-pic-page .mp-action {
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.master-pic-page .mp-button-primary {
+    color: white;
+    font-weight: 600;
+    background: var(--mp-blue);
+    border: 1px solid var(--mp-blue);
+}
+
+.master-pic-page .mp-button-primary:hover {
+    background: #3f7fd4;
+    border-color: #3f7fd4;
+}
+
+.master-pic-page .mp-button-secondary {
+    color: #cbd6e5;
+    background: transparent;
+    border: 1px solid var(--mp-line);
+}
+
+.master-pic-page .mp-button-secondary:hover {
+    color: white;
+    border-color: #52657e;
+}
+
+.master-pic-page .mp-action {
+    color: #cbd6e5;
+    background: transparent;
+    border: 1px solid var(--mp-line);
+    padding: 5px 10px;
+    font-size: 11px;
+}
+
+.master-pic-page .mp-action:hover {
+    color: white;
+    border-color: #52657e;
+}
+
+.master-pic-page .mp-action-danger {
+    color: #f0a2a2;
+    border-color: rgba(244, 119, 119, .35);
+}
+
+.master-pic-page .mp-action-danger:hover {
+    color: white;
+    background: rgba(244, 119, 119, .15);
+    border-color: var(--mp-red);
+}
+
+.master-pic-page .mp-hint {
+    margin: 12px 2px 0;
+    color: var(--mp-muted);
+    font-size: 11.5px;
+}
+
+/* ============ Modal (create / edit) ============ */
+.master-pic-page .mp-modal {
+    position: fixed;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    width: min(460px, calc(100vw - 32px));
+    padding: 18px;
+    background: #172232;
+    border: 1px solid #34445a;
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
+}
+
+.master-pic-page .mp-modal-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.master-pic-page .mp-modal-top strong {
+    display: block;
+    color: #f0f5fa;
+    font-size: 14px;
+}
+
+.master-pic-page .mp-modal-top small {
+    display: block;
+    margin-top: 3px;
+    color: var(--mp-muted);
+    font-size: 11px;
+}
+
+.master-pic-page .mp-close {
+    color: #aab7c7;
+    background: transparent;
+    border: 0;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.master-pic-page .mp-close:hover {
+    color: white;
+}
+
+.master-pic-page .mp-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.master-pic-page .mp-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.master-pic-page .mp-field span {
+    color: #aab7c7;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.master-pic-page .mp-field input {
+    padding: 8px 10px;
+    color: var(--mp-text);
+    font-size: 12.5px;
+    font-family: inherit;
+    background: #121824;
+    border: 1px solid var(--mp-line);
+    border-radius: 6px;
+    outline: none;
+}
+
+.master-pic-page .mp-field input:focus {
+    border-color: #5b7fff;
+}
+
+.master-pic-page .mp-field small {
+    color: var(--mp-muted);
+    font-size: 10.5px;
+}
+
+.master-pic-page .mp-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+/* ============ Responsive ============ */
+@media (max-width: 768px) {
+    .master-pic-page .mp-header {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .master-pic-page .mp-modal {
+        top: 60px;
+    }
+}
