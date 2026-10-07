@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using KaleContentOps.Data;
 using KaleContentOps.Models;
 using KaleContentOps.Services;
+using KaleContentOps.Services.Targets;
 using KaleContentOps.Services.TeamPerformance;
 using KaleContentOps.ViewModels;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +37,11 @@ public class TeamPerformanceServiceTests
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             Db = new AppDbContext(options);
-            Service = new TeamPerformanceService(Db, new StubShopTimeZone(new DateOnly(2026, 9, 24)));
+            // Phase 4: TeamPerformanceService now also takes ITargetService. The REAL
+            // TargetService runs over the same store so target resolution stays genuine
+            // (no stub, no duplicated SCD-2 logic). Assertions below are unchanged.
+            var clock = new StubShopTimeZone(new DateOnly(2026, 9, 24));
+            Service = new TeamPerformanceService(Db, clock, new TargetService(Db, clock));
         }
 
         public MasterPic Pic(string name, bool isActive = true)

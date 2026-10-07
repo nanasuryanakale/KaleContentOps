@@ -14,6 +14,18 @@
     static string Dash() => "\u2014";
     string Num(long value) => value.ToString("N0", IdCulture);
 
+    // Phase 4 signed-off display conventions (display precision ONLY - Status is always
+    // computed by the service from the unrounded values):
+    //   Target Adil -> N0;  Selisih -> signed 0-dp (+5 / 0 / -3);  Status -> dot badge.
+    string TargetText(decimal? targetAdil) => targetAdil.HasValue ? targetAdil.Value.ToString("N0", IdCulture) : Dash();
+    string SelisihText(decimal? selisih) => selisih.HasValue ? selisih.Value.ToString("+0;-0;0", IdCulture) : Dash();
+    string StatusBadgeClass(string status) => status switch
+    {
+        KaleContentOps.ViewModels.TeamPerformanceStatus.Achieved => "tp-badge tp-badge-success",
+        KaleContentOps.ViewModels.TeamPerformanceStatus.NotAchieved => "tp-badge tp-badge-danger",
+        _ => "tp-badge tp-badge-pending"
+    };
+
     // Mockup card caption period, e.g. "7 Agu–5 Sep 2026" (display formatting ONLY).
     var IdMonths = new[] { "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des" };
     string ShortDate(DateTime d) => $"{d.Day} {IdMonths[d.Month - 1]}";
@@ -146,18 +158,22 @@
                                     <span class="tp-pic-name">@row.PicName</span>
                                     <span class="tp-status @(row.IsActive ? "tp-status-active" : "tp-status-inactive")">@(row.IsActive ? "Aktif" : "Nonaktif")</span>
                                 </td>
-                                <td class="tp-col-num tp-col-upload">@Num(row.ContentCount)</td>
-                                @* Phase 3D: Target/Selisih/Status formulas are NOT DEFINED yet - visual
-                                   placeholders only (em dash + neutral badge), never invented values. *@
-                                <td class="tp-col-num tp-col-target">@Dash()</td>
-                                <td class="tp-col-num tp-col-selisih">@Dash()</td>
-                                <td class="tp-col-status"><span class="tp-badge tp-badge-pending">Perlu dilengkapi</span></td>
+                                @* Phase 4: real values from TeamPerformanceViewModel (service-computed).
+                                   Target Adil / Selisih are null when no target version covers the
+                                   period -> em dash, and Status then renders the neutral
+                                   "Perlu dilengkapi" (never a fabricated zero, never Tercapai).
+                                   Jumlah Upload is the achievement Actual (AUTO_GMV_LIVE excluded). *@
+                                <td class="tp-col-num tp-col-upload">@Num(row.Actual)</td>
+                                <td class="tp-col-num tp-col-target">@TargetText(row.TargetAdil)</td>
+                                <td class="tp-col-num tp-col-selisih">@SelisihText(row.Selisih)</td>
+                                <td class="tp-col-status"><span class="@StatusBadgeClass(row.Status)">@row.Status</span></td>
                             </tr>
                         }
                         @if (Model.UnassignedContentCount > 0)
                         {
                             @* Mockup "Belum Diisi" row: team workload display only - not an individual
-                               PIC, no individual Target and no individual Status (locked rule 6/7). *@
+                               PIC, so it receives NO individual Target, NO Selisih and NO Status
+                               (locked rules 7/10): dashes + neutral badge only. *@
                             <tr class="tp-row tp-row-unassigned">
                                 <td class="tp-col-pic"><span class="tp-pic-name">Belum Diisi</span></td>
                                 <td class="tp-col-num tp-col-upload">@Num(Model.UnassignedContentCount)</td>
@@ -172,7 +188,8 @@
         }
     </section>
 
-    @* Mockup footnote: visual structure only, wording reports the real business-rule dependency. *@
+    @* Phase 4 footnote: same structure/classes as the mockup, wording now documents the
+       signed-off Team Performance target rules (formula, AUTO exclusion, Belum Diisi). *@
     <div class="tp-footnote" role="note">
         <span class="tp-footnote-icon" aria-hidden="true">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -182,11 +199,16 @@
             </svg>
         </span>
         <div>
-            Kolom <strong>Target Adil</strong>, <strong>Selisih</strong>, dan <strong>Status</strong> masih placeholder visual:
-            formula, sumber, dan granularitas target belum disepakati (keputusan bisnis tertunda), sehingga nilainya sengaja
-            ditampilkan kosong (&mdash;) tanpa angka fiktif. Baris <strong>Belum Diisi</strong> menunjukkan video yang PIC-nya
-            belum dicatat - masuk beban tim, bukan PIC individual, tanpa target &amp; status sendiri. PIC eligible ditentukan
-            masa kerja (JoinDate/ResignDate) yang overlap dengan periode; konten arsip tetap dihitung.
+            Kolom <strong>Target Adil</strong> = target tim periode ini (NON_KK + KK dari Menu Targets,
+            dihitung dengan aturan target harian yang sudah ada: total target mingguan per hari &divide; 7,
+            hari tanpa target dihitung 0) dibagi rata ke seluruh <strong>PIC eligible</strong> - tanpa
+            prorata. <strong>Selisih</strong> = Actual &minus; Target Adil (negatif tetap negatif) dan
+            <strong>Status</strong> = Tercapai bila Actual &ge; Target Adil, atau <strong>Perlu dilengkapi</strong>
+            bila belum ada target untuk periode ini (bukan 0). <strong>AUTO_GMV_LIVE</strong> tidak dihitung
+            dalam Actual individual (tetap masuk total beban tim). Baris <strong>Belum Diisi</strong> menunjukkan
+            video yang PIC-nya belum dicatat - masuk beban tim, tanpa target &amp; status sendiri.
+            PIC eligible ditentukan masa kerja (JoinDate/ResignDate) yang overlap dengan periode;
+            konten arsip tetap dihitung.
         </div>
     </div>
 </div>

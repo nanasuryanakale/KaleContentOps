@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using KaleContentOps.Data;
 using KaleContentOps.Models;
 using KaleContentOps.Services;
+using KaleContentOps.Services.Targets;
 using KaleContentOps.Services.TeamPerformance;
 using KaleContentOps.ViewModels;
 using Microsoft.EntityFrameworkCore;
@@ -46,7 +47,10 @@ public class TeamPerformanceEmploymentPeriodTests
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options;
             Db = new AppDbContext(options);
-            Service = new TeamPerformanceService(Db, new StubShopTimeZone(new DateOnly(2026, 9, 24)));
+            // Phase 4: TeamPerformanceService now also takes ITargetService (real TargetService
+            // over the same store). Eligibility assertions below are unchanged.
+            var clock = new StubShopTimeZone(new DateOnly(2026, 9, 24));
+            Service = new TeamPerformanceService(Db, clock, new TargetService(Db, clock));
         }
 
         /// <summary>

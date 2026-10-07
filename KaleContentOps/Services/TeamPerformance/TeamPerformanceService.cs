@@ -1,5 +1,6 @@
 using KaleContentOps.Data;
 using KaleContentOps.Services;
+using KaleContentOps.Services.Targets;
 using KaleContentOps.ViewModels;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,10 +9,12 @@ namespace KaleContentOps.Services.TeamPerformance;
 /// <summary>
 /// Team Performance business service (Phase 3 foundation).
 ///
-/// Query strategy: set-based - at most three round trips per BuildAsync regardless of
-/// range length (period content, period metrics, MasterPic list). Latest metric per log
-/// is picked in memory from only the metrics of the selected logs. No per-row queries,
-/// no Include chains, no full metric-history materialization.
+/// Query strategy: set-based - at most three round trips for the workload data (period
+/// content, period metrics, MasterPic list) plus a FIXED number of TargetService reads
+/// (targetable types, two date resolutions, one daily series), all independent of the
+/// range length and of the PIC count. Latest metric per log is picked in memory from only
+/// the metrics of the selected logs. No per-row queries, no Include chains, no per-PIC
+/// target lookups, no full metric-history materialization.
 ///
 /// Locked business rules implemented here:
 /// - Rule 1  : <c>IsArchived == true</c> content is ALWAYS counted (no archive filter).
@@ -24,16 +27,34 @@ namespace KaleContentOps.Services.TeamPerformance;
 /// - Rule 6  : the fair denominator is all ELIGIBLE PICs, including those with no content.
 /// - Rule 7/10: <c>PicId == NULL</c> is team workload only - never an individual PIC row.
 /// - Rule 9  : content with <c>VideoPostTime == NULL</c> never enters a date period.
+///
+/// Phase 4 (final business-rule sign-off) - target achievement:
+/// - Target source   : the existing weekly <c>Targets</c> system via <see cref="ITargetService"/>
+///                     (NON_KK + KK only; AUTO_GMV_LIVE has no target). SCD-2 resolution and the
+///                     daily-series engine are NEVER re-implemented here - they are reused.
+/// - Target Period   : Convention A = SUM(resolved daily weekly target) / 7 for the reporting
+///                     period (missing-target days contribute zero; 1/7/30/90-day ranges work).
+/// - Target Adil     : Team Target Period / EligiblePicCount - the SAME value for every eligible
+///                     PIC (no proration). Never a fake zero: unconfigured target stays null.
+/// - Actual (per PIC): uploads in the period assigned to that PIC, AUTO_GMV_LIVE EXCLUDED,
+///                     archived INCLUDED (individual achievement metric).
+/// - Team totals     : unchanged - AUTO_GMV_LIVE stays in workload/total, so the team total is
+///                     deliberately NOT the sum of the individual achievement Actuals.
 /// </summary>
 public sealed class TeamPerformanceService : ITeamPerformanceService
 {
+    /// <summary>Content type code that never contributes to individual achievement Actual.</summary>
+    private const string AutoGmvCode = "AUTO_GMV_LIVE";
+
     private readonly AppDbContext _db;
     private readonly IShopTimeZone _shopTimeZone;
+    private readonly ITargetService _targetService;
 
-    public TeamPerformanceService(AppDbContext db, IShopTimeZone shopTimeZone)
+    public TeamPerformanceService(AppDbContext db, IShopTimeZone shopTimeZone, ITargetService targetService)
     {
         _db = db;
         _shopTimeZone = shopTimeZone;
+        _targetService = targetService;
     }
 
     public async Task<TeamPerformanceViewModel> BuildAsync(
@@ -63,7 +84,14 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
             .Where(x => x.VideoPostTime != null
                 && x.VideoPostTime >= start
                 && x.VideoPostTime < endExclusive)
-            .Select(x => new ContentRow { Id = x.Id, PicId = x.PicId })
+            .Select(x => new ContentRow
+            {
+                Id = x.Id,
+                PicId = x.PicId,
+                // Needed only to exclude AUTO_GMV_LIVE from the individual achievement Actual.
+                // Everything else (team totals, ranking inputs) keeps every content type.
+                ContentTypeCode = x.ContentType == null ? null : x.ContentType.Code
+            })
             .ToListAsync(cancellationToken);
 
         // ---- 2) Latest metric per content log (established pattern) ----
@@ -117,6 +145,43 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
             .ToListAsync(cancellationToken);
         var eligiblePics = ApplyEmploymentPeriodFilter(pics, start, end);
 
+        // ---- 4b) Team target period (Phase 4) - REUSED from TargetService, never re-derived ----
+        var periodStart = DateOnly.FromDateTime(start);
+        var periodEnd = DateOnly.FromDateTime(end);
+
+        // Targetable content types (NON_KK / KK) come from TargetService's own read model;
+        // AUTO_GMV_LIVE never appears there because SaveTargetAsync rejects it.
+        var targetable = await _targetService.GetCurrentTargetsAsync(cancellationToken);
+        var nonKkTypeId = targetable.FirstOrDefault(x =>
+            string.Equals(x.ContentTypeCode, TargetService.NonKkCode, StringComparison.OrdinalIgnoreCase))?.ContentTypeId;
+        var kkTypeId = targetable.FirstOrDefault(x =>
+            string.Equals(x.ContentTypeCode, TargetService.KkCode, StringComparison.OrdinalIgnoreCase))?.ContentTypeId;
+
+        // "Configured for the applicable period" = a target version covers the period END date.
+        // TargetService keeps coverage gapless from the first version onward (SaveTargetAsync
+        // trims neighbours), so coverage on EndDate <=> some coverage inside the period.
+        // Date-based resolution via the sanctioned API - never latest-row-wins, never an
+        // in-memory re-implementation of EffectiveFrom/EffectiveTo.
+        var nonKkVersion = nonKkTypeId is int nonKkId
+            ? await _targetService.GetTargetForDateAsync(nonKkId, periodEnd, cancellationToken)
+            : null;
+        var kkVersion = kkTypeId is int kkId
+            ? await _targetService.GetTargetForDateAsync(kkId, periodEnd, cancellationToken)
+            : null;
+        var targetConfigured = nonKkVersion != null || kkVersion != null;
+
+        // Convention A (locked): Team Target Period = SUM(resolved daily weekly target) / 7.
+        // Missing-target days contribute zero (same engine Daily Summary uses).
+        var targetSeries = await _targetService.GetDailyTargetSeriesAsync(periodStart, periodEnd, cancellationToken);
+        var teamTargetPeriod = targetSeries.NonKk.UploadPeriodTarget + targetSeries.Kk.UploadPeriodTarget;
+
+        // Target Adil (locked): Team Target Period / eligible PIC count, identical for every
+        // eligible PIC, no proration. Null when the target is not configured (no fake zero)
+        // and when there is no eligible PIC (no rows => no division at all).
+        var targetAdil = targetConfigured && eligiblePics.Count > 0
+            ? teamTargetPeriod / eligiblePics.Count
+            : (decimal?)null;
+
         // ---- 5) Per-PIC aggregation ----
         var contentByPicId = contentRows
             .Where(x => x.PicId != null)
@@ -129,7 +194,10 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
                 contentByPicId.TryGetValue(pic.Id, out var picContent);
                 picContent ??= new List<ContentRow>();
                 var views = picContent.Sum(x => ViewsOf(x.Id));
-                return new PicAggregate(pic, picContent.Count, views);
+                // Individual achievement Actual: everything EXCEPT AUTO_GMV_LIVE (archived stays).
+                var achievementActual = picContent.Count(x =>
+                    !string.Equals(x.ContentTypeCode, AutoGmvCode, StringComparison.OrdinalIgnoreCase));
+                return new PicAggregate(pic, picContent.Count, achievementActual, views);
             })
             .ToList();
 
@@ -149,11 +217,11 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
         var rows = new List<TeamPerformancePicRow>(aggregates.Count);
         for (var i = 0; i < ranked.Count; i++)
         {
-            rows.Add(BuildRow(ranked[i], i + 1, totalContentCount, totalViews));
+            rows.Add(BuildRow(ranked[i], i + 1, totalContentCount, totalViews, targetAdil, targetConfigured));
         }
         foreach (var aggregate in withoutContent)
         {
-            rows.Add(BuildRow(aggregate, null, totalContentCount, totalViews));
+            rows.Add(BuildRow(aggregate, null, totalContentCount, totalViews, targetAdil, targetConfigured));
         }
 
         return new TeamPerformanceViewModel
@@ -169,6 +237,8 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
             UnassignedViews = unassignedViews,
             EligiblePicCount = eligiblePics.Count,
             PicsWithContentCount = ranked.Count,
+            TeamTargetPeriod = teamTargetPeriod,
+            TargetConfigured = targetConfigured,
             EmploymentPeriodDataAvailable = EmploymentPeriodDataAvailable,
             Pics = rows
         };
@@ -178,13 +248,19 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
         PicAggregate aggregate,
         int? rank,
         int totalContentCount,
-        long totalViews) => new()
+        long totalViews,
+        decimal? targetAdil,
+        bool targetConfigured) => new()
         {
             Rank = rank,
             PicId = aggregate.Pic.Id,
             PicName = aggregate.Pic.Name,
             IsActive = aggregate.Pic.IsActive,
             ContentCount = aggregate.ContentCount,
+            // Achievement Actual (AUTO_GMV_LIVE excluded) - the value Selisih/Status compare.
+            Actual = aggregate.AchievementActual,
+            TargetAdil = targetAdil,
+            TargetConfigured = targetConfigured && targetAdil.HasValue,
             TotalViews = aggregate.TotalViews,
             AverageViewsPerContent = aggregate.ContentCount == 0
                 ? null
@@ -242,6 +318,9 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
     {
         public long Id { get; init; }
         public int? PicId { get; init; }
+
+        /// <summary>Content type CODE (null when unclassified) - only used to drop AUTO_GMV_LIVE.</summary>
+        public string? ContentTypeCode { get; init; }
     }
 
     private sealed class MetricRow
@@ -265,5 +344,5 @@ public sealed class TeamPerformanceService : ITeamPerformanceService
         public DateOnly? ResignDate { get; init; }
     }
 
-    private readonly record struct PicAggregate(PicInfo Pic, int ContentCount, long TotalViews);
+    private readonly record struct PicAggregate(PicInfo Pic, int ContentCount, int AchievementActual, long TotalViews);
 }
