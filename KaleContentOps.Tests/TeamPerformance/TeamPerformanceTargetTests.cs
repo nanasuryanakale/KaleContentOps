@@ -782,7 +782,7 @@ public class TeamPerformanceTargetUiTests
         return log;
     }
 
-    private static async Task SeedUploadTargetAsync(AppDbContext db, IShopTimeZone clock, int contentTypeId, int upload)
+    private static async Task SeedUploadTargetAsync(AppDbContext db, IShopTimeZone clock, int contentTypeId, int upload, DateOnly? effectiveDate = null)
     {
         var targets = new TargetService(db, clock);
         var result = await targets.SaveTargetAsync(new TargetSaveRequest
@@ -791,7 +791,7 @@ public class TeamPerformanceTargetUiTests
             TargetUpload = upload,
             TargetViews = 0,
             Today = clock.Today(),
-            EffectiveDate = TargetStartDay
+            EffectiveDate = effectiveDate ?? TargetStartDay
         });
         Assert.True(result.Success, result.ErrorMessage);
     }
@@ -818,9 +818,10 @@ public class TeamPerformanceTargetUiTests
             var html = await client.GetStringAsync(Query);
 
             // Team Target Period 4 / 1 eligible PIC -> Target Adil 4; Actual 2 -> Selisih -2.
+            // Display precision: Target Adil and Selisih render ONE decimal in id-ID culture.
             Assert.Contains("<td class=\"tp-col-num tp-col-upload\">2</td>", html);
-            Assert.Contains("<td class=\"tp-col-num tp-col-target\">4</td>", html);
-            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">-2</td>", html);
+            Assert.Contains("<td class=\"tp-col-num tp-col-target\">4,0</td>", html);
+            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">-2,0</td>", html);
             Assert.Contains(">Belum Tercapai<", html);
             Assert.Contains("tp-badge-danger", html);
             Assert.DoesNotContain("tp-badge-pending", html); // no neutral state when target exists
@@ -877,8 +878,8 @@ public class TeamPerformanceTargetUiTests
             var client = await factory.SignInAsync(user);
             var html = await client.GetStringAsync(Query);
 
-            // Individual row: Actual 1, Target 4, Selisih -3, Belum Tercapai.
-            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">-3</td>", html);
+            // Individual row: Actual 1, Target 4, Selisih -3 (display -3,0), Belum Tercapai.
+            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">-3,0</td>", html);
 
             var rowStart = html.IndexOf("tp-row-unassigned", StringComparison.Ordinal);
             Assert.True(rowStart >= 0, "Belum Diisi row must render");
@@ -913,7 +914,7 @@ public class TeamPerformanceTargetUiTests
 
             Assert.Contains("Zoe", html);                                                    // row still present
             Assert.Contains($"<td class=\"tp-col-num tp-col-upload\">0</td>", html);          // Actual 0
-            Assert.Contains($"<td class=\"tp-col-num tp-col-selisih\">-2</td>", html);        // 0 - 2
+            Assert.Contains($"<td class=\"tp-col-num tp-col-selisih\">-2,0</td>", html);      // 0 - 2, one-decimal display
             Assert.Contains(">Belum Tercapai<", html);
         }
     }
@@ -964,10 +965,131 @@ public class TeamPerformanceTargetUiTests
             var html = await client.GetStringAsync(Query);
 
             Assert.Contains($"<td class=\"tp-col-num tp-col-upload\">0</td>", html); // individual Actual 0
-            Assert.Contains("<td class=\"tp-col-num tp-col-target\">4</td>", html);
-            Assert.Contains($"<td class=\"tp-col-num tp-col-selisih\">-4</td>", html); // 0 - 4
+            Assert.Contains("<td class=\"tp-col-num tp-col-target\">4,0</td>", html); // one-decimal display
+            Assert.Contains($"<td class=\"tp-col-num tp-col-selisih\">-4,0</td>", html); // 0 - 4, one-decimal display
             Assert.Contains(">Belum Tercapai<", html);
             Assert.Contains("<div class=\"tp-summary-value\">1</div>", html);          // team total keeps AUTO
+        }
+    }
+
+    // ==================================================================
+    // Display precision (manual-QA follow-up): Target Adil and Selisih
+    // render exactly ONE decimal in id-ID culture (6,3 / -0,3 / +0,7 /
+    // 0,0), while Status keeps comparing the FULL-PRECISION underlying
+    // value - never the display-rounded string. Business calculation is
+    // untouched; these tests pin the presentation contract.
+    // ==================================================================
+
+    /// <summary>Substring of ONE PIC's table row (from its name cell to the row end),
+    /// so assertions cannot match another PIC's cells by accident.</summary>
+    private static string RowSegment(string html, string picName)
+    {
+        var nameIndex = html.IndexOf($">{picName}</span>", StringComparison.Ordinal);
+        Assert.True(nameIndex >= 0, $"PIC row '{picName}' must render");
+        var rowEnd = html.IndexOf("</tr>", nameIndex, StringComparison.Ordinal);
+        Assert.True(rowEnd > nameIndex, $"PIC row '{picName}' must be closed");
+        return html.Substring(nameIndex, rowEnd - nameIndex);
+    }
+
+    [Fact]
+    public async Task DisplayPrecision_RoundedDisplay_Does_Not_Change_FullPrecision_Status()
+    {
+        // The exact manual-QA ambiguity case, reproduced in isolated MVC infrastructure:
+        // TeamTargetPeriod = 4 covered days x (NON_KK 24 + KK 20) / 7 = 13.7143 + 11.4286
+        // = 25.1429; eligible PICs = 4 -> Target Adil = 25.1429 / 4 = 6.285725.
+        // Display: 6,3  |  Actual 6 -> Selisih -0.285725 -> display -0,3  |  Status MUST
+        // stay "Belum Tercapai" because 6 < 6.285725 (full precision, not the 6,3 display).
+        const string user = "tp4.ui.disp1dp";
+        var factory = await CreateReadyAsync(user);
+        using (factory)
+        {
+            using (var scope = factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var types = await SeedContentTypesAsync(db);
+                AddPic(db, "Sari"); // Actual 6
+                AddPic(db, "Tia");  // Actual 7 -> positive Selisih
+                AddPic(db, "Uco");  // eligible, zero content
+                AddPic(db, "Vina"); // eligible, zero content
+                var sari = db.MasterPics.Single(p => p.Name == "Sari");
+                var tia = db.MasterPics.Single(p => p.Name == "Tia");
+                for (var i = 0; i < 6; i++)
+                    AddLog(db, sari.Id, new DateTime(2026, 9, 3 + (i / 2), 10, 0, 0), types.NonKk);
+                for (var i = 0; i < 7; i++)
+                    AddLog(db, tia.Id, new DateTime(2026, 9, 1 + i, 11, 0, 0), types.NonKk);
+                var clock = scope.ServiceProvider.GetRequiredService<IShopTimeZone>();
+                // Partial coverage: effective 2026-09-04 -> 4 covered days in 2026-09-01..07.
+                await SeedUploadTargetAsync(db, clock, types.NonKk, upload: 24, effectiveDate: new DateOnly(2026, 9, 4));
+                await SeedUploadTargetAsync(db, clock, types.Kk, upload: 20, effectiveDate: new DateOnly(2026, 9, 4));
+            }
+
+            var client = await factory.SignInAsync(user);
+            var html = await client.GetStringAsync(Query);
+
+            // A: Target Adil 6.285725 renders "6,3" (id-ID comma, exactly one decimal).
+            // B/E: Actual 6 -> Selisih -0.285725 renders "-0,3", Status stays Belum Tercapai.
+            var sariRow = RowSegment(html, "Sari");
+            Assert.Contains("<td class=\"tp-col-num tp-col-upload\">6</td>", sariRow);
+            Assert.Contains("<td class=\"tp-col-num tp-col-target\">6,3</td>", sariRow);
+            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">-0,3</td>", sariRow);
+            Assert.Contains(">Belum Tercapai<", sariRow);
+            Assert.Contains("tp-badge-danger", sariRow);
+
+            // C: positive small Selisih keeps the '+' sign: 7 - 6.285725 = +0.714275 -> "+0,7".
+            // Razor HTML-encodes '+' as &#x2B; (same convention as the Dash constant above):
+            // the raw HTML holds "&#x2B;0,7" and the BROWSER renders the cell as "+0,7".
+            var tiaRow = RowSegment(html, "Tia");
+            Assert.Contains("<td class=\"tp-col-num tp-col-upload\">7</td>", tiaRow);
+            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">&#x2B;0,7</td>", tiaRow);
+            Assert.Contains(">Tercapai<", tiaRow); // 7 >= 6.285725 (full precision)
+            Assert.DoesNotContain("Belum Tercapai", tiaRow);
+
+            // Zero-content eligible PIC still shows the shared Target Adil at 1 decimal.
+            var ucoRow = RowSegment(html, "Uco");
+            Assert.Contains("<td class=\"tp-col-num tp-col-upload\">0</td>", ucoRow);
+            Assert.Contains("<td class=\"tp-col-num tp-col-target\">6,3</td>", ucoRow);
+            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">-6,3</td>", ucoRow); // 0 - 6.285725
+            Assert.Contains(">Belum Tercapai<", ucoRow);
+        }
+    }
+
+    [Fact]
+    public async Task DisplayPrecision_ExactMatch_Shows_0_0_And_Tercapai()
+    {
+        // TeamTargetPeriod = 7 days x 24 / 7 = 24; eligible PICs = 4 -> Target Adil 6.0
+        // exactly. Actual 6 -> Selisih 0.0 renders "0,0" (never "+0,0") and Status stays
+        // "Tercapai" (Actual >= Target Adil on the full-precision value).
+        const string user = "tp4.ui.dispexact";
+        var factory = await CreateReadyAsync(user);
+        using (factory)
+        {
+            using (var scope = factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var types = await SeedContentTypesAsync(db);
+                AddPic(db, "Enam"); // Actual == Target Adil
+                AddPic(db, "Satu");
+                AddPic(db, "Dua");
+                AddPic(db, "Tiga");
+                var enam = db.MasterPics.Single(p => p.Name == "Enam");
+                for (var i = 0; i < 6; i++)
+                    AddLog(db, enam.Id, new DateTime(2026, 9, 1 + i, 9, 0, 0), types.NonKk);
+                var clock = scope.ServiceProvider.GetRequiredService<IShopTimeZone>();
+                await SeedUploadTargetAsync(db, clock, types.NonKk, upload: 24); // full-week coverage
+            }
+
+            var client = await factory.SignInAsync(user);
+            var html = await client.GetStringAsync(Query);
+
+            var enamRow = RowSegment(html, "Enam");
+            // D: exact zero Selisih renders "0,0" (no sign, exactly one decimal).
+            Assert.Contains("<td class=\"tp-col-num tp-col-upload\">6</td>", enamRow);
+            Assert.Contains("<td class=\"tp-col-num tp-col-target\">6,0</td>", enamRow);
+            Assert.Contains("<td class=\"tp-col-num tp-col-selisih\">0,0</td>", enamRow);
+            // F: Actual == Target -> Tercapai, success badge.
+            Assert.Contains(">Tercapai<", enamRow);
+            Assert.Contains("tp-badge-success", enamRow);
+            Assert.DoesNotContain("Belum Tercapai", enamRow);
         }
     }
 }

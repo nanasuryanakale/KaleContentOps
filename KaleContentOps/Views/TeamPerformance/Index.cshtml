@@ -14,11 +14,14 @@
     static string Dash() => "\u2014";
     string Num(long value) => value.ToString("N0", IdCulture);
 
-    // Phase 4 signed-off display conventions (display precision ONLY - Status is always
-    // computed by the service from the unrounded values):
-    //   Target Adil -> N0;  Selisih -> signed 0-dp (+5 / 0 / -3);  Status -> dot badge.
-    string TargetText(decimal? targetAdil) => targetAdil.HasValue ? targetAdil.Value.ToString("N0", IdCulture) : Dash();
-    string SelisihText(decimal? selisih) => selisih.HasValue ? selisih.Value.ToString("+0;-0;0", IdCulture) : Dash();
+    // Phase 4 display conventions (display precision ONLY - Status is always computed by
+    // the service from the full-precision value, NEVER from these rounded strings):
+    //   Target Adil -> 1 decimal via id-ID culture (6,3 / 11,0 / 4,7);
+    //   Selisih -> signed 1 decimal (+0,7 / 0,0 / -0,3 / -5,3);
+    //   Status -> dot badge. Custom-format '.' is the culture decimal placeholder, so
+    //   id-ID renders ',' - no hard-coded string replacement.
+    string TargetText(decimal? targetAdil) => targetAdil.HasValue ? targetAdil.Value.ToString("N1", IdCulture) : Dash();
+    string SelisihText(decimal? selisih) => selisih.HasValue ? selisih.Value.ToString("+0.0;-0.0;0.0", IdCulture) : Dash();
     string StatusBadgeClass(string status) => status switch
     {
         KaleContentOps.ViewModels.TeamPerformanceStatus.Achieved => "tp-badge tp-badge-success",
