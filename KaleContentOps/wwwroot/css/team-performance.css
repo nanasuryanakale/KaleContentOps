@@ -1,0 +1,253 @@
+/*
+ * Team Performance page styles.
+ * EVERY selector is scoped under .team-performance-page so no other page is affected.
+ * Deliberately a NEW file: content-log.css / winning-content.css / daily-summary.css /
+ * targets.css are untouched. Visual language follows the existing dark reporting pages,
+ * but the layout is Team-Performance specific (summary cards + PIC workload table).
+ * The date-range popover reuses the shared calendar-popup.css; only the local trigger
+ * and panel styling is scoped here.
+ */
+
+.team-performance-page {
+    --tp-panel: #121824;
+    --tp-panel-2: #172038;
+    --tp-border: #2a3447;
+    --tp-border-soft: #232d40;
+    --tp-text: #f4f7ff;
+    --tp-muted: #8791aa;
+    --tp-blue: #78a6ff;
+    --tp-green: #45d483;
+    --tp-red: #f47777;
+    --tp-yellow: #f3b91f;
+    --tp-radius: 11px;
+    color: var(--tp-text);
+}
+
+/* ============ Header ============ */
+.team-performance-page .tp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.team-performance-page .tp-title h1 { margin: 0 0 6px; font-size: 25px; font-weight: 700; letter-spacing: -.3px; }
+.team-performance-page .tp-title p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--tp-muted); max-width: 640px; }
+
+/* ============ Date range (Daily Summary parity) ============ */
+.team-performance-page .tp-header-anchor { position: relative; flex: 0 0 auto; }
+.team-performance-page .date-range-button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    color: var(--tp-text);
+    background: #111a27;
+    border: 1px solid #263346;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.team-performance-page .date-range-button:hover { border-color: #52657e; background: #151f2e; }
+.team-performance-page .date-range-button strong { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.team-performance-page .calendar-icon { display: inline-flex; color: var(--tp-blue); }
+
+.team-performance-page .date-picker-panel {
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(680px, calc(100vw - 48px));
+    padding: 16px;
+    position: absolute;
+    z-index: 30;
+    background: #172232;
+    border: 1px solid #34445a;
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .5);
+}
+.team-performance-page .date-picker-topline { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
+.team-performance-page .date-picker-topline strong { display: block; color: #f0f5fa; font-size: 14px; }
+.team-performance-page .date-picker-topline small { display: block; margin-top: 3px; color: var(--tp-muted); font-size: 11px; }
+.team-performance-page .close-button { color: #aab7c7; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; }
+.team-performance-page .close-button:hover { color: white; }
+
+.team-performance-page .date-picker-body { display: flex; gap: 18px; align-items: stretch; }
+.team-performance-page .preset-list { flex: 0 0 170px; display: flex; flex-direction: column; gap: 6px; padding-right: 16px; border-right: 1px solid #1e2a3d; }
+.team-performance-page .preset-title { margin-bottom: 4px; color: #8795a9; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.team-performance-page .preset-list button { padding: 8px 11px; color: #cbd6e5; text-align: left; font-size: 12px; background: transparent; border: 1px solid #263346; border-radius: 6px; cursor: pointer; }
+.team-performance-page .preset-list button:hover { color: white; border-color: var(--tp-blue); background: rgba(77, 159, 255, .08); }
+
+.team-performance-page .calendar-area { flex: 1 1 auto; min-width: 0; }
+
+.team-performance-page .date-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #1e2a3d; }
+.team-performance-page .date-picker-selected { color: #cbd6e5; font-size: 12px; }
+.team-performance-page .button-secondary,
+.team-performance-page .button-primary { padding: 7px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; }
+.team-performance-page .button-secondary { color: #cbd6e5; background: transparent; border: 1px solid #263346; }
+.team-performance-page .button-secondary:hover { color: white; border-color: #52657e; }
+.team-performance-page .button-primary { color: white; font-weight: 600; background: #356fc0; border: 1px solid #356fc0; }
+.team-performance-page .button-primary:hover { background: #3f7fd4; border-color: #3f7fd4; }
+
+/* ============ Provisional-denominator notice ============ */
+.team-performance-page .tp-notice {
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #f6d98a;
+    background: rgba(243, 185, 31, .08);
+    border: 1px solid rgba(243, 185, 31, .3);
+    border-radius: 8px;
+}
+
+/* ============ Summary cards ============ */
+.team-performance-page .tp-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+    margin-bottom: 26px;
+}
+.team-performance-page .tp-card {
+    background: var(--tp-panel);
+    border: 1px solid var(--tp-border);
+    border-radius: var(--tp-radius);
+    padding: 14px 16px;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, .12);
+    box-sizing: border-box;
+    min-width: 0;
+}
+.team-performance-page .tp-summary-label { font-size: 10px; font-weight: 700; letter-spacing: .09em; color: #7e8aa5; }
+.team-performance-page .tp-summary-value { margin: 6px 0 4px; font-size: 24px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.team-performance-page .tp-summary-hint { font-size: 11px; line-height: 1.45; color: var(--tp-muted); }
+
+/* ============ Sections / mockup card caption ============ */
+.team-performance-page .tp-section { margin-bottom: 0; }
+.team-performance-page .tp-card-head {
+    padding: 15px 20px 13px;
+    color: #7e8aa5;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--tp-border-soft);
+}
+.team-performance-page .tp-empty { margin: 8px 4px 4px; font-size: 12px; color: var(--tp-muted); }
+
+/* ============ PIC upload table (mockup structure) ============ */
+.team-performance-page .tp-table-wrap {
+    background: var(--tp-panel);
+    border: 1px solid var(--tp-border);
+    border-radius: 14px;
+    overflow: auto;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .16);
+}
+.team-performance-page .tp-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.team-performance-page .tp-table th,
+.team-performance-page .tp-table td { padding: 13px 18px; text-align: left; white-space: nowrap; }
+.team-performance-page .tp-table th {
+    padding-top: 12px;
+    padding-bottom: 10px;
+    color: #7e8aa5;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+}
+
+/* Mockup detail: the separator line spans the PIC + JUMLAH UPLOAD columns only,
+   and the last row (Belum Diisi) has no line beneath it. */
+.team-performance-page .tp-table tbody tr:not(:last-child) td.tp-col-pic,
+.team-performance-page .tp-table tbody tr:not(:last-child) td.tp-col-upload {
+    border-bottom: 1px solid var(--tp-border-soft);
+}
+
+.team-performance-page .tp-col-pic { min-width: 200px; }
+.team-performance-page .tp-pic-name { font-size: 13.5px; font-weight: 700; color: #f2f6fd; }
+.team-performance-page .tp-col-upload { width: 170px; }
+.team-performance-page .tp-col-target { width: 340px; }
+.team-performance-page .tp-col-selisih { width: 110px; }
+.team-performance-page .tp-col-status { width: 160px; }
+.team-performance-page .tp-table th.tp-col-num,
+.team-performance-page .tp-table td.tp-col-num { text-align: right; font-variant-numeric: tabular-nums; }
+.team-performance-page .tp-table th .tp-th-sub { display: inline; font-size: 9px; opacity: .75; text-transform: none; letter-spacing: .02em; }
+
+/* JUMLAH UPLOAD value: bold white (mockup); Target/Selisih placeholders stay muted */
+.team-performance-page .tp-table td.tp-col-upload { color: #fff; font-size: 13.5px; font-weight: 700; }
+.team-performance-page .tp-table td.tp-col-target,
+.team-performance-page .tp-table td.tp-col-selisih { color: var(--tp-muted); }
+
+.team-performance-page .tp-row-empty td.tp-col-upload { color: #97a3ba; font-weight: 600; }
+.team-performance-page .tp-row-unassigned .tp-pic-name { color: #dfe6f3; }
+
+/* Status chip (Aktif/Nonaktif) lives inline in the PIC cell; mockup's STATUS column
+   is reserved for the (still business-rule-blocked) target status badge. */
+.team-performance-page .tp-status {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 9px;
+    padding: 1px 7px;
+    vertical-align: middle;
+    border-radius: 9px;
+    font-size: 9.5px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.team-performance-page .tp-status-active { color: #8ff0bb; background: rgba(69, 212, 131, .14); border: 1px solid rgba(69, 212, 131, .3); }
+.team-performance-page .tp-status-inactive { color: #f0b0b0; background: rgba(244, 119, 119, .12); border: 1px solid rgba(244, 119, 119, .28); }
+
+/* Status badges (mockup): rounded pill with a leading dot */
+.team-performance-page .tp-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.team-performance-page .tp-badge::before { content: '\25CF'; font-size: 8px; }
+.team-performance-page .tp-badge-danger { color: #ff8f8f; background: rgba(244, 119, 119, .13); border: 1px solid rgba(244, 119, 119, .3); }
+.team-performance-page .tp-badge-success { color: #7ce8ac; background: rgba(69, 212, 131, .13); border: 1px solid rgba(69, 212, 131, .3); }
+.team-performance-page .tp-badge-pending { color: #aab7c7; background: #1c2637; border: 1px solid #2a3447; }
+
+/* ============ Footnote (mockup info note) ============ */
+.team-performance-page .tp-footnote {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 16px;
+    padding: 12px 15px;
+    color: #9aa5bd;
+    font-size: 11.5px;
+    line-height: 1.7;
+    background: var(--tp-panel);
+    border: 1px solid var(--tp-border-soft);
+    border-radius: 10px;
+}
+.team-performance-page .tp-footnote strong { color: #c8d2e4; font-weight: 600; }
+.team-performance-page .tp-footnote-icon { display: inline-flex; flex: 0 0 auto; margin-top: 1px; color: #7e8aa5; }
+
+/* ============ Responsive ============ */
+@media (max-width: 900px) {
+    .team-performance-page .date-picker-body { flex-direction: column; }
+    .team-performance-page .preset-list {
+        flex: 0 0 auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding-right: 0;
+        border-right: 0;
+        border-bottom: 1px solid #1e2a3d;
+        padding-bottom: 12px;
+    }
+    .team-performance-page .preset-title { width: 100%; }
+}
+@media (max-width: 700px) {
+    .team-performance-page .tp-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+    .team-performance-page .date-picker-panel { right: 0; }
+    .team-performance-page .tp-card-head { padding: 13px 14px 11px; font-size: 10px; }
+    .team-performance-page .tp-table th,
+    .team-performance-page .tp-table td { padding: 11px 14px; }
+    .team-performance-page .tp-table { min-width: 640px; }
+    .team-performance-page .tp-footnote { flex-direction: column; gap: 7px; }
+}

@@ -1,0 +1,302 @@
+@model KaleContentOps.ViewModels.TeamPerformanceViewModel
+@{
+    ViewData["Title"] = "Team Performance";
+
+    // The controller echoes the effective range; fall back to the model values.
+    var startDate = ViewData["StartDate"] as string ?? Model.StartDate.ToString("yyyy-MM-dd");
+    var endDate = ViewData["EndDate"] as string ?? Model.EndDate.ToString("yyyy-MM-dd");
+
+    // Display formatting ONLY - every number below comes from TeamPerformanceViewModel
+    // (all business calculation lives in ITeamPerformanceService). Missing values render
+    // as an em dash, never as a fabricated 0.
+    var IdCulture = System.Globalization.CultureInfo.GetCultureInfo("id-ID");
+    var Inv = System.Globalization.CultureInfo.InvariantCulture;
+    static string Dash() => "\u2014";
+    string Num(long value) => value.ToString("N0", IdCulture);
+
+    // Phase 4 display conventions (display precision ONLY - Status is always computed by
+    // the service from the full-precision value, NEVER from these rounded strings):
+    //   Target Adil -> 1 decimal via id-ID culture (6,3 / 11,0 / 4,7);
+    //   Selisih -> signed 1 decimal (+0,7 / 0,0 / -0,3 / -5,3);
+    //   Status -> dot badge. Custom-format '.' is the culture decimal placeholder, so
+    //   id-ID renders ',' - no hard-coded string replacement.
+    string TargetText(decimal? targetAdil) => targetAdil.HasValue ? targetAdil.Value.ToString("N1", IdCulture) : Dash();
+    string SelisihText(decimal? selisih) => selisih.HasValue ? selisih.Value.ToString("+0.0;-0.0;0.0", IdCulture) : Dash();
+    string StatusBadgeClass(string status) => status switch
+    {
+        KaleContentOps.ViewModels.TeamPerformanceStatus.Achieved => "tp-badge tp-badge-success",
+        KaleContentOps.ViewModels.TeamPerformanceStatus.NotAchieved => "tp-badge tp-badge-danger",
+        _ => "tp-badge tp-badge-pending"
+    };
+
+    // Mockup card caption period, e.g. "7 Agu–5 Sep 2026" (display formatting ONLY).
+    var IdMonths = new[] { "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des" };
+    string ShortDate(DateTime d) => $"{d.Day} {IdMonths[d.Month - 1]}";
+    var periodLabel = $"{ShortDate(Model.StartDate)}\u2013{ShortDate(Model.EndDate)} {Model.EndDate.Year}";
+}
+
+<link rel="stylesheet" href="~/css/team-performance.css" />
+<link rel="stylesheet" href="~/css/calendar-popup.css" />
+
+<div class="content-page team-performance-page" data-start="@startDate" data-end="@endDate">
+    <header class="tp-header">
+        <div class="tp-title">
+            <h1>Team Performance</h1>
+            <p>Pencapaian upload per orang, dari kolom PIC di Content Log &middot; dihitung dari tanggal video diposting (VideoPostTime).</p>
+        </div>
+
+        <div class="tp-header-anchor">
+            <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel" aria-label="Pilih rentang tanggal laporan">
+                <span class="calendar-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.4" />
+                        <path d="M16 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                        <path d="M8 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <strong id="dateRangeLabel">@Model.StartDate.ToString("dd/MM", Inv) - @Model.EndDate.ToString("dd/MM", Inv) (GMT+7)</strong>
+            </button>
+
+            <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
+                <div class="date-picker-topline">
+                    <div>
+                        <strong id="pendingRangeLabel"></strong>
+                        <small>Pilih rentang tanggal laporan</small>
+                    </div>
+                    <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">&times;</button>
+                </div>
+                <div class="date-picker-body">
+                    <div class="preset-list" id="presetList">
+                        <div class="preset-title">PERIODE CEPAT</div>
+                        <button type="button" data-preset="today">Hari Ini</button>
+                        <button type="button" data-preset="yesterday">Kemarin</button>
+                        <button type="button" data-preset="7">1 Minggu Terakhir</button>
+                        <button type="button" data-preset="30">1 Bulan Terakhir</button>
+                        <button type="button" data-preset="90">3 Bulan Terakhir</button>
+                    </div>
+                    <div class="calendar-area">
+                        <div class="calendar-toolbar">
+                            <button type="button" id="previousMonth" aria-label="Previous month">&lsaquo;</button>
+                            <strong id="calendarTitle"></strong>
+                            <button type="button" id="nextMonth" aria-label="Next month">&rsaquo;</button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                    </div>
+                </div>
+                <div class="date-picker-actions">
+                    <div class="date-picker-selected" id="datePickerSelected"></div>
+                    <div>
+                        <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
+                        <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </header>
+
+    @if (!Model.EmploymentPeriodDataAvailable)
+    {
+        <div class="tp-notice" role="note">
+            Denominasi PIC ("Target Adil") masih provisional: data masa kerja PIC (JoinDate/ResignDate)
+            belum terpasang, sehingga seluruh Master PIC dihitung eligible untuk periode ini.
+        </div>
+    }
+
+    <section class="tp-summary-grid" aria-label="Ringkasan tim">
+        <div class="tp-card tp-summary">
+            <div class="tp-summary-label">TOTAL KONTEN</div>
+            <div class="tp-summary-value">@Num(Model.TotalContentCount)</div>
+            <div class="tp-summary-hint">Semua konten pada periode (termasuk arsip)</div>
+        </div>
+        <div class="tp-card tp-summary">
+            <div class="tp-summary-label">TOTAL VIEWS</div>
+            <div class="tp-summary-value">@Num(Model.TotalViews)</div>
+            <div class="tp-summary-hint">Views terbaru per konten</div>
+        </div>
+        <div class="tp-card tp-summary">
+            <div class="tp-summary-label">DIISI PIC</div>
+            <div class="tp-summary-value">@Num(Model.AssignedContentCount)</div>
+            <div class="tp-summary-hint">@Num(Model.AssignedViews) views</div>
+        </div>
+        <div class="tp-card tp-summary">
+            <div class="tp-summary-label">BELUM DIISI</div>
+            <div class="tp-summary-value">@Num(Model.UnassignedContentCount)</div>
+            <div class="tp-summary-hint">Beban tim, bukan PIC (@Num(Model.UnassignedViews) views)</div>
+        </div>
+        <div class="tp-card tp-summary">
+            <div class="tp-summary-label">PIC ELIGIBLE</div>
+            <div class="tp-summary-value">@Num(Model.EligiblePicCount)</div>
+            <div class="tp-summary-hint">@Num(Model.PicsWithContentCount) PIC punya konten</div>
+        </div>
+    </section>
+
+    <section class="tp-section">
+        @if (!Model.HasData)
+        {
+            <p class="tp-empty">Tidak ada konten pada periode yang dipilih. Coba ubah rentang tanggal.</p>
+        }
+        else if (!Model.HasEligiblePics)
+        {
+            <p class="tp-empty">Belum ada Master PIC terdaftar, sehingga konten belum bisa diatribusikan per PIC.</p>
+        }
+        else
+        {
+            <div class="tp-table-wrap">
+                <div class="tp-card-head">JUMLAH UPLOAD PER PIC &middot; @periodLabel</div>
+                <table class="tp-table">
+                    <thead>
+                        <tr>
+                            <th class="tp-col-pic">PIC</th>
+                            <th class="tp-col-num tp-col-upload">Jumlah Upload</th>
+                            <th class="tp-col-num tp-col-target">Target Adil <span class="tp-th-sub">(rata-rata kontribusi tim per orang)</span></th>
+                            <th class="tp-col-num tp-col-selisih">Selisih</th>
+                            <th class="tp-col-status">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Model.Pics)
+                        {
+                            <tr class="tp-row @(row.HasContent ? null : "tp-row-empty")">
+                                <td class="tp-col-pic">
+                                    <span class="tp-pic-name">@row.PicName</span>
+                                    <span class="tp-status @(row.IsActive ? "tp-status-active" : "tp-status-inactive")">@(row.IsActive ? "Aktif" : "Nonaktif")</span>
+                                </td>
+                                @* Phase 4: real values from TeamPerformanceViewModel (service-computed).
+                                   Target Adil / Selisih are null when no target version covers the
+                                   period -> em dash, and Status then renders the neutral
+                                   "Perlu dilengkapi" (never a fabricated zero, never Tercapai).
+                                   Jumlah Upload is the achievement Actual (AUTO_GMV_LIVE excluded). *@
+                                <td class="tp-col-num tp-col-upload">@Num(row.Actual)</td>
+                                <td class="tp-col-num tp-col-target">@TargetText(row.TargetAdil)</td>
+                                <td class="tp-col-num tp-col-selisih">@SelisihText(row.Selisih)</td>
+                                <td class="tp-col-status"><span class="@StatusBadgeClass(row.Status)">@row.Status</span></td>
+                            </tr>
+                        }
+                        @if (Model.UnassignedContentCount > 0)
+                        {
+                            @* Mockup "Belum Diisi" row: team workload display only - not an individual
+                               PIC, so it receives NO individual Target, NO Selisih and NO Status
+                               (locked rules 7/10): dashes + neutral badge only. *@
+                            <tr class="tp-row tp-row-unassigned">
+                                <td class="tp-col-pic"><span class="tp-pic-name">Belum Diisi</span></td>
+                                <td class="tp-col-num tp-col-upload">@Num(Model.UnassignedContentCount)</td>
+                                <td class="tp-col-num tp-col-target">@Dash()</td>
+                                <td class="tp-col-num tp-col-selisih">@Dash()</td>
+                                <td class="tp-col-status"><span class="tp-badge tp-badge-pending">Perlu dilengkapi</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    @* Phase 4 footnote: same structure/classes as the mockup, wording now documents the
+       signed-off Team Performance target rules (formula, AUTO exclusion, Belum Diisi). *@
+    <div class="tp-footnote" role="note">
+        <span class="tp-footnote-icon" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" />
+                <path d="M12 11v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                <circle cx="12" cy="8" r="1" fill="currentColor" />
+            </svg>
+        </span>
+        <div>
+            Kolom <strong>Target Adil</strong> = target tim periode ini (NON_KK + KK dari Menu Targets,
+            dihitung dengan aturan target harian yang sudah ada: total target mingguan per hari &divide; 7,
+            hari tanpa target dihitung 0) dibagi rata ke seluruh <strong>PIC eligible</strong> - tanpa
+            prorata. <strong>Selisih</strong> = Actual &minus; Target Adil (negatif tetap negatif) dan
+            <strong>Status</strong> = Tercapai bila Actual &ge; Target Adil, atau <strong>Perlu dilengkapi</strong>
+            bila belum ada target untuk periode ini (bukan 0). <strong>AUTO_GMV_LIVE</strong> tidak dihitung
+            dalam Actual individual (tetap masuk total beban tim). Baris <strong>Belum Diisi</strong> menunjukkan
+            video yang PIC-nya belum dicatat - masuk beban tim, tanpa target &amp; status sendiri.
+            PIC eligible ditentukan masa kerja (JoinDate/ResignDate) yang overlap dengan periode;
+            konten arsip tetap dihitung.
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="~/js/calendar-popup.js"></script>
+<script>
+(() => {
+    // Date-range popover: Daily Summary reference pattern. The shared CalendarPopup module
+    // renders the two-month grid; this page owns the selection state and submits only
+    // startDate/endDate to the controller contract. No business logic here - the server
+    // remains authoritative for the reporting range.
+    const page = document.querySelector('.team-performance-page');
+    const rangeButton = document.getElementById('dateRangeButton');
+    const datePanel = document.getElementById('datePickerPanel');
+    const appliedStart = page.dataset.start;
+    const appliedEnd = page.dataset.end;
+    let pendingStart = appliedStart;
+    let pendingEnd = appliedEnd;
+
+    const parseDate = value => new Date(`${value}T00:00:00`);
+    const two = n => String(n).padStart(2, '0');
+    const formatDdMm = value => { const d = parseDate(value); return `${two(d.getDate())}/${two(d.getMonth() + 1)}`; };
+
+    function setPanel(panel, button, open) {
+        panel.hidden = !open;
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function renderPendingLabel() {
+        const label = document.getElementById('pendingRangeLabel');
+        const footer = document.getElementById('datePickerSelected');
+        const text = pendingStart && pendingEnd
+            ? `${formatDdMm(pendingStart)} - ${formatDdMm(pendingEnd)} (GMT+7)`
+            : pendingStart
+                ? `${formatDdMm(pendingStart)} - ...`
+                : 'Pilih rentang tanggal';
+        label.textContent = text;
+        footer.textContent = pendingStart && pendingEnd ? text : '';
+    }
+
+    const rangeCalendar = CalendarPopup.createRangeCalendar({
+        grid: document.getElementById('calendarGrid'),
+        titleEl: document.getElementById('calendarTitle'),
+        prevButton: document.getElementById('previousMonth'),
+        nextButton: document.getElementById('nextMonth'),
+        months: 2,
+        initialMonth: appliedStart,
+        getSelection: () => ({ start: pendingStart, end: pendingEnd }),
+        onSelectionChange: (start, end) => { pendingStart = start; pendingEnd = end; renderPendingLabel(); }
+    });
+    function renderCalendar() { rangeCalendar.render(); }
+
+    function closeAllPanels() { setPanel(datePanel, rangeButton, false); }
+
+    document.addEventListener('click', event => {
+        const clicked = event.target instanceof Element && event.target.isConnected ? event.target : null;
+        if (!datePanel.hidden && (!clicked || !clicked.closest('.tp-header-anchor'))) setPanel(datePanel, rangeButton, false);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeAllPanels();
+    });
+
+    rangeButton.addEventListener('click', () => {
+        const open = datePanel.hidden;
+        setPanel(datePanel, rangeButton, open);
+        if (open) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    });
+    document.getElementById('closeDatePicker').addEventListener('click', closeAllPanels);
+    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; closeAllPanels(); });
+    document.getElementById('applyDatePicker').addEventListener('click', () => {
+        if (!pendingStart || !pendingEnd) return;
+        window.location.assign(`/TeamPerformance?startDate=${encodeURIComponent(pendingStart)}&endDate=${encodeURIComponent(pendingEnd)}`);
+    });
+    document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+        const today = new Date();
+        const preset = button.dataset.preset;
+        const end = new Date(today);
+        const start = new Date(today);
+        if (preset === 'yesterday') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); }
+        else if (preset !== 'today') start.setDate(start.getDate() - Number(preset) + 1);
+        pendingStart = `${start.getFullYear()}-${two(start.getMonth() + 1)}-${two(start.getDate())}`;
+        pendingEnd = `${end.getFullYear()}-${two(end.getMonth() + 1)}-${two(end.getDate())}`;
+        renderPendingLabel(); renderCalendar();
+    }));
+})();
+</script>
+}

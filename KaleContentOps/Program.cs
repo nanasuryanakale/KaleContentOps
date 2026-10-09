@@ -7,6 +7,7 @@ using KaleContentOps.Services;
 using KaleContentOps.Services.DailySummary;
 using KaleContentOps.Services.WinningContent;
 using KaleContentOps.Services.Targets;
+using KaleContentOps.Services.TeamPerformance;
 using KaleContentOps.Security;
 using System.IO;
 using Microsoft.AspNetCore.Authentication;
@@ -125,6 +126,8 @@ builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
 builder.Services.AddScoped<IWinningContentService, WinningContentService>();
 // Menu Targets persistence (versioned weekly targets for NON_KK / KK)
 builder.Services.AddScoped<ITargetService, TargetService>();
+// Team Performance: operational workload / historical contribution per PIC
+builder.Services.AddScoped<ITeamPerformanceService, TeamPerformanceService>();
 
 // Register named HttpClients for TikTok API and Auth endpoints. Concrete services will be registered later.
 builder.Services.AddHttpClient("TikTokApi", client =>
