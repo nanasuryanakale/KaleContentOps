@@ -62,6 +62,27 @@ public class ContentLogListItem
     // Sorted by share descending. Null when the persisted JSON has no countries data.
     public List<KeyValuePair<string, decimal>>? Countries { get; set; }
 
+    // ---- NEW_FOLLOWER population (strictly separate from the VIEWERS fields above) ----
+    // Raw NEW_FOLLOWER demographics JSON (transport only: parsed into the Nf* properties
+    // below after materialization). Same serialized shape as DemographicsJson (keys:
+    // male / female / no_gender / ages{18-24..55+} / countries{ISO: share}) but produced by
+    // TikTokVideoService.MapDetailsMetricsToContentMetric from the viewer_profile entry of
+    // type NEW_FOLLOWER - never from the VIEWERS entry.
+    public string? NewFollowerDemographicsJson { get; set; }
+
+    // NEW_FOLLOWER demographic shares (0..1 decimals), parsed from NewFollowerDemographicsJson.
+    public decimal? NfMale { get; set; }
+    public decimal? NfFemale { get; set; }
+    public decimal? NfNonGender { get; set; }
+    public decimal? NfAge18_24 { get; set; }
+    public decimal? NfAge25_34 { get; set; }
+    public decimal? NfAge35_44 { get; set; }
+    public decimal? NfAge45_54 { get; set; }
+    public decimal? NfAge55Plus { get; set; }
+
+    // NEW_FOLLOWER country distribution (same shape/meaning as Countries, other population).
+    public List<KeyValuePair<string, decimal>>? NfCountries { get; set; }
+
     // Metrics not present in the actual TikTok details response - stay null so UI shows "—".
     public long? Saves { get; set; }
     public long? NonFollowers { get; set; }

@@ -83,7 +83,7 @@ public class TikTokDetailsSyncService
 
             var latestMetrics = from lm in latestPerLogRestricted
                                 join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
-                                where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null) == wantEnriched
+                                where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null || m.NewFollowerDemographicsJson != null) == wantEnriched
                                 select new { lm.ContentLogId, m.CapturedAt };
 
             // Order by ContentLog.VideoPostTime DESC then Id DESC to prioritize newest videos within the same priority bucket
@@ -191,7 +191,7 @@ public class TikTokDetailsSyncService
 
         var latestMetrics = from lm in latestPerLogRestricted
                             join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
-                            where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null) == false
+                            where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null || m.NewFollowerDemographicsJson != null) == false
                             select new { lm.ContentLogId, m.CapturedAt };
 
         var q = from cl in query
@@ -229,7 +229,7 @@ public class TikTokDetailsSyncService
 
             var latestEnriched = from lm in latestPerLogRestricted2
                                  join m in _db.ContentMetrics on new { lm.ContentLogId, lm.CapturedAt } equals new { m.ContentLogId, m.CapturedAt }
-                                 where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null) == true
+                                 where (m.Likes.HasValue || m.Comments.HasValue || m.Shares.HasValue || m.NewFollowers.HasValue || m.Reach.HasValue || m.AverageWatch.HasValue || m.FullWatchRate.HasValue || m.DemographicsJson != null || m.NewFollowerDemographicsJson != null) == true
                                  select lm.ContentLogId;
 
             result.P2 = await latestEnriched.Distinct().CountAsync(cancellationToken);
@@ -364,13 +364,13 @@ public class TikTokDetailsSyncService
                     var dm = concrete.ParseDetailsMetrics(d);
                     var metric = concrete.MapDetailsMetricsToContentMetric(dm, log.Id);
 
-                    if (metric != null && (metric.Views.HasValue || metric.Likes.HasValue || metric.Comments.HasValue || metric.Shares.HasValue || metric.NewFollowers.HasValue || metric.Reach.HasValue || metric.AverageWatch.HasValue || metric.FullWatchRate.HasValue || !string.IsNullOrWhiteSpace(metric.DemographicsJson)))
+                    if (metric != null && (metric.Views.HasValue || metric.Likes.HasValue || metric.Comments.HasValue || metric.Shares.HasValue || metric.NewFollowers.HasValue || metric.Reach.HasValue || metric.AverageWatch.HasValue || metric.FullWatchRate.HasValue || !string.IsNullOrWhiteSpace(metric.DemographicsJson) || !string.IsNullOrWhiteSpace(metric.NewFollowerDemographicsJson)))
                     {
                         _db.ContentMetrics.Add(metric);
                         await _db.SaveChangesAsync(cancellationToken);
                         outInfo.Synced = true;
                         outInfo.NewMetricAdded = true;
-                        outInfo.DemographicsPopulated = !string.IsNullOrWhiteSpace(metric.DemographicsJson);
+                        outInfo.DemographicsPopulated = !string.IsNullOrWhiteSpace(metric.DemographicsJson) || !string.IsNullOrWhiteSpace(metric.NewFollowerDemographicsJson);
                         return outInfo;
                     }
 

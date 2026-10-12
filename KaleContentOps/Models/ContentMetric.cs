@@ -24,6 +24,11 @@ public class ContentMetric
 
     public string? DemographicsJson { get; set; }
 
+    // NEW_FOLLOWER viewer-profile demographics (separate population from DemographicsJson).
+    // Same JSON shape: { male, female, no_gender, ages:{"18-24".."55+"}, countries:{CC:share} }.
+    // Null when the response contains no NEW_FOLLOWER profile with parseable values.
+    public string? NewFollowerDemographicsJson { get; set; }
+
     // Commerce/attribute metrics verified from actual shop video performance response
     // (App_Data/tiktok-api-sample.json -> data.videos[])
     public decimal? GmvAmount { get; set; }

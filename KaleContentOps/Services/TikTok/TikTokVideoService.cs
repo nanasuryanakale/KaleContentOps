@@ -139,7 +139,13 @@ public class TikTokVideoService : ITikTokVideoService
                 }
             }
 
-            // Parse viewer_profile[type=="VIEWERS"] demographics from performance.viewer_profile if present
+            // Parse viewer_profile entries from performance.viewer_profile if present.
+            // Two profile populations are supported and kept strictly separate:
+            //   VIEWERS      -> existing Content Log audience fields (Male/Female/NoGender/ages/countries)
+            //   NEW_FOLLOWER -> a different population; captured into separate Nf* fields, never
+            //                   substituted into the VIEWERS fields (Profiles B rule).
+            // Array ordering must not matter: each matched profile writes only to its own scope,
+            // so one profile can never overwrite the other.
             try
             {
                 if (perf.TryGetProperty("viewer_profile", out var vp) && vp.ValueKind == JsonValueKind.Array)
@@ -149,9 +155,52 @@ public class TikTokVideoService : ITikTokVideoService
                         if (profile.ValueKind != JsonValueKind.Object) continue;
                         if (!profile.TryGetProperty("type", out var ptype) || ptype.ValueKind != JsonValueKind.String) continue;
                         var t = ptype.GetString();
-                        if (!string.Equals(t, "VIEWERS", System.StringComparison.OrdinalIgnoreCase)) continue;
 
-                        // gender_distribution[]
+                        bool isViewers = string.Equals(t, "VIEWERS", System.StringComparison.OrdinalIgnoreCase);
+                        bool isNewFollower = string.Equals(t, "NEW_FOLLOWER", System.StringComparison.OrdinalIgnoreCase);
+                        if (!isViewers && !isNewFollower) continue;
+
+                        // All writes below go through isViewers (or !isViewers for NEW_FOLLOWER), so the two
+                        // populations cannot mix: each matched profile only ever writes to its own scope.
+                        void SetGender(string? key, decimal? perc)
+                        {
+                            if (key == null) return;
+                            if (isViewers)
+                            {
+                                if (key == "male") { result.Male = perc; if (result.MalePath == null) result.MalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"male\"].percentage"; }
+                                else if (key == "female") { result.Female = perc; if (result.FemalePath == null) result.FemalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"female\"].percentage"; }
+                                else { result.NoGender = perc; if (result.NoGenderPath == null) result.NoGenderPath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"no_gender\"].percentage"; }
+                            }
+                            else
+                            {
+                                if (key == "male") { result.NfMale = perc; if (result.NfMalePath == null) result.NfMalePath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].gender_distribution[gender==\"male\"].percentage"; }
+                                else if (key == "female") { result.NfFemale = perc; if (result.NfFemalePath == null) result.NfFemalePath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].gender_distribution[gender==\"female\"].percentage"; }
+                                else { result.NfNoGender = perc; if (result.NfNoGenderPath == null) result.NfNoGenderPath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].gender_distribution[gender==\"no_gender\"].percentage"; }
+                            }
+                        }
+
+                        void SetAge(string? key, decimal? perc)
+                        {
+                            if (key == null) return;
+                            if (isViewers)
+                            {
+                                if (key == "18-24") { result.Age18 = perc; if (result.Age18Path == null) result.Age18Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"18-24\"].percentage"; }
+                                else if (key == "25-34") { result.Age25 = perc; if (result.Age25Path == null) result.Age25Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"25-34\"].percentage"; }
+                                else if (key == "35-44") { result.Age35 = perc; if (result.Age35Path == null) result.Age35Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"35-44\"].percentage"; }
+                                else if (key == "45-54") { result.Age45 = perc; if (result.Age45Path == null) result.Age45Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"45-54\"].percentage"; }
+                                else { result.Age55 = perc; if (result.Age55Path == null) result.Age55Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"55+\"].percentage"; }
+                            }
+                            else
+                            {
+                                if (key == "18-24") { result.NfAge18 = perc; if (result.NfAge18Path == null) result.NfAge18Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"18-24\"].percentage"; }
+                                else if (key == "25-34") { result.NfAge25 = perc; if (result.NfAge25Path == null) result.NfAge25Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"25-34\"].percentage"; }
+                                else if (key == "35-44") { result.NfAge35 = perc; if (result.NfAge35Path == null) result.NfAge35Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"35-44\"].percentage"; }
+                                else if (key == "45-54") { result.NfAge45 = perc; if (result.NfAge45Path == null) result.NfAge45Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"45-54\"].percentage"; }
+                                else { result.NfAge55 = perc; if (result.NfAge55Path == null) result.NfAge55Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"55+\"].percentage"; }
+                            }
+                        }
+
+                        // gender_distribution[] (aliases preserved: no_gender/unknown)
                         if (profile.TryGetProperty("gender_distribution", out var gdist) && gdist.ValueKind == JsonValueKind.Array)
                         {
                             foreach (var g in gdist.EnumerateArray())
@@ -165,9 +214,9 @@ public class TikTokVideoService : ITikTokVideoService
                                     else if (gperc.ValueKind == JsonValueKind.Number && gperc.TryGetDecimal(out var dnum)) perc = dnum;
                                 }
                                 if (gender == null) continue;
-                                if (string.Equals(gender, "male", System.StringComparison.OrdinalIgnoreCase)) { result.Male = perc; if (result.MalePath == null) result.MalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"male\"].percentage"; }
-                                else if (string.Equals(gender, "female", System.StringComparison.OrdinalIgnoreCase)) { result.Female = perc; if (result.FemalePath == null) result.FemalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"female\"].percentage"; }
-                                else if (string.Equals(gender, "no_gender", System.StringComparison.OrdinalIgnoreCase) || string.Equals(gender, "unknown", System.StringComparison.OrdinalIgnoreCase)) { result.NoGender = perc; if (result.NoGenderPath == null) result.NoGenderPath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"no_gender\"].percentage"; }
+                                if (string.Equals(gender, "male", System.StringComparison.OrdinalIgnoreCase)) SetGender("male", perc);
+                                else if (string.Equals(gender, "female", System.StringComparison.OrdinalIgnoreCase)) SetGender("female", perc);
+                                else if (string.Equals(gender, "no_gender", System.StringComparison.OrdinalIgnoreCase) || string.Equals(gender, "unknown", System.StringComparison.OrdinalIgnoreCase)) SetGender("other", perc);
                             }
                         }
 
@@ -185,11 +234,11 @@ public class TikTokVideoService : ITikTokVideoService
                                     else if (aperc.ValueKind == JsonValueKind.Number && aperc.TryGetDecimal(out var dnum)) perc = dnum;
                                 }
                                 if (ageRange == null) continue;
-                                if (string.Equals(ageRange, "18-24", System.StringComparison.OrdinalIgnoreCase)) { result.Age18 = perc; if (result.Age18Path == null) result.Age18Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"18-24\"].percentage"; }
-                                else if (string.Equals(ageRange, "25-34", System.StringComparison.OrdinalIgnoreCase)) { result.Age25 = perc; if (result.Age25Path == null) result.Age25Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"25-34\"].percentage"; }
-                                else if (string.Equals(ageRange, "35-44", System.StringComparison.OrdinalIgnoreCase)) { result.Age35 = perc; if (result.Age35Path == null) result.Age35Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"35-44\"].percentage"; }
-                                else if (string.Equals(ageRange, "45-54", System.StringComparison.OrdinalIgnoreCase)) { result.Age45 = perc; if (result.Age45Path == null) result.Age45Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"45-54\"].percentage"; }
-                                else if (string.Equals(ageRange, "55+", System.StringComparison.OrdinalIgnoreCase) || string.Equals(ageRange, "55 and above", System.StringComparison.OrdinalIgnoreCase)) { result.Age55 = perc; if (result.Age55Path == null) result.Age55Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"55+\"].percentage"; }
+                                if (string.Equals(ageRange, "18-24", System.StringComparison.OrdinalIgnoreCase)) SetAge("18-24", perc);
+                                else if (string.Equals(ageRange, "25-34", System.StringComparison.OrdinalIgnoreCase)) SetAge("25-34", perc);
+                                else if (string.Equals(ageRange, "35-44", System.StringComparison.OrdinalIgnoreCase)) SetAge("35-44", perc);
+                                else if (string.Equals(ageRange, "45-54", System.StringComparison.OrdinalIgnoreCase)) SetAge("45-54", perc);
+                                else if (string.Equals(ageRange, "55+", System.StringComparison.OrdinalIgnoreCase) || string.Equals(ageRange, "55 and above", System.StringComparison.OrdinalIgnoreCase)) SetAge("55+", perc);
                             }
                         }
 
@@ -214,13 +263,18 @@ public class TikTokVideoService : ITikTokVideoService
                             }
                             if (countries.Count > 0)
                             {
-                                result.Countries = countries;
-                                if (result.CountriesPath == null) result.CountriesPath = "data.performance.viewer_profile[type==\"VIEWERS\"].country_distribution";
+                                if (isViewers)
+                                {
+                                    result.Countries = countries;
+                                    if (result.CountriesPath == null) result.CountriesPath = "data.performance.viewer_profile[type==\"VIEWERS\"].country_distribution";
+                                }
+                                else
+                                {
+                                    result.NfCountries = countries;
+                                    if (result.NfCountriesPath == null) result.NfCountriesPath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].country_distribution";
+                                }
                             }
                         }
-
-                        // stop after first VIEWERS profile
-                        break;
                     }
                 }
             }
@@ -293,6 +347,46 @@ public class TikTokVideoService : ITikTokVideoService
             catch
             {
                 metric.DemographicsJson = null;
+            }
+        }
+
+        // NEW_FOLLOWER demographics: separate population, persisted to its own nullable JSON
+        // column so it can never be mistaken for (or merged with) the VIEWERS audience profile.
+        var nfObj = new Dictionary<string, object?>();
+        bool anyNf = false;
+        if (dm.NfMale.HasValue) { nfObj["male"] = dm.NfMale.Value; anyNf = true; }
+        if (dm.NfFemale.HasValue) { nfObj["female"] = dm.NfFemale.Value; anyNf = true; }
+        if (dm.NfNoGender.HasValue) { nfObj["no_gender"] = dm.NfNoGender.Value; anyNf = true; }
+
+        var nfAges = new Dictionary<string, decimal?>();
+        if (dm.NfAge18.HasValue) { nfAges["18-24"] = dm.NfAge18.Value; anyNf = true; }
+        if (dm.NfAge25.HasValue) { nfAges["25-34"] = dm.NfAge25.Value; anyNf = true; }
+        if (dm.NfAge35.HasValue) { nfAges["35-44"] = dm.NfAge35.Value; anyNf = true; }
+        if (dm.NfAge45.HasValue) { nfAges["45-54"] = dm.NfAge45.Value; anyNf = true; }
+        if (dm.NfAge55.HasValue) { nfAges["55+"] = dm.NfAge55.Value; anyNf = true; }
+
+        if (nfAges.Count > 0) nfObj["ages"] = nfAges;
+
+        if (dm.NfCountries is { Count: > 0 })
+        {
+            var nfCountries = new Dictionary<string, decimal?>();
+            foreach (var kv in dm.NfCountries)
+            {
+                if (string.IsNullOrWhiteSpace(kv.Key) || !kv.Value.HasValue) continue;
+                nfCountries[kv.Key] = kv.Value.Value;
+            }
+            if (nfCountries.Count > 0) { nfObj["countries"] = nfCountries; anyNf = true; }
+        }
+
+        if (anyNf)
+        {
+            try
+            {
+                metric.NewFollowerDemographicsJson = System.Text.Json.JsonSerializer.Serialize(nfObj);
+            }
+            catch
+            {
+                metric.NewFollowerDemographicsJson = null;
             }
         }
 

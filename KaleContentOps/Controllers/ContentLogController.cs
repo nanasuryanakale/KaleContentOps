@@ -143,8 +143,11 @@ public class ContentLogController : Controller
                 Comments = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Comments).FirstOrDefault(),
                 Shares = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Shares).FirstOrDefault(),
                 NewFollowers = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.NewFollowers).FirstOrDefault(),
-                // Latest-metric demographics JSON, parsed into display fields after materialization below
-                DemographicsJson = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.DemographicsJson).FirstOrDefault(),
+                // NOTE: DemographicsJson is intentionally NOT taken from the latest metric here.
+                // A newer views-only metric (DemographicsJson NULL - the ingestion representation
+                // of "no demographic observation", e.g. viewer_profile=[]) must not hide an older
+                // valid demographic snapshot. It is resolved after materialization from the most
+                // recent meaningful snapshot below; all scalar metrics keep latest-metric-wins.
                 // Commerce/attribute metrics (verified from actual TikTok response)
                 GmvAmount = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.GmvAmount).FirstOrDefault(),
                 GmvCurrency = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.GmvCurrency).FirstOrDefault(),
@@ -159,10 +162,61 @@ public class ContentLogController : Controller
             .AsNoTracking()
             .ToListAsync();
 
-        // Parse the latest metric's DemographicsJson into display fields (0..1 viewer shares).
+        // Resolve VIEWERS and NEW_FOLLOWER demographics per row from each population's own
+        // most recent VALID, meaningful demographic snapshot (not blindly from the latest
+        // metric). One page-scoped query (no N+1, consistent with the historical-pics lookup
+        // below) covers both populations: only demographic-bearing metrics for the current
+        // page's logs are loaded, newest first, and at most the two newest candidates per log
+        // and per population are evaluated (the newest, plus one older fallback). The two
+        // populations are kept strictly separate - one can never populate the other's fields.
+        var pageLogIds = items.Select(i => i.Id).ToList();
+        var viewersDemographicCandidates = new Dictionary<long, List<string?>>();
+        var newFollowerDemographicCandidates = new Dictionary<long, List<string?>>();
+        if (pageLogIds.Count > 0)
+        {
+            var candidateRows = await _db.ContentMetrics.AsNoTracking()
+                .Where(m => pageLogIds.Contains(m.ContentLogId)
+                            && ((m.DemographicsJson != null && m.DemographicsJson != "")
+                                 || (m.NewFollowerDemographicsJson != null && m.NewFollowerDemographicsJson != "")))
+                .OrderByDescending(m => m.CapturedAt)
+                .ThenByDescending(m => m.Id)
+                .Select(m => new { m.ContentLogId, m.DemographicsJson, m.NewFollowerDemographicsJson })
+                .ToListAsync();
+
+            // GroupBy preserves source order within each group (CapturedAt DESC, then Id DESC),
+            // so the first meaningful candidate encountered is the newest meaningful snapshot.
+            foreach (var group in candidateRows.GroupBy(m => m.ContentLogId))
+            {
+                viewersDemographicCandidates[group.Key] = group
+                    .Select(m => m.DemographicsJson)
+                    .Where(j => !string.IsNullOrWhiteSpace(j))
+                    .Take(2)
+                    .ToList();
+                newFollowerDemographicCandidates[group.Key] = group
+                    .Select(m => m.NewFollowerDemographicsJson)
+                    .Where(j => !string.IsNullOrWhiteSpace(j))
+                    .Take(2)
+                    .ToList();
+            }
+        }
+
+        // Parse the selected DemographicsJson into display fields (0..1 viewer shares).
         // Done after materialization to keep the query translatable to SQL (no client-eval in projection).
         foreach (var item in items)
         {
+            item.DemographicsJson = null;
+            if (viewersDemographicCandidates.TryGetValue(item.Id, out var candidates))
+            {
+                foreach (var candidate in candidates)
+                {
+                    if (IsMeaningfulDemographics(candidate))
+                    {
+                        item.DemographicsJson = candidate;
+                        break;
+                    }
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(item.DemographicsJson))
             {
                 try
@@ -170,25 +224,17 @@ public class ContentLogController : Controller
                     using var doc = System.Text.Json.JsonDocument.Parse(item.DemographicsJson);
                     var root = doc.RootElement;
 
-                    static decimal? ReadPerc(System.Text.Json.JsonElement el, string key)
-                    {
-                        if (el.ValueKind != System.Text.Json.JsonValueKind.Object || !el.TryGetProperty(key, out var prop)) return null;
-                        if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDecimal(out var d)) return d;
-                        if (prop.ValueKind == System.Text.Json.JsonValueKind.String && decimal.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
-                        return null;
-                    }
-
-                    item.Male = ReadPerc(root, "male");
-                    item.Female = ReadPerc(root, "female");
-                    item.NonGender = ReadPerc(root, "no_gender");
+                    item.Male = ReadDemographicShare(root, "male");
+                    item.Female = ReadDemographicShare(root, "female");
+                    item.NonGender = ReadDemographicShare(root, "no_gender");
 
                     if (root.TryGetProperty("ages", out var ages) && ages.ValueKind == System.Text.Json.JsonValueKind.Object)
                     {
-                        item.Age18_24 = ReadPerc(ages, "18-24");
-                        item.Age25_34 = ReadPerc(ages, "25-34");
-                        item.Age35_44 = ReadPerc(ages, "35-44");
-                        item.Age45_54 = ReadPerc(ages, "45-54");
-                        item.Age55Plus = ReadPerc(ages, "55+");
+                        item.Age18_24 = ReadDemographicShare(ages, "18-24");
+                        item.Age25_34 = ReadDemographicShare(ages, "25-34");
+                        item.Age35_44 = ReadDemographicShare(ages, "35-44");
+                        item.Age45_54 = ReadDemographicShare(ages, "45-54");
+                        item.Age55Plus = ReadDemographicShare(ages, "55+");
                     }
 
                     // Countries: JSON object { "ID": 1.000, ... } (VIEWERS country_distribution).
@@ -208,6 +254,60 @@ public class ContentLogController : Controller
                 catch (System.Text.Json.JsonException)
                 {
                     // Corrupt/unknown demographics JSON: leave demographic fields null (UI shows "—")
+                }
+            }
+
+            // NEW_FOLLOWER demographics: same serialized shape as VIEWERS but a separate
+            // TikTok viewer_profile population - parsed into its own Nf* fields only, so the
+            // two populations can never cross-populate each other's display fields.
+            item.NewFollowerDemographicsJson = null;
+            if (newFollowerDemographicCandidates.TryGetValue(item.Id, out var nfCandidates))
+            {
+                foreach (var candidate in nfCandidates)
+                {
+                    if (IsMeaningfulDemographics(candidate))
+                    {
+                        item.NewFollowerDemographicsJson = candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.NewFollowerDemographicsJson))
+            {
+                try
+                {
+                    using var nfDoc = System.Text.Json.JsonDocument.Parse(item.NewFollowerDemographicsJson);
+                    var nfRoot = nfDoc.RootElement;
+
+                    item.NfMale = ReadDemographicShare(nfRoot, "male");
+                    item.NfFemale = ReadDemographicShare(nfRoot, "female");
+                    item.NfNonGender = ReadDemographicShare(nfRoot, "no_gender");
+
+                    if (nfRoot.TryGetProperty("ages", out var nfAges) && nfAges.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        item.NfAge18_24 = ReadDemographicShare(nfAges, "18-24");
+                        item.NfAge25_34 = ReadDemographicShare(nfAges, "25-34");
+                        item.NfAge35_44 = ReadDemographicShare(nfAges, "35-44");
+                        item.NfAge45_54 = ReadDemographicShare(nfAges, "45-54");
+                        item.NfAge55Plus = ReadDemographicShare(nfAges, "55+");
+                    }
+
+                    if (nfRoot.TryGetProperty("countries", out var nfCountries) && nfCountries.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        item.NfCountries = nfCountries.EnumerateObject()
+                            .Select(c => c.Value.ValueKind == System.Text.Json.JsonValueKind.Number && c.Value.TryGetDecimal(out var cv)
+                                ? new KeyValuePair<string, decimal>(c.Name, cv)
+                                : (KeyValuePair<string, decimal>?)null)
+                            .Where(kv => kv.HasValue)
+                            .Select(kv => kv!.Value)
+                            .OrderByDescending(kv => kv.Value)
+                            .ToList();
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Corrupt/unknown NEW_FOLLOWER JSON: leave Nf* fields null (UI shows "—")
                 }
             }
 
@@ -287,6 +387,63 @@ public class ContentLogController : Controller
         };
 
         return View(vm);
+    }
+
+    // Reads a single 0..1 demographic share (numeric, or numeric-string) from a JSON object
+    // of demographic keys. Returns null when the key is absent or not parseable, so unknown
+    // shapes surface as blank fields instead of fabricated zeros. Used for BOTH populations
+    // (VIEWERS and NEW_FOLLOWER) since they share the same serialized key contract.
+    private static decimal? ReadDemographicShare(System.Text.Json.JsonElement el, string key)
+    {
+        if (el.ValueKind != System.Text.Json.JsonValueKind.Object || !el.TryGetProperty(key, out var prop)) return null;
+        if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDecimal(out var d)) return d;
+        if (prop.ValueKind == System.Text.Json.JsonValueKind.String && decimal.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+        return null;
+    }
+
+    // A stored VIEWERS demographic snapshot is "meaningful" when it parses as a JSON object
+    // carrying at least one recognized demographic share (gender / age / country), even when
+    // that share is an explicit zero (zeros are valid source data per the display contract).
+    // "{}", malformed JSON and unrecognized shapes are NOT meaningful, so they can never
+    // shadow an older valid snapshot. Ingestion (TikTokVideoService.MapDetailsMetricsToContentMetric)
+    // writes NULL - never an empty object - when viewer_profile has no VIEWERS observations,
+    // so "no observation" is always NULL and is filtered out in the query above.
+    // NEW_FOLLOWER demographics live in NewFollowerDemographicsJson and are never read here.
+    private static bool IsMeaningfulDemographics(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return false;
+
+            static bool AnyNumber(System.Text.Json.JsonElement obj)
+            {
+                if (obj.ValueKind != System.Text.Json.JsonValueKind.Object) return false;
+                foreach (var prop in obj.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number) return true;
+                }
+                return false;
+            }
+
+            foreach (var key in new[] { "male", "female", "no_gender" })
+            {
+                if (root.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number)
+                {
+                    return true;
+                }
+            }
+
+            return (root.TryGetProperty("ages", out var ages) && AnyNumber(ages))
+                || (root.TryGetProperty("countries", out var countries) && AnyNumber(countries));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 
     // Parses a filter date: ISO yyyy-MM-dd (posted by <input type="date">) or the

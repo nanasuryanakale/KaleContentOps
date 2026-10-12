@@ -105,7 +105,16 @@
                 ("age35", "35-44", false),
                 ("age45", "45-54", false),
                 ("age55", "55+", false),
-                ("country", "Country", false)
+                ("country", "Country", false),
+                ("nfmale", "Male (Pengikut Baru)", false),
+                ("nffemale", "Female (Pengikut Baru)", false),
+                ("nfnongender", "Non-Gender (Pengikut Baru)", false),
+                ("nfage18", "18-24 (Pengikut Baru)", false),
+                ("nfage25", "25-34 (Pengikut Baru)", false),
+                ("nfage35", "35-44 (Pengikut Baru)", false),
+                ("nfage45", "45-54 (Pengikut Baru)", false),
+                ("nfage55", "55+ (Pengikut Baru)", false),
+                ("nfcountry", "Country (Pengikut Baru)", false)
                 })
                 {
                     <label class="column-check">
@@ -120,6 +129,9 @@
 
             <div class="panel-note">
                 Kolom Metrics &amp; Data Penonton mengikuti struktur Daily Content Performance Log.
+                Kolom berlabel “Pengikut Baru” (NEW_FOLLOWER) menampilkan demografi dari penonton
+                yang mengikuti akun lewat konten ini — populasi terpisah dari kolom penonton biasa.
+                Semua kolom demografi defaultnya nonaktif; aktifkan sesuai kebutuhan.
                 Pengaturan ini hanya mengatur tampilan tabel, bukan request API baru.
             </div>
         </div>
@@ -166,6 +178,7 @@
                     <th colspan="7" class="group-head">KONTEN</th>
                     <th colspan="8" class="group-head metrics-head">METRICS</th>
                     <th colspan="11" class="group-head audience-head">DATA PENONTON (%)</th>
+                    <th colspan="9" class="group-head audience-head">PENGIKUT BARU (%)</th>
                 </tr>
 
                 <tr class="column-head">
@@ -207,6 +220,15 @@
                     <th data-col="age45">45-54</th>
                     <th data-col="age55">55+</th>
                     <th data-col="country">Country</th>
+                    <th data-col="nfmale">Male (PB)</th>
+                    <th data-col="nffemale">Female (PB)</th>
+                    <th data-col="nfnongender">Non-Gender (PB)</th>
+                    <th data-col="nfage18">18-24 (PB)</th>
+                    <th data-col="nfage25">25-34 (PB)</th>
+                    <th data-col="nfage35">35-44 (PB)</th>
+                    <th data-col="nfage45">45-54 (PB)</th>
+                    <th data-col="nfage55">55+ (PB)</th>
+                    <th data-col="nfcountry">Country (PB)</th>
                 </tr>
             </thead>
 
@@ -214,7 +236,7 @@
                 @if (!Model.Items.Any())
                 {
                 <tr>
-                    <td colspan="26" class="empty-cell">
+                    <td colspan="35" class="empty-cell">
                             Belum ada data Content Log.
                         </td>
                     </tr>
@@ -249,7 +271,17 @@
                             Age35_44 = row.Age35_44,
                             Age45_54 = row.Age45_54,
                             Age55Plus = row.Age55Plus,
-                            Countries = row.Countries
+                            Countries = row.Countries,
+                            // NEW_FOLLOWER population (strictly separate fields)
+                            NfMale = row.NfMale,
+                            NfFemale = row.NfFemale,
+                            NfNonGender = row.NfNonGender,
+                            NfAge18_24 = row.NfAge18_24,
+                            NfAge25_34 = row.NfAge25_34,
+                            NfAge35_44 = row.NfAge35_44,
+                            NfAge45_54 = row.NfAge45_54,
+                            NfAge55Plus = row.NfAge55Plus,
+                            NfCountries = row.NfCountries
                         };
 
                         var prodName = row.ProductionMethodName ?? "Self Produce";
@@ -437,6 +469,44 @@
                             <td data-col="country" class="cell-wrap">
                                 @(metric?.Countries is { Count: > 0 }
                                     ? string.Join(", ", metric.Countries.Select(kv => kv.Key + " " + (kv.Value * 100).ToString("0.0") + "%"))
+                                    : "—")
+                            </td>
+
+                            <td data-col="nfmale">
+                                @(metric?.NfMale is null ? "—" : (metric.NfMale.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nffemale">
+                                @(metric?.NfFemale is null ? "—" : (metric.NfFemale.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nfnongender">
+                                @(metric?.NfNonGender is null ? "—" : (metric.NfNonGender.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nfage18">
+                                @(metric?.NfAge18_24 is null ? "—" : (metric.NfAge18_24.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nfage25">
+                                @(metric?.NfAge25_34 is null ? "—" : (metric.NfAge25_34.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nfage35">
+                                @(metric?.NfAge35_44 is null ? "—" : (metric.NfAge35_44.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nfage45">
+                                @(metric?.NfAge45_54 is null ? "—" : (metric.NfAge45_54.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nfage55">
+                                @(metric?.NfAge55Plus is null ? "—" : (metric.NfAge55Plus.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="nfcountry" class="cell-wrap">
+                                @(metric?.NfCountries is { Count: > 0 }
+                                    ? string.Join(", ", metric.NfCountries.Select(kv => kv.Key + " " + (kv.Value * 100).ToString("0.0") + "%"))
                                     : "—")
                             </td>
                         </tr>

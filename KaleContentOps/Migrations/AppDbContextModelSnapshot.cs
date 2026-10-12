@@ -279,6 +279,9 @@ namespace KaleContentOps.Migrations
                     b.Property<DateTime?>("MetricStartDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("NewFollowerDemographicsJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<long?>("NewFollowers")
                         .HasColumnType("bigint");
 
