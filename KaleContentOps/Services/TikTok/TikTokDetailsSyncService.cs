@@ -368,6 +368,20 @@ public class TikTokDetailsSyncService
                     {
                         _db.ContentMetrics.Add(metric);
                         await _db.SaveChangesAsync(cancellationToken);
+
+                        // After new metric is saved with potentially ProductsJson, re-classify ContentType
+                        // This ensures KK vs NON-KK classification is determined based on actual product link presence
+                        log = await _db.ContentLogs.FindAsync(new object[] { log.Id }, cancellationToken: cancellationToken);
+                        if (log != null)
+                        {
+                            var reclassifiedTypeId = ContentTypeClassifier.ClassifyContentType(log.IsLive, log.HasCommerce, metric.ProductsJson);
+                            if (reclassifiedTypeId.HasValue)
+                            {
+                                log.ContentTypeId = reclassifiedTypeId;
+                                await _db.SaveChangesAsync(cancellationToken);
+                            }
+                        }
+
                         outInfo.Synced = true;
                         outInfo.NewMetricAdded = true;
                         outInfo.DemographicsPopulated = !string.IsNullOrWhiteSpace(metric.DemographicsJson) || !string.IsNullOrWhiteSpace(metric.NewFollowerDemographicsJson);

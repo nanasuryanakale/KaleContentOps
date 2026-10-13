@@ -24,6 +24,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Target> Targets => Set<Target>();
     public DbSet<TikTokShop> TikTokShops => Set<TikTokShop>();
     public DbSet<TikTokCredential> TikTokCredentials => Set<TikTokCredential>();
+    public DbSet<TikTokBatchSyncJob> TikTokBatchSyncJobs => Set<TikTokBatchSyncJob>();
+    public DbSet<TikTokBatchSyncJobItem> TikTokBatchSyncJobItems => Set<TikTokBatchSyncJobItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

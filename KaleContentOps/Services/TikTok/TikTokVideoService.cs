@@ -1229,6 +1229,19 @@ public class TikTokVideoService : ITikTokVideoService
                             var low2 = hasCommerceStr.Trim().ToLowerInvariant();
                             cl.HasCommerce = low2 == "true" || low2 == "1" || !string.IsNullOrEmpty(hasCommerceStr);
                         }
+
+                        // Parse IsLive flag from TikTok response (indicates Shop Live stream origin)
+                        var isLiveStr = v.GetPropertyOrDefault("is_live") ?? v.GetPropertyOrDefault("live_status") ?? v.GetPropertyOrDefault("video_type");
+                        if (!string.IsNullOrWhiteSpace(isLiveStr))
+                        {
+                            var low3 = isLiveStr.Trim().ToLowerInvariant();
+                            cl.IsLive = low3 == "true" || low3 == "1" || low3 == "live";
+                        }
+
+                        // Initial content type classification based on available signals
+                        // This will be refined once ProductsJson is available from ContentMetric
+                        cl.ContentTypeId = ContentTypeClassifier.ClassifyContentType(cl.IsLive, cl.HasCommerce, null);
+
                         toSave.Add(cl);
                         createdCl = cl;
                     }
@@ -1259,6 +1272,23 @@ public class TikTokVideoService : ITikTokVideoService
                             var low2 = hasCommerceStr.Trim().ToLowerInvariant();
                             existing.HasCommerce = low2 == "true" || low2 == "1" || !string.IsNullOrEmpty(hasCommerceStr);
                         }
+
+                        // Update IsLive flag from TikTok response
+                        var isLiveStr = v.GetPropertyOrDefault("is_live") ?? v.GetPropertyOrDefault("live_status") ?? v.GetPropertyOrDefault("video_type");
+                        if (!string.IsNullOrWhiteSpace(isLiveStr))
+                        {
+                            var low3 = isLiveStr.Trim().ToLowerInvariant();
+                            existing.IsLive = low3 == "true" || low3 == "1" || low3 == "live";
+                        }
+
+                        // Re-classify content type with updated signals 
+                        // Will be further refined once ProductsJson from latest ContentMetric is available
+                        var classifiedTypeId = ContentTypeClassifier.ClassifyContentType(existing.IsLive, existing.HasCommerce, null);
+                        if (classifiedTypeId.HasValue && !existing.ContentTypeId.HasValue)
+                        {
+                            existing.ContentTypeId = classifiedTypeId;
+                        }
+
                         toUpdate.Add(existing);
                     }
 

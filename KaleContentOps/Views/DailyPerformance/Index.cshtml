@@ -1,0 +1,581 @@
+@using System.Globalization
+@using KaleContentOps.Services.CreativePerformance
+@model DailyReportData
+@{
+    ViewData["Title"] = "Creative Performance - Daily Report";
+
+    var startDate = ViewData["StartDate"] as string ?? Model.CurrentStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    var endDate = ViewData["EndDate"] as string ?? Model.CurrentEnd.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    // ============================================================
+    // Display helpers (binding/format ONLY - every value comes from
+    // the backend model; no analytics is computed here).
+    // Numbers use the Indonesian convention (dot grouping); ER and
+    // growth keep an invariant decimal point like the mockup.
+    // NULL renders as an em dash - never as 0.
+    // ============================================================
+    var IdCulture = CultureInfo.GetCultureInfo("id-ID");
+    var Inv = CultureInfo.InvariantCulture;
+    string Dash() => "\u2014";
+    string Num(long? value) => value is null ? Dash() : value.Value.ToString("N0", IdCulture);
+    // Decimal variants: card CurrentValue/PreviousValue and composition segment
+    // values are decimal? (they carry both counts and ER percentages).
+    string NumDec(decimal? value) => value is null ? Dash() : value.Value.ToString("N0", IdCulture);
+    string Signed(long? value) => value is null ? Dash() : value.Value.ToString("+#,##0;-#,##0;0", IdCulture);
+    string SignedDec(decimal? value) => value is null ? Dash() : value.Value.ToString("+#,##0;-#,##0;0", IdCulture);
+    string Rate(decimal? value) => value is null ? Dash() : value.Value.ToString("0.00", Inv) + "%";
+    string Growth(decimal? value) => value is null ? Dash() : value.Value.ToString("+0.0;-0.0;0.0", Inv) + "%";
+    string Points(decimal? value) => value is null ? Dash() : value.Value.ToString("+0.00;-0.00;0.00", Inv) + " pts";
+    string Percent0(decimal? value) => value is null
+        ? Dash()
+        : Math.Round(value.Value, 0, MidpointRounding.AwayFromZero).ToString("0", Inv) + "%";
+    string DateShort(DateTime date) => date.ToString("dd/MM", Inv);
+    string DateLong(DateTime date) => date.ToString("d MMMM yyyy", IdCulture);
+    string DayMonth(DateTime date) => date.ToString("d MMM", IdCulture);
+    string DayMonthUpper(DateTime date) => date.ToString("d MMM", IdCulture).ToUpperInvariant();
+    string DayMonthYearUpper(DateTime date) => date.ToString("d MMM yyyy", IdCulture).ToUpperInvariant();
+    string RangeLabel(DateTime start, DateTime end) => $"{DayMonth(start)}\u2013{end.ToString("d MMM yyyy", IdCulture)}";
+    string RangeLabelUpper(DateTime start, DateTime end) => $"{DayMonthUpper(start)}\u2013{DayMonthYearUpper(end)}";
+    string Iso(DateTime date) => date.ToString("yyyy-MM-dd", Inv);
+    string SvgNum(decimal value) => value.ToString("0.##", Inv);
+
+    var currentLabel = RangeLabel(Model.CurrentStart, Model.CurrentEnd);
+    var previousLabel = RangeLabel(Model.PreviousStart, Model.PreviousEnd);
+
+    var reach = Model.Cards.FirstOrDefault(c => c.Key == DailyReportMetrics.Reach);
+    var videoViews = Model.Cards.FirstOrDefault(c => c.Key == DailyReportMetrics.VideoViews);
+    var profileViews = Model.Cards.FirstOrDefault(c => c.Key == DailyReportMetrics.ProfileViews);
+    var interactions = Model.Cards.FirstOrDefault(c => c.Key == DailyReportMetrics.Interactions);
+    var engagementRate = Model.Cards.FirstOrDefault(c => c.Key == DailyReportMetrics.EngagementRate);
+    var netFollower = Model.Cards.FirstOrDefault(c => c.Key == DailyReportMetrics.NetFollower);
+    var totalFollower = Model.Cards.FirstOrDefault(c => c.Key == DailyReportMetrics.TotalFollower);
+
+    var hasLineData = Model.Trend.Any(r => r.Reach.HasValue || r.VideoViews.HasValue);
+    var hasBarData = Model.Trend.Any(r => r.NetFollower.HasValue);
+
+    // Chart payload: the SAME backend rows the tables render (ascending). Null stays
+    // null so the charts draw a gap instead of a fake zero point.
+    var chartPayload = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        trend = Model.Trend.Select(r => new
+        {
+            date = Iso(r.Date),
+            reach = r.Reach,
+            videoViews = r.VideoViews,
+            netFollower = r.NetFollower
+        }).ToList()
+    });
+
+    // Delta presentation per metric: absolute metrics show growth %, ER shows
+    // percentage points, Total Follower shows an end-of-period caption only.
+    (string Class, string Arrow, string Text)? DeltaBadge(DailyReportMetric metric)
+    {
+        if (!metric.IsAvailable)
+        {
+            return null;
+        }
+
+        if (metric.DeltaKind == DailyMetricDeltaKind.Absolute)
+        {
+            if (metric.GrowthPercentage is null)
+            {
+                return ("flat", "\u2014", "\u2014 vs periode sebelumnya");
+            }
+
+            var cls = metric.GrowthPercentage.Value > 0 ? "up" : metric.GrowthPercentage.Value < 0 ? "down" : "flat";
+            var arrow = metric.GrowthPercentage.Value > 0 ? "\u25b2" : metric.GrowthPercentage.Value < 0 ? "\u25bc" : "\u00b1";
+            return (cls, arrow, $"{Growth(metric.GrowthPercentage)} vs periode sebelumnya");
+        }
+
+        if (metric.DeltaKind == DailyMetricDeltaKind.PercentagePoints)
+        {
+            if (metric.Difference is null)
+            {
+                return ("flat", "\u2014", "\u2014 vs periode sebelumnya");
+            }
+
+            var cls = metric.Difference.Value > 0 ? "up" : metric.Difference.Value < 0 ? "down" : "flat";
+            var arrow = metric.Difference.Value > 0 ? "\u25b2" : metric.Difference.Value < 0 ? "\u25bc" : "\u00b1";
+            return (cls, arrow, $"{Points(metric.Difference)} vs periode sebelumnya");
+        }
+
+        return null;
+    }
+
+    string DeltaCell(DailyReportMetric metric)
+    {
+        if (!metric.IsAvailable || metric.CurrentValue is null || metric.PreviousValue is null)
+        {
+            return Dash();
+        }
+
+        if (metric.DeltaKind == DailyMetricDeltaKind.PercentagePoints)
+        {
+            return Points(metric.Difference);
+        }
+
+        // Absolute: signed difference, plus growth % when it is computable.
+        var difference = SignedDec(metric.Difference);
+        return metric.GrowthPercentage is null
+            ? difference
+            : $"{difference} ({Growth(metric.GrowthPercentage)})";
+    }
+
+    string DeltaCellClass(DailyReportMetric metric)
+    {
+        if (metric.DeltaKind == DailyMetricDeltaKind.Absolute)
+        {
+            if (metric.GrowthPercentage is null) return string.Empty;
+            return metric.GrowthPercentage.Value > 0 ? "is-positive" : metric.GrowthPercentage.Value < 0 ? "is-negative" : string.Empty;
+        }
+
+        if (metric.Difference is null) return string.Empty;
+        return metric.Difference.Value > 0 ? "is-positive" : metric.Difference.Value < 0 ? "is-negative" : string.Empty;
+    }
+
+    // Donut geometry from the exact backend percentages (same approach as Winning Content).
+    const decimal DonutRadius = 42m;
+    var donutCircumference = 2m * (decimal)Math.PI * DonutRadius;
+    List<(string Color, decimal Length, decimal Offset)> DonutArcs(DailyReportComposition composition)
+    {
+        var arcs = new List<(string Color, decimal Length, decimal Offset)>();
+        if (!composition.IsAvailable)
+        {
+            return arcs;
+        }
+
+        decimal accumulator = 0m;
+        foreach (var segment in composition.Segments)
+        {
+            if (segment.Percentage is null || segment.Percentage.Value <= 0m)
+            {
+                continue;
+            }
+
+            var length = Math.Round(segment.Percentage.Value / 100m * donutCircumference, 2);
+            arcs.Add((segment.Color, length, accumulator));
+            accumulator += length;
+        }
+
+        return arcs;
+    }
+
+    var interactionArcs = DonutArcs(Model.InteractionComposition);
+    var viewerArcs = DonutArcs(Model.ViewerComposition);
+}
+
+<link rel="stylesheet" href="~/css/daily-performance.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/calendar-popup.css" asp-append-version="true" />
+
+<div class="content-page creative-performance-daily-page" data-start="@startDate" data-end="@endDate">
+
+    <!-- ============ Header + custom date range (backdate capable) ============ -->
+    <header class="cpd-header">
+        <div class="cpd-title">
+            <h1>Creative Performance &middot; Daily Report</h1>
+            <p class="cpd-desc">
+                Performa akun secara keseluruhan (reach, views, engagement &amp; follower growth) &mdash; bukan per video,
+                melainkan kesehatan akun dari hari ke hari. Semua tanggal memakai timezone toko Asia/Jakarta (GMT+7).
+            </p>
+            <p class="cpd-compare">
+                Dibandingkan <strong>@previousLabel</strong>
+                (@Model.PreviousDayCount hari sebelumnya, panjang periode sama &mdash; berakhir sehari sebelum @DateShort(Model.CurrentStart))
+            </p>
+        </div>
+
+        <div class="cpd-header-anchor">
+            <button type="button" class="date-range-button" id="dateRangeButton" aria-expanded="false" aria-controls="datePickerPanel" aria-label="Pilih rentang tanggal laporan">
+                <span class="calendar-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.4" />
+                        <path d="M16 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                        <path d="M8 3V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <strong id="dateRangeLabel">@Model.CurrentStart.ToString("dd/MM", Inv) - @Model.CurrentEnd.ToString("dd/MM", Inv) (@Model.TimeZoneLabel)</strong>
+            </button>
+            <p class="cpd-range-note">
+                Rentang yang dipilih berlaku untuk seluruh bagian halaman ini &mdash; bisa dipakai untuk backdate kapan pun.
+            </p>
+
+            <section class="popover-panel date-picker-panel" id="datePickerPanel" hidden>
+                <div class="date-picker-topline">
+                    <div>
+                        <strong id="pendingRangeLabel"></strong>
+                        <small>Pilih rentang tanggal laporan</small>
+                    </div>
+                    <button type="button" class="close-button" id="closeDatePicker" aria-label="Close">&times;</button>
+                </div>
+                <div class="date-picker-body">
+                    <div class="preset-list" id="presetList">
+                        <div class="preset-title">PERIODE CEPAT</div>
+                        <button type="button" data-preset="yesterday">Kemarin</button>
+                        <button type="button" data-preset="7">1 Minggu Terakhir</button>
+                        <button type="button" data-preset="14">2 Minggu Terakhir</button>
+                        <button type="button" data-preset="30">1 Bulan Terakhir</button>
+                        <button type="button" data-preset="90">3 Bulan Terakhir</button>
+                    </div>
+                    <div class="calendar-area">
+                        <div class="calendar-toolbar">
+                            <button type="button" id="previousMonth" aria-label="Previous month">&lsaquo;</button>
+                            <strong id="calendarTitle"></strong>
+                            <button type="button" id="nextMonth" aria-label="Next month">&rsaquo;</button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                    </div>
+                </div>
+                <div class="date-picker-actions">
+                    <div class="date-picker-selected" id="datePickerSelected"></div>
+                    <div>
+                        <button type="button" class="button-secondary" id="cancelDatePicker">Batal</button>
+                        <button type="button" class="button-primary" id="applyDatePicker">Terapkan</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </header>
+
+    @if (Model.Notices.Count > 0)
+    {
+        <div class="cpd-notices" role="status">
+            <ul>
+                @foreach (var notice in Model.Notices)
+                {
+                    <li>@notice</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <!-- ============ Summary cards ============ -->
+    <section class="cpd-cards" aria-label="Ringkasan metrik">
+        @foreach (var card in Model.Cards)
+        {
+            var badge = DeltaBadge(card);
+            <div class="cpd-card @(card.IsAvailable ? string.Empty : "cpd-card-unavailable")" data-metric="@card.Key">
+                <div class="cpd-card-label"><span class="cpd-dot cpd-dot-@card.Key" aria-hidden="true"></span>@card.Label.ToUpperInvariant()</div>
+                <div class="cpd-card-value" title="@(card.IsAvailable ? card.CoverageNote : card.UnavailableReason)">@(card.IsAvailable && card.CurrentValue.HasValue ? (card.DeltaKind == DailyMetricDeltaKind.PercentagePoints ? Rate(card.CurrentValue) : (card.Key == DailyReportMetrics.NetFollower ? SignedDec(card.CurrentValue) : NumDec(card.CurrentValue))) : Dash())</div>
+                @if (card.DeltaKind == DailyMetricDeltaKind.PositionOnly)
+                {
+                    <p class="cpd-card-caption">@(card.IsAvailable ? "posisi akhir periode ini (snapshot historis valid)" : card.UnavailableReason)</p>
+                }
+                else if (badge is not null)
+                {
+                    <p class="cpd-card-delta @badge.Value.Class" title="@(card.IsPartial ? card.CoverageNote : null)">
+                        <span class="cpd-card-arrow" aria-hidden="true">@badge.Value.Arrow</span> @badge.Value.Text
+                    </p>
+                }
+                else
+                {
+                    <p class="cpd-card-delta flat" title="@card.UnavailableReason">@Dash() vs periode sebelumnya</p>
+                }
+            </div>
+        }
+    </section>
+
+    <!-- ============ Period comparison table ============ -->
+    <section class="cpd-panel cpd-comparison">
+        <h2 class="cpd-panel-title">PERBANDINGAN PERIODE &middot; @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd)</h2>
+        <div class="table-scroll">
+            <table class="cpd-table cpd-comparison-table">
+                <thead>
+                    <tr>
+                        <th>METRIK</th>
+                        <th class="cpd-num">PERIODE INI</th>
+                        <th class="cpd-num">PERIODE SEBELUMNYA</th>
+                        <th class="cpd-num">SELISIH</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.ComparisonRows)
+                    {
+                        <tr data-metric="@row.Key">
+                            <td class="cpd-metric-name"><span class="cpd-dot cpd-dot-@row.Key" aria-hidden="true"></span>@row.Label</td>
+                            <td class="cpd-num cpd-strong" title="@(row.IsAvailable ? row.CoverageNote : row.UnavailableReason)">@(row.IsAvailable ? (row.DeltaKind == DailyMetricDeltaKind.PercentagePoints ? Rate(row.CurrentValue) : (row.Key == DailyReportMetrics.NetFollower ? SignedDec(row.CurrentValue) : NumDec(row.CurrentValue))) : Dash())</td>
+                            <td class="cpd-num">@(row.PreviousValue is null ? Dash() : (row.DeltaKind == DailyMetricDeltaKind.PercentagePoints ? Rate(row.PreviousValue) : (row.Key == DailyReportMetrics.NetFollower ? SignedDec(row.PreviousValue) : NumDec(row.PreviousValue))))</td>
+                            <td class="cpd-num @DeltaCellClass(row)">@DeltaCell(row)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="cpd-table-note">
+            &ldquo;Periode Sebelumnya&rdquo; = rentang tanggal yang sama panjangnya, persis sebelum rentang yang dipilih di atas
+            &mdash; jadi perbandingannya selalu adil (apples-to-apples) apapun tanggal yang dipilih.
+        </p>
+        <p class="cpd-table-dates">
+            Periode ini: @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd) (@Model.CurrentDayCount hari)
+            &middot; Periode sebelumnya: @RangeLabelUpper(Model.PreviousStart, Model.PreviousEnd) (@Model.PreviousDayCount hari)
+            &middot; @Model.TimeZoneLabel
+        </p>
+    </section>
+
+    <!-- ============ Line chart: Reach & Video Views ============ -->
+    <section class="cpd-panel cpd-trend">
+        <div class="cpd-panel-head">
+            <h2 class="cpd-panel-title">TREN REACH &amp; VIDEO VIEWS</h2>
+            <div class="cpd-chart-legend" aria-hidden="true">
+                <span><i class="cpd-legend-dot cpd-series-reach"></i>Reach</span>
+                <span><i class="cpd-legend-dot cpd-series-views"></i>Video Views</span>
+            </div>
+        </div>
+        <div class="cpd-chart-wrap" id="cpdLineChart">
+            @if (!hasLineData)
+            {
+                <p class="cpd-empty">Belum ada data Reach / Video Views level akun untuk periode ini &mdash; sumber analytics account-level belum terintegrasi, jadi grafik tidak digambar (tanpa titik nol fiktif).</p>
+            }
+        </div>
+    </section>
+
+    <!-- ============ Diverging bar chart: Net Follower ============ -->
+    <section class="cpd-panel cpd-net">
+        <div class="cpd-panel-head">
+            <h2 class="cpd-panel-title">PERGERAKAN NET FOLLOWER</h2>
+            <div class="cpd-chart-legend" aria-hidden="true">
+                <span><i class="cpd-legend-dot cpd-series-pos"></i>Follower bertambah</span>
+                <span><i class="cpd-legend-dot cpd-series-neg"></i>Follower berkurang</span>
+            </div>
+        </div>
+        <div class="cpd-chart-wrap" id="cpdNetChart">
+            @if (!hasBarData)
+            {
+                <p class="cpd-empty">Belum ada data Net Follower level akun (Followers Gained &minus; Followers Lost) untuk periode ini &mdash; sumber account-level belum terintegrasi.</p>
+            }
+        </div>
+    </section>
+
+    <!-- ============ Two donut charts ============ -->
+    <div class="cpd-donuts">
+        <section class="cpd-panel cpd-donut-panel">
+            <h2 class="cpd-panel-title">KOMPOSISI INTERACTIONS</h2>
+            <div class="cpd-donut-body">
+                <div class="cpd-donut-wrap">
+                    <svg class="cpd-donut @(Model.InteractionComposition.IsAvailable ? string.Empty : "cpd-donut-empty")" viewBox="0 0 120 120" role="img" aria-label="Komposisi interactions">
+                        <title>@Model.InteractionComposition.IsAvailable ? $"Komposisi interactions: {Model.InteractionComposition.Total:N0} interaksi total" : "Data komposisi interactions belum tersedia"</title>
+                        <circle class="cpd-donut-track" cx="60" cy="60" r="@SvgNum(DonutRadius)" />
+                        @if (Model.InteractionComposition.IsAvailable)
+                        {
+                            foreach (var arc in interactionArcs)
+                            {
+                                <circle class="cpd-donut-arc" cx="60" cy="60" r="@SvgNum(DonutRadius)"
+                                        style="stroke:@arc.Color"
+                                        stroke-dasharray="@SvgNum(arc.Length) @SvgNum(donutCircumference - arc.Length)"
+                                        stroke-dashoffset="@SvgNum(-arc.Offset)"
+                                        transform="rotate(-90 60 60)" />
+                            }
+                        }
+                        else
+                        {
+                            <g class="cpd-donut-empty-mark">
+                                <circle cx="60" cy="60" r="36" fill="none" stroke="#2c3748" stroke-width="1.5" />
+                                <text x="60" y="69" text-anchor="middle" class="cpd-donut-empty-text">Data belum tersedia</text>
+                            </g>
+                        }
+                    </svg>
+                </div>
+                <ul class="cpd-legend[hidden]">
+                    @if (Model.InteractionComposition.IsAvailable)
+                    {
+                        foreach (var segment in Model.InteractionComposition.Segments)
+                        {
+                            <li>
+                                <span class="cpd-legend-swatch" style="background:@segment.Color" aria-hidden="true"></span>
+                                <span class="cpd-legend-name">@segment.Label</span>
+                                <span class="cpd-legend-value" title="@(segment.Value is null ? null : $"{NumDec(segment.Value)} ({Rate(segment.Percentage)})")">@Percent0(segment.Percentage)</span>
+                            </li>
+                        }
+                    }
+                </ul>
+            </div>
+        </section>
+
+        <section class="cpd-panel cpd-donut-panel">
+            <h2 class="cpd-panel-title">KOMPOSISI REACH &middot; VIEWER BARU VS LAMA</h2>
+            <div class="cpd-donut-body">
+                <div class="cpd-donut-wrap">
+                    <svg class="cpd-donut @(Model.ViewerComposition.IsAvailable ? string.Empty : "cpd-donut-empty")" viewBox="0 0 120 120" role="img" aria-label="Komposisi viewer baru dan lama">
+                        <title>@Model.ViewerComposition.IsAvailable ? $"Komposisi reach: {Model.ViewerComposition.Total:N0} pemirsa total" : "Data komposisi reach belum tersedia"</title>
+                        <circle class="cpd-donut-track" cx="60" cy="60" r="@SvgNum(DonutRadius)" />
+                        @if (Model.ViewerComposition.IsAvailable)
+                        {
+                            foreach (var arc in viewerArcs)
+                            {
+                                <circle class="cpd-donut-arc" cx="60" cy="60" r="@SvgNum(DonutRadius)"
+                                        style="stroke:@arc.Color"
+                                        stroke-dasharray="@SvgNum(arc.Length) @SvgNum(donutCircumference - arc.Length)"
+                                        stroke-dashoffset="@SvgNum(-arc.Offset)"
+                                        transform="rotate(-90 60 60)" />
+                            }
+                        }
+                        else
+                        {
+                            <g class="cpd-donut-empty-mark">
+                                <circle cx="60" cy="60" r="36" fill="none" stroke="#2c3748" stroke-width="1.5" />
+                                <text x="60" y="69" text-anchor="middle" class="cpd-donut-empty-text">Data belum tersedia</text>
+                            </g>
+                        }
+                    </svg>
+                </div>
+                <ul class="cpd-legend[hidden]">
+                    @if (Model.ViewerComposition.IsAvailable)
+                    {
+                        foreach (var segment in Model.ViewerComposition.Segments)
+                        {
+                            <li>
+                                <span class="cpd-legend-swatch" style="background:@(string.IsNullOrEmpty(segment.Color) ? "#3b465c" : segment.Color)" aria-hidden="true"></span>
+                                <span class="cpd-legend-name">@segment.Label</span>
+                                <span class="cpd-legend-value" title="@(segment.Value is null ? null : $"{NumDec(segment.Value)} ({Rate(segment.Percentage)})")">@Percent0(segment.Percentage)</span>
+                            </li>
+                        }
+                    }
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <!-- ============ Daily detail table (descending) ============ -->
+    <section class="cpd-panel cpd-daily">
+        <div class="cpd-panel-head">
+            <h2 class="cpd-panel-title">DETAIL HARIAN &middot; @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd)</h2>
+            <span class="cpd-panel-hint">urut dari tanggal terbaru</span>
+        </div>
+        <div class="table-scroll">
+            <table class="cpd-table cpd-daily-table">
+                <thead>
+                    <tr>
+                        <th>TANGGAL</th>
+                        <th class="cpd-num">REACH</th>
+                        <th class="cpd-num">VIDEO VIEWS</th>
+                        <th class="cpd-num">PROFILE VIEWS</th>
+                        <th class="cpd-num">INTERACTIONS</th>
+                        <th class="cpd-num">ENGAGEMENT RATE</th>
+                        <th class="cpd-num">NET FOLLOWER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.DailyRows)
+                    {
+                        <tr>
+                            <td title="@DateLong(row.Date)">@DateShort(row.Date)</td>
+                            <td class="cpd-num">@Num(row.Reach)</td>
+                            <td class="cpd-num">@Num(row.VideoViews)</td>
+                            <td class="cpd-num">@Num(row.ProfileViews)</td>
+                            <td class="cpd-num">@Num(row.Interactions)</td>
+                            <td class="cpd-num">@Rate(row.EngagementRate)</td>
+                            <td class="cpd-num @(row.NetFollower is null ? string.Empty : row.NetFollower.Value > 0 ? "is-positive" : row.NetFollower.Value < 0 ? "is-negative" : string.Empty)">@Signed(row.NetFollower)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.DailyRows.Count == 0)
+        {
+            <p class="cpd-empty">Tidak ada baris untuk periode ini.</p>
+        }
+    </section>
+
+    <!-- ============ Footer: definitions + source status ============ -->
+    <footer class="cpd-footer">
+        <p class="cpd-footer-title">Definisi metrik &amp; sumber data</p>
+        <ul class="cpd-footer-notes">
+            @foreach (var note in Model.SourceNotes)
+            {
+                <li>
+                    <strong>@note.Metric</strong> &mdash; @note.Definition
+                    <span class="cpd-footer-status">@note.Status</span>
+                </li>
+            }
+        </ul>
+        <p class="cpd-footer-disclaimer">
+            Metrik per-video yang tersedia di sistem (ContentMetric) tidak dipakai sebagai pengganti data account-level:
+            menjumlahkan Reach/Views per-video tidak setara dengan analytics akun, sehingga nilai yang belum punya sumber
+            account-level yang terverifikasi tetap ditampilkan &ldquo;-&rdquo;.
+        </p>
+    </footer>
+</div>
+
+<script type="application/json" id="cpdChartPayload">@Html.Raw(chartPayload)</script>
+
+@section Scripts {
+<script src="~/js/calendar-popup.js" asp-append-version="true"></script>
+<script src="~/js/daily-performance.js" asp-append-version="true"></script>
+<script>
+(() => {
+    // Date range picker: same shared CalendarPopup module and selection rules as
+    // Daily Summary / Winning Content. Submitting navigates with the SAME contract
+    // the server already renders (?startDate&endDate) so every section refreshes from
+    // one response. The server is authoritative for validation and all analytics.
+    const page = document.querySelector('.creative-performance-daily-page');
+    const rangeButton = document.getElementById('dateRangeButton');
+    const datePanel = document.getElementById('datePickerPanel');
+    const appliedStart = page.dataset.start;
+    const appliedEnd = page.dataset.end;
+    let pendingStart = appliedStart;
+    let pendingEnd = appliedEnd;
+
+    const parseDate = value => new Date(`${value}T00:00:00`);
+    const two = n => String(n).padStart(2, '0');
+    const isoDate = date => `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
+    const formatDdMm = value => { const d = parseDate(value); return `${two(d.getDate())}/${two(d.getMonth() + 1)}`; };
+
+    function setPanel(panel, button, open) {
+        panel.hidden = !open;
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function renderPendingLabel() {
+        const text = pendingStart && pendingEnd
+            ? `${formatDdMm(pendingStart)} - ${formatDdMm(pendingEnd)} (@Model.TimeZoneLabel)`
+            : pendingStart
+                ? `${formatDdMm(pendingStart)} - ...`
+                : 'Pilih rentang tanggal';
+        document.getElementById('pendingRangeLabel').textContent = text;
+        document.getElementById('datePickerSelected').textContent = pendingStart && pendingEnd ? text : '';
+    }
+
+    const rangeCalendar = CalendarPopup.createRangeCalendar({
+        grid: document.getElementById('calendarGrid'),
+        titleEl: document.getElementById('calendarTitle'),
+        prevButton: document.getElementById('previousMonth'),
+        nextButton: document.getElementById('nextMonth'),
+        months: 2,
+        initialMonth: appliedStart,
+        getSelection: () => ({ start: pendingStart, end: pendingEnd }),
+        onSelectionChange: (start, end) => { pendingStart = start; pendingEnd = end; renderPendingLabel(); }
+    });
+    const renderCalendar = () => rangeCalendar.render();
+
+    const closeAllPanels = () => setPanel(datePanel, rangeButton, false);
+
+    document.addEventListener('click', event => {
+        const clicked = event.target instanceof Element && event.target.isConnected ? event.target : null;
+        if (!datePanel.hidden && (!clicked || !clicked.closest('.cpd-header-anchor'))) setPanel(datePanel, rangeButton, false);
+    });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') closeAllPanels(); });
+
+    rangeButton.addEventListener('click', () => {
+        const open = datePanel.hidden;
+        setPanel(datePanel, rangeButton, open);
+        if (open) { pendingStart = appliedStart; pendingEnd = appliedEnd; renderPendingLabel(); renderCalendar(); }
+    });
+    document.getElementById('closeDatePicker').addEventListener('click', closeAllPanels);
+    document.getElementById('cancelDatePicker').addEventListener('click', () => { pendingStart = appliedStart; pendingEnd = appliedEnd; closeAllPanels(); });
+    document.getElementById('applyDatePicker').addEventListener('click', () => {
+        if (!pendingStart || !pendingEnd) return;
+        // Same contract as the initial page load - no other parameters exist here.
+        window.location.assign(`/DailyPerformance?startDate=${encodeURIComponent(pendingStart)}&endDate=${encodeURIComponent(pendingEnd)}`);
+    });
+    document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+        const today = new Date();
+        const preset = button.dataset.preset;
+        const end = new Date(today);
+        const start = new Date(today);
+        if (preset === 'yesterday') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); }
+        else if (preset !== 'today') start.setDate(start.getDate() - Number(preset) + 1);
+        pendingStart = isoDate(start);
+        pendingEnd = isoDate(end);
+        renderPendingLabel(); renderCalendar();
+    }));
+})();
+</script>
+}

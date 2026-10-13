@@ -8,6 +8,7 @@ using KaleContentOps.Services.DailySummary;
 using KaleContentOps.Services.WinningContent;
 using KaleContentOps.Services.Targets;
 using KaleContentOps.Services.TeamPerformance;
+using KaleContentOps.Services.CreativePerformance;
 using KaleContentOps.Security;
 using System.IO;
 using Microsoft.AspNetCore.Authentication;
@@ -128,6 +129,33 @@ builder.Services.AddScoped<IWinningContentService, WinningContentService>();
 builder.Services.AddScoped<ITargetService, TargetService>();
 // Team Performance: operational workload / historical contribution per PIC
 builder.Services.AddScoped<ITeamPerformanceService, TeamPerformanceService>();
+// Creative Performance - Daily Report (account-level analytics).
+// NOTE: the only verified metrics in this workspace are per-video (ContentMetric),
+// so the registered account-level provider is the BLOCKED/unavailable one. Replace
+// IAccountDailyMetricSource with a verified provider (EF Core table or TikTok
+// account analytics endpoint) to activate real values - service and UI stay unchanged.
+// Creative Performance - Daily Report (account-level analytics).
+// NOTE: the only verified metrics in this workspace are per-video (ContentMetric),
+// so the registered account-level provider is the BLOCKED/unavailable one. Replace
+// IAccountDailyMetricSource with a verified provider (EF Core table or TikTok
+// account analytics endpoint) to activate real values - service and UI stay unchanged.
+// Creative Performance - Daily Report (account-level analytics).
+// NOTE: the only verified metrics in this workspace are per-video (ContentMetric),
+// so the registered account-level provider is the BLOCKED/unavailable one. Replace
+// IAccountDailyMetricSource with a verified provider (EF Core table or TikTok
+// account analytics endpoint) to activate real values - service and UI stay unchanged.
+// Creative Performance - Daily Report (account-level analytics).
+// NOTE: the only verified metrics in this workspace are per-video (ContentMetric),
+// so the registered account-level provider is the BLOCKED/unavailable one. Replace
+// IAccountDailyMetricSource with a verified provider (EF Core table or TikTok
+// account analytics endpoint) to activate real values - service and UI stay unchanged.
+// Creative Performance - Daily Report (account-level analytics).
+// NOTE: the only verified metrics in this workspace are per-video (ContentMetric),
+// so the registered account-level provider is the BLOCKED/unavailable one. Replace
+// IAccountDailyMetricSource with a verified provider (EF Core table or TikTok
+// account analytics endpoint) to activate real values - service and UI stay unchanged.
+builder.Services.AddScoped<IDailyPerformanceService, DailyPerformanceService>();
+builder.Services.AddScoped<IAccountDailyMetricSource, UnavailableAccountDailyMetricSource>();
 
 // Register named HttpClients for TikTok API and Auth endpoints. Concrete services will be registered later.
 builder.Services.AddHttpClient("TikTokApi", client =>
@@ -161,6 +189,8 @@ builder.Services.AddScoped<ITikTokShopService, TikTokShopService>();
 builder.Services.AddScoped<ITikTokVideoService, TikTokVideoService>();
 // Details sync service (used by CLI and background worker)
 builder.Services.AddScoped<TikTokDetailsSyncService>();
+// Backfill service for content type classification (used for data migration)
+builder.Services.AddScoped<BackfillContentTypeService>();
 
 // Daily sync worker - register only when explicitly enabled via configuration (TikTok:EnableDailySync = true)
 if (builder.Configuration.GetValue<bool>("TikTok:EnableDailySync", false))
@@ -544,6 +574,74 @@ static bool IsApiRequest(HttpRequest request)
             Console.WriteLine($"=== TIKTOK DETAILS SYNC === shop={shop} limit={limit} skip={skip}");
             var processed = svc.RunDetailsSyncAsync(shop, limit, skip).GetAwaiter().GetResult();
             Console.WriteLine($"Details sync processed {processed} videos");
+        }
+
+        return;
+    }
+
+    // Backfill ContentType classification for historical data
+    // Usage: dotnet run --backfill-content-type [--shop=SHOP_CIPHER] [--dry-run]
+    if (args.Any(a => a != null && a.StartsWith("--backfill-content-type", StringComparison.OrdinalIgnoreCase)))
+    {
+        string? shop = null;
+        bool dryRun = false;
+
+        foreach (var a in args)
+        {
+            if (a != null && a.StartsWith("--shop=", StringComparison.OrdinalIgnoreCase))
+                shop = a.Substring("--shop=".Length);
+            if (a != null && a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase))
+                dryRun = true;
+        }
+
+        using (var scope = app.Services.CreateScope())
+        {
+            var backfillSvc = scope.ServiceProvider.GetRequiredService<BackfillContentTypeService>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("KaleContentOps.BackfillContentType");
+
+            if (dryRun)
+            {
+                logger.LogInformation("=== BACKFILL CONTENT TYPE (DRY RUN) ===");
+            }
+            else
+            {
+                logger.LogInformation("=== BACKFILL CONTENT TYPE ===");
+            }
+
+            if (!string.IsNullOrWhiteSpace(shop))
+            {
+                logger.LogInformation("Backfilling ContentType for shop: {Shop}", shop);
+                if (dryRun)
+                {
+                    var (classifiable, notClassifiable) = await backfillSvc.CountClassifiableAsync();
+                    logger.LogInformation("DRY RUN - Would process shop {Shop}. Classifiable: {Classifiable}, Not classifiable: {NotClassifiable}", 
+                        shop, classifiable, notClassifiable);
+                }
+                else
+                {
+                    var (totalProcessed, updated, couldNotClassify) = await backfillSvc.BackfillShopAsync(shop);
+                    logger.LogInformation("Backfill completed for shop {Shop}: Total={Total} Updated={Updated} CouldNotClassify={CouldNotClassify}",
+                        shop, totalProcessed, updated, couldNotClassify);
+                }
+            }
+            else
+            {
+                logger.LogInformation("Backfilling ContentType for all ContentLogs");
+                if (dryRun)
+                {
+                    var (classifiable, notClassifiable) = await backfillSvc.CountClassifiableAsync();
+                    logger.LogInformation("DRY RUN - Would process all shops. Classifiable: {Classifiable}, Not classifiable: {NotClassifiable}",
+                        classifiable, notClassifiable);
+                }
+                else
+                {
+                    var (totalProcessed, updated, couldNotClassify) = await backfillSvc.BackfillAllAsync();
+                    logger.LogInformation("Backfill completed for all: Total={Total} Updated={Updated} CouldNotClassify={CouldNotClassify}",
+                        totalProcessed, updated, couldNotClassify);
+                }
+            }
         }
 
         return;

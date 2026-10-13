@@ -1,0 +1,284 @@
+/* ==========================================================================
+   Creative Performance - Daily Report
+   Everything is scoped under .creative-performance-daily-page so no other menu
+   (Daily Summary, Winning Content, Team Performance, ...) can be affected.
+   Dark theme follows the app tokens from layout.css (#0b1220 background,
+   #dce6f2 text, #9aa4b2 muted) with the same palette used by Daily Summary /
+   Winning Content so the module looks native.
+   ========================================================================== */
+
+.creative-performance-daily-page {
+    --cpd-bg: #0b111b;
+    --cpd-card: #111a27;
+    --cpd-card-2: #151f2e;
+    --cpd-line: #263346;
+    --cpd-line-soft: #1e2a3d;
+    --cpd-muted: #8996a8;
+    --cpd-text: #e7edf5;
+    --cpd-blue: #4d9fff;
+    --cpd-indigo: #7c8cff;
+    --cpd-yellow: #e8b83f;
+    --cpd-purple: #a975e8;
+    --cpd-green: #45d483;
+    --cpd-red: #f47777;
+    --cpd-radius: 10px;
+
+    position: relative;
+    max-width: 1680px;
+    color: var(--cpd-text);
+}
+
+/* ============ Header ============ */
+.cpd-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    margin-bottom: 16px;
+}
+
+.cpd-title h1 { margin: 0; color: #f4f7fb; font-size: 24px; font-weight: 700; line-height: 1.25; }
+.cpd-title .cpd-desc { margin: 7px 0 0; max-width: 900px; color: var(--cpd-muted); font-size: 12.5px; line-height: 1.5; }
+.cpd-title .cpd-compare { margin: 9px 0 0; color: #b6c3d5; font-size: 12.5px; }
+.cpd-title .cpd-compare strong { color: #f0f5fa; }
+
+.cpd-header-anchor { position: relative; flex: 0 0 auto; text-align: right; }
+.cpd-range-note { margin: 8px 0 0; max-width: 320px; color: var(--cpd-muted); font-size: 11px; line-height: 1.5; }
+
+/* Date range button + picker (same pattern as Daily Summary / Winning Content) */
+.creative-performance-daily-page .date-range-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    color: var(--cpd-text);
+    background: var(--cpd-card);
+    border: 1px solid var(--cpd-line);
+    border-radius: 8px;
+    cursor: pointer;
+}
+.creative-performance-daily-page .date-range-button:hover { border-color: #52657e; background: var(--cpd-card-2); }
+.creative-performance-daily-page .date-range-button strong { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.creative-performance-daily-page .calendar-icon { display: inline-flex; color: var(--cpd-blue); }
+
+.creative-performance-daily-page .popover-panel {
+    position: absolute;
+    z-index: 30;
+    background: #172232;
+    border: 1px solid #34445a;
+    border-radius: var(--cpd-radius);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .5);
+    text-align: left;
+}
+
+.creative-performance-daily-page .date-picker-panel { top: calc(100% + 8px); right: 0; width: min(680px, calc(100vw - 48px)); padding: 16px; }
+.creative-performance-daily-page .date-picker-topline { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
+.creative-performance-daily-page .date-picker-topline strong { display: block; color: #f0f5fa; font-size: 14px; }
+.creative-performance-daily-page .date-picker-topline small { display: block; margin-top: 3px; color: var(--cpd-muted); font-size: 11px; }
+.creative-performance-daily-page .close-button { color: #aab7c7; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; }
+.creative-performance-daily-page .close-button:hover { color: white; }
+
+.creative-performance-daily-page .date-picker-body { display: flex; gap: 18px; align-items: stretch; }
+.creative-performance-daily-page .preset-list { flex: 0 0 190px; display: flex; flex-direction: column; gap: 6px; padding-right: 16px; border-right: 1px solid var(--cpd-line-soft); }
+.creative-performance-daily-page .preset-title { margin-bottom: 4px; color: #8795a9; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.creative-performance-daily-page .preset-list button { padding: 8px 11px; color: #cbd6e5; text-align: left; font-size: 12px; background: transparent; border: 1px solid var(--cpd-line); border-radius: 6px; cursor: pointer; }
+.creative-performance-daily-page .preset-list button:hover { color: white; border-color: var(--cpd-blue); background: rgba(77, 159, 255, .08); }
+
+.creative-performance-daily-page .calendar-area { flex: 1 1 auto; min-width: 0; }
+
+.creative-performance-daily-page .date-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cpd-line-soft); }
+.creative-performance-daily-page .date-picker-selected { color: #cbd6e5; font-size: 12px; }
+.creative-performance-daily-page .button-secondary,
+.creative-performance-daily-page .button-primary { padding: 7px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; }
+.creative-performance-daily-page .button-secondary { color: #cbd6e5; background: transparent; border: 1px solid var(--cpd-line); }
+.creative-performance-daily-page .button-secondary:hover { color: white; border-color: #52657e; }
+.creative-performance-daily-page .button-primary { color: white; font-weight: 600; background: #356fc0; border: 1px solid #356fc0; }
+.creative-performance-daily-page .button-primary:hover { background: #3f7fd4; border-color: #3f7fd4; }
+
+/* ============ Notices ============ */
+.cpd-notices {
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    background: rgba(232, 184, 63, .07);
+    border: 1px solid rgba(232, 184, 63, .25);
+    border-radius: 8px;
+    color: #e3cf9a;
+    font-size: 12px;
+}
+.cpd-notices ul { margin: 0; padding-left: 18px; }
+.cpd-notices li { margin: 2px 0; }
+
+/* ============ Summary cards ============ */
+.cpd-cards {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.cpd-card {
+    padding: 15px 16px 16px;
+    background: var(--cpd-card);
+    border: 1px solid var(--cpd-line);
+    border-radius: var(--cpd-radius);
+}
+
+.cpd-card-label { display: flex; align-items: center; gap: 7px; color: var(--cpd-muted); font-size: 10.5px; font-weight: 700; letter-spacing: .07em; }
+.cpd-card-value { margin-top: 9px; color: #f6f9fd; font-size: 27px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cpd-card-unavailable .cpd-card-value { color: #6d7d93; }
+.cpd-card-delta { margin: 9px 0 0; font-size: 11.5px; font-weight: 600; line-height: 1.4; }
+.cpd-card-delta.up { color: var(--cpd-green); }
+.cpd-card-delta.down { color: var(--cpd-red); }
+.cpd-card-delta.flat { color: var(--cpd-muted); font-weight: 500; }
+.cpd-card-arrow { font-size: 9px; }
+.cpd-card-caption { margin: 8px 0 0; color: var(--cpd-muted); font-size: 10.5px; line-height: 1.45; }
+
+/* Metric dots (mockup): one colour per metric family */
+.cpd-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.cpd-dot-reach { background: var(--cpd-blue); }
+.cpd-dot-video_views { background: var(--cpd-indigo); }
+.cpd-dot-profile_views { background: var(--cpd-yellow); }
+.cpd-dot-interactions { background: #d0d7ff; }
+.cpd-dot-engagement_rate { background: var(--cpd-yellow); }
+.cpd-dot-net_follower { background: var(--cpd-green); }
+.cpd-dot-total_follower { background: var(--cpd-muted); }
+
+/* ============ Panels ============ */
+.cpd-panel {
+    margin-bottom: 16px;
+    padding: 16px 18px 18px;
+    background: var(--cpd-card);
+    border: 1px solid var(--cpd-line);
+    border-radius: var(--cpd-radius);
+}
+
+.cpd-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.cpd-panel-title { margin: 0 0 12px; color: #9fb0c6; font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.cpd-panel-head .cpd-panel-title { margin-bottom: 0; }
+.cpd-panel-hint { color: var(--cpd-muted); font-size: 11px; }
+
+.cpd-empty { margin: 6px 0; color: var(--cpd-muted); font-size: 12px; line-height: 1.55; }
+
+/* ============ Tables ============ */
+.creative-performance-daily-page .table-scroll { overflow-x: auto; }
+
+.cpd-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cpd-table th, .cpd-table td { padding: 10px 12px; border-bottom: 1px solid var(--cpd-line-soft); white-space: nowrap; }
+.cpd-table thead th { background: var(--cpd-card-2); color: #8795a9; font-size: 10px; font-weight: 700; letter-spacing: .06em; }
+.cpd-table tbody tr:last-child td { border-bottom: 0; }
+.cpd-table .cpd-num { text-align: right; font-variant-numeric: tabular-nums; }
+.cpd-table .cpd-strong { color: #f4f8fc; font-weight: 700; }
+.cpd-metric-name { display: flex; align-items: center; gap: 8px; color: #dbe4f0; font-weight: 600; }
+
+.is-positive { color: var(--cpd-green); }
+.is-negative { color: var(--cpd-red); }
+
+.cpd-table-note { margin: 12px 0 0; color: var(--cpd-muted); font-size: 11.5px; line-height: 1.5; }
+.cpd-table-dates { margin: 5px 0 0; color: #a9b7c9; font-size: 11.5px; }
+
+/* ============ Charts ============ */
+.cpd-chart-legend { display: flex; align-items: center; gap: 16px; color: var(--cpd-muted); font-size: 11px; }
+.cpd-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cpd-legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.cpd-series-reach { background: var(--cpd-blue); }
+.cpd-series-views { background: var(--cpd-indigo); }
+.cpd-series-pos { background: var(--cpd-green); }
+.cpd-series-neg { background: var(--cpd-red); }
+
+.cpd-chart-wrap { position: relative; margin-top: 12px; min-height: 90px; }
+.cpd-chart-wrap svg { display: block; width: 100%; height: auto; }
+.cpd-chart-grid { stroke: rgba(255, 255, 255, .06); stroke-width: 1; }
+.cpd-chart-axis-label { fill: var(--cpd-muted); font-size: 11px; }
+.cpd-chart-line { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.cpd-chart-line.reach { stroke: var(--cpd-blue); }
+.cpd-chart-line.views { stroke: var(--cpd-indigo); }
+.cpd-chart-point.reach { fill: var(--cpd-blue); }
+.cpd-chart-point.views { fill: var(--cpd-indigo); }
+.cpd-chart-bar.pos { fill: var(--cpd-green); }
+.cpd-chart-bar.neg { fill: var(--cpd-red); }
+.cpd-chart-baseline { stroke: rgba(255, 255, 255, .28); stroke-width: 1; }
+
+.cpd-tooltip {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+    padding: 8px 10px;
+    background: #172232;
+    border: 1px solid #34445a;
+    border-radius: 8px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .45);
+    color: #e7edf5;
+    font-size: 11.5px;
+    line-height: 1.5;
+    white-space: nowrap;
+    transform: translate(-50%, -110%);
+}
+.cpd-tooltip strong { display: block; margin-bottom: 2px; color: #f4f8fc; }
+.cpd-tooltip .cpd-tooltip-row { display: flex; align-items: center; gap: 6px; }
+.cpd-tooltip .cpd-tooltip-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* ============ Donuts ============ */
+.cpd-donuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cpd-donuts .cpd-panel { margin-bottom: 16px; }
+
+.cpd-donut-body { display: flex; align-items: center; gap: 22px; }
+.cpd-donut-wrap { flex: 0 0 auto; }
+.cpd-donut { width: 128px; height: 128px; }
+.cpd-donut-track { fill: none; stroke: #232d40; stroke-width: 15; }
+.cpd-donut-arc { fill: none; stroke-width: 15; stroke-linecap: butt; }
+.cpd-donut-empty .cpd-donut-track { stroke: #2a3548; }
+
+.cpd-donut-empty-mark circle { pointer-events: none; }
+.cpd-donut-empty-text {
+    fill: #9aa6b5;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .04em;
+}
+
+.cpd-legend { flex: 1 1 auto; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.cpd-legend[hidden] { display: none; }
+.cpd-legend li { display: flex; align-items: center; gap: 9px; font-size: 12px; color: #cfd9e6; }
+.cpd-legend-swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; opacity: .85; }
+.cpd-legend-name { flex: 1 1 auto; }
+.cpd-legend-value { color: #f2f6fb; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ============ Footer ============ */
+.cpd-footer { margin: 6px 0 24px; padding: 14px 16px; background: rgba(255, 255, 255, .015); border: 1px solid var(--cpd-line-soft); border-radius: var(--cpd-radius); }
+.cpd-footer-title { margin: 0 0 8px; color: #9fb0c6; font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.cpd-footer-notes { margin: 0; padding-left: 18px; color: var(--cpd-muted); font-size: 11.5px; line-height: 1.6; }
+.cpd-footer-notes li { margin: 3px 0; }
+.cpd-footer-notes strong { color: #c6d2e2; font-weight: 600; }
+.cpd-footer-status { margin-left: 6px; color: #7f8ea3; font-style: italic; }
+.cpd-footer-disclaimer { margin: 10px 0 0; color: #7f8ea3; font-size: 11px; line-height: 1.55; }
+
+/* ============ Responsive ============ */
+@media (max-width: 1400px) {
+    .cpd-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1100px) {
+    .cpd-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cpd-donuts { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 991px) {
+    .cpd-header { flex-direction: column; align-items: stretch; }
+    .cpd-header-anchor { text-align: left; }
+    .cpd-range-note { max-width: none; }
+    .creative-performance-daily-page .date-picker-panel { right: auto; left: 0; }
+}
+
+@media (max-width: 767px) {
+    .cpd-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cpd-card-value { font-size: 22px; }
+    .cpd-donut-body { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .cpd-title h1 { font-size: 20px; }
+    .creative-performance-daily-page .date-picker-body { flex-direction: column; }
+    .creative-performance-daily-page .preset-list { flex: 1 1 auto; flex-direction: row; flex-wrap: wrap; padding-right: 0; padding-bottom: 12px; border-right: 0; border-bottom: 1px solid var(--cpd-line-soft); }
+}
+
+@media (max-width: 480px) {
+    .cpd-cards { grid-template-columns: minmax(0, 1fr); }
+}
