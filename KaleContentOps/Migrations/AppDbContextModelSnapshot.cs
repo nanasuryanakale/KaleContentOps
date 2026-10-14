@@ -523,11 +523,20 @@ namespace KaleContentOps.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CollectionCompleted")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("CurrentPageToken")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("datetime2");
@@ -537,6 +546,9 @@ namespace KaleContentOps.Migrations
 
                     b.Property<string>("LastError")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("PendingItemsCount")
                         .HasColumnType("int");
@@ -551,6 +563,7 @@ namespace KaleContentOps.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<int>("SucceededItemsCount")
@@ -564,6 +577,9 @@ namespace KaleContentOps.Migrations
 
                     b.Property<int>("TotalVideoIdsFound")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
@@ -593,6 +609,7 @@ namespace KaleContentOps.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<long>("TikTokBatchSyncJobId")
@@ -600,11 +617,13 @@ namespace KaleContentOps.Migrations
 
                     b.Property<string>("VideoId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TikTokBatchSyncJobId");
+                    b.HasIndex("TikTokBatchSyncJobId", "VideoId")
+                        .IsUnique();
 
                     b.ToTable("TikTokBatchSyncJobItems");
                 });

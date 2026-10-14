@@ -19,14 +19,16 @@ namespace KaleContentOps.Controllers.Admin
         private readonly ITikTokShopService _shopService;
         private readonly ITikTokVideoService _videoService;
         private readonly TikTokDetailsSyncService _detailsService;
+        private readonly TikTokBatchSyncService _batchSyncService;
         private readonly AppDbContext _db;
         private readonly Microsoft.AspNetCore.Hosting.IWebHostEnvironment _env;
 
-        public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, AppDbContext db, Microsoft.AspNetCore.Hosting.IWebHostEnvironment env)
+        public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, TikTokBatchSyncService batchSyncService, AppDbContext db, Microsoft.AspNetCore.Hosting.IWebHostEnvironment env)
         {
             _shopService = shopService;
             _videoService = videoService;
             _detailsService = detailsService;
+            _batchSyncService = batchSyncService;
             _db = db;
             _env = env;
         }
@@ -36,6 +38,51 @@ namespace KaleContentOps.Controllers.Admin
         {
             var shops = await _db.TikTokShops.OrderBy(x => x.Id).ToListAsync();
             return View("~/Views/Admin/TikTok/Index.cshtml", shops);
+        }
+
+        // ------------------------------------------------------------------
+        // Persistent batch video sync (date-range Sync Video Details job)
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Creates a persistent background job (status Queued) and returns its id immediately.
+        /// The actual list pagination + details processing runs in TikTokBatchSyncWorker,
+        /// never inside this HTTP request.
+        /// </summary>
+        [HttpPost("StartBatchSync")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> StartBatchSync(long shopId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var jobId = await _batchSyncService.StartJobAsync(shopId, startDate, endDate, cancellationToken);
+                return Json(new { jobId });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>Live job status + progress counters read from SQL Server.</summary>
+        [HttpGet("BatchSyncStatus/{jobId:long}")]
+        public async Task<IActionResult> BatchSyncStatus(long jobId, CancellationToken cancellationToken)
+        {
+            var status = await _batchSyncService.GetStatusAsync(jobId, cancellationToken);
+            if (status == null) return NotFound();
+            return Json(status);
+        }
+
+        /// <summary>Recent jobs (newest first) for the job history table.</summary>
+        [HttpGet("BatchSyncHistory")]
+        public async Task<IActionResult> BatchSyncHistory(int take = 10, CancellationToken cancellationToken = default)
+        {
+            var history = await _batchSyncService.GetHistoryAsync(take, cancellationToken);
+            return Json(history);
         }
 
         [HttpPost("SyncAuthorizedShops")]

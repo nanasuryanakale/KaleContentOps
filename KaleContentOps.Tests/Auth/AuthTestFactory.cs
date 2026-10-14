@@ -31,10 +31,12 @@ public sealed class AuthTestFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment("Testing");            // Reliable config switch: Program.cs skips startup seeding when false.
+            builder.UseSetting("Identity:SeedOnStartup", "false");
 
-        // Reliable config switch: Program.cs skips startup seeding when false.
-        builder.UseSetting("Identity:SeedOnStartup", "false");
+            // Never run the batch-sync background worker under test: it would poll the queue
+            // and could attempt TikTok API calls. Batch sync tests drive the service directly.
+            builder.UseSetting("TikTok:EnableBatchSyncWorker", "false");
 
         builder.ConfigureServices(services =>
         {

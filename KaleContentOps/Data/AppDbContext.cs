@@ -66,6 +66,29 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             })
             .HasDatabaseName("IX_ContentLogs_VideoPostTime_Id");
 
+        // ---- TikTok batch sync (persistent background job queue) ----
+        // Status is the optimistic-concurrency token for both tables: every claim is a
+        // compare-and-swap on status (Queued -> CollectingIds, Pending -> Processing, ...),
+        // so two workers can never win the same job or the same item. Works on both the
+        // SQL Server provider (WHERE Status = <original>) and EF InMemory (tests).
+        modelBuilder.Entity<TikTokBatchSyncJob>(entity =>
+        {
+            entity.Property(x => x.Status).IsConcurrencyToken();
+        });
+
+        modelBuilder.Entity<TikTokBatchSyncJobItem>(entity =>
+        {
+            entity.Property(x => x.Status).IsConcurrencyToken();
+
+            // VideoId length matches ContentLog.VideoId ([MaxLength(100)]) so the
+            // unique index below can be created on SQL Server (no nvarchar(max) keys).
+            entity.Property(x => x.VideoId).HasMaxLength(100);
+
+            // DB-enforced deduplication: the same video can only be queued once per job,
+            // even if the API returns it on multiple pages or a page is retried.
+            entity.HasIndex(x => new { x.TikTokBatchSyncJobId, x.VideoId }).IsUnique();
+        });
+
         // ContentMetric
         modelBuilder.Entity<ContentMetric>()
             .HasOne(x => x.ContentLog)

@@ -191,6 +191,15 @@ builder.Services.AddScoped<ITikTokVideoService, TikTokVideoService>();
 builder.Services.AddScoped<TikTokDetailsSyncService>();
 // Backfill service for content type classification (used for data migration)
 builder.Services.AddScoped<BackfillContentTypeService>();
+// Persistent batch video sync (Admin TikTok: date-range Sync Video Details job queue).
+// The queue lives in SQL Server; the worker resumes pending/stale jobs after restart.
+builder.Services.AddScoped<TikTokBatchSyncService>();
+// Enabled by default so queued jobs recover after restart. The integration test host
+// disables it (TikTok:EnableBatchSyncWorker=false) so no test can ever hit the real API.
+if (builder.Configuration.GetValue<bool>("TikTok:EnableBatchSyncWorker", true))
+{
+    builder.Services.AddHostedService<TikTokBatchSyncWorker>();
+}
 
 // Daily sync worker - register only when explicitly enabled via configuration (TikTok:EnableDailySync = true)
 if (builder.Configuration.GetValue<bool>("TikTok:EnableDailySync", false))

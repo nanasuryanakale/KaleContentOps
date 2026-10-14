@@ -163,6 +163,46 @@ public class TikTokDetailsSyncService
         public bool DemographicsPopulated { get; set; }
         public bool NoEnrichment { get; set; }
         public bool RateLimit36009002 { get; set; }
+
+        // Diagnostics for callers that need to classify the failure (batch sync worker).
+        public int? StatusCode { get; set; }
+        public int? BusinessCode { get; set; }
+        public string? ErrorMessage { get; set; }
+
+        /// <summary>Valid _Retry-After_ hint from TikTok (seconds), when the response carried one.</summary>
+        public int? RetryAfterSeconds { get; set; }
+    }
+
+    /// <summary>
+    /// Public outcome of a single-video details sync, used by the persistent batch-sync
+    /// worker to decide: mark item Succeeded, retry (transient), pause job (rate limit),
+    /// or mark item Failed (permanent / attempts exhausted).
+    /// </summary>
+    public sealed class SingleVideoSyncOutcome
+    {
+        /// <summary>A new ContentMetric was persisted through the existing pipeline.</summary>
+        public bool Synced { get; init; }
+
+        /// <summary>HTTP 200 and response parsed, but no metric fields were present (not an error).</summary>
+        public bool NoEnrichment { get; init; }
+
+        /// <summary>Rate limited (HTTP 429 or business code 36009002): caller must pause the job.</summary>
+        public bool Throttled { get; init; }
+
+        /// <summary>True when the video/pipeline could not be resolved at all (missing log/shop/VideoId).</summary>
+        public bool NotResolvable { get; init; }
+
+        public int? StatusCode { get; init; }
+        public int? BusinessCode { get; init; }
+
+        /// <summary>
+        /// Valid _Retry-After_ hint from TikTok (seconds), when the response carried one. The
+        /// batch-sync job honors it (bounded) instead of guessing its own cooldown.
+        /// </summary>
+        public int? RetryAfterSeconds { get; init; }
+
+        /// <summary>Sanitized error text; never contains tokens or credentials.</summary>
+        public string? ErrorMessage { get; init; }
     }
 
     // Run a bounded details sync that targets only P1 candidates (latest metric exists but is not enriched).
@@ -308,12 +348,23 @@ public class TikTokDetailsSyncService
 
             var info = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
             return info.Synced;
-    }
-
-    // Production-safe: sync details for ONE existing ContentLog selected by ContentLog.Id.
+    }    // Production-safe: sync details for ONE existing ContentLog selected by ContentLog.Id.
     // This is the minimal service entry point required by Admin UI to deterministically
     // target exactly one ContentLog. It reuses the shared SyncOneContentLogAsync pipeline.
     public async Task<bool> SyncSingleContentLogAsync(long contentLogId, CancellationToken cancellationToken = default)
+    {
+        var outcome = await SyncSingleContentLogDetailedAsync(contentLogId, cancellationToken);
+        return outcome.Synced;
+    }
+
+    /// <summary>
+    /// Same pipeline as <see cref="SyncSingleContentLogAsync"/>, but returns the rich outcome
+    /// (throttled / no-enrichment / error + status + business code) that the batch-sync worker
+    /// needs for retry, pause, and failure decisions. No second parser or HTTP path exists:
+    /// everything still flows through SyncOneContentLogAsync -> RunDetailsDiagnosticAsync ->
+    /// ParseDetailsMetrics -> MapDetailsMetricsToContentMetric -> SaveChangesAsync.
+    /// </summary>
+    public async Task<SingleVideoSyncOutcome> SyncSingleContentLogDetailedAsync(long contentLogId, CancellationToken cancellationToken = default)
     {
         var log = await _db.ContentLogs
             .AsNoTracking()
@@ -322,13 +373,13 @@ public class TikTokDetailsSyncService
         if (log == null)
         {
             _logger.LogWarning("Details sync (single): no ContentLog found for Id {ContentLogId}", contentLogId);
-            return false;
+            return new SingleVideoSyncOutcome { NotResolvable = true, ErrorMessage = "ContentLog not found." };
         }
 
         if (string.IsNullOrWhiteSpace(log.VideoId))
         {
             _logger.LogWarning("Details sync (single): ContentLog {ContentLogId} has no VideoId", contentLogId);
-            return false;
+            return new SingleVideoSyncOutcome { NotResolvable = true, ErrorMessage = "ContentLog has no VideoId." };
         }
 
         var shop = await _db.TikTokShops
@@ -338,11 +389,21 @@ public class TikTokDetailsSyncService
         if (shop == null || string.IsNullOrWhiteSpace(shop.ShopCipher))
         {
             _logger.LogWarning("Details sync (single): ContentLog {ContentLogId} has no resolvable shop", contentLogId);
-            return false;
+            return new SingleVideoSyncOutcome { NotResolvable = true, ErrorMessage = "ContentLog has no resolvable authorized shop." };
         }
 
         var info = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
-        return info.Synced;
+
+        return new SingleVideoSyncOutcome
+        {
+            Synced = info.Synced,
+            NoEnrichment = info.NoEnrichment,
+            Throttled = info.ThrottleStop,
+            StatusCode = info.StatusCode,
+            BusinessCode = info.BusinessCode,
+            RetryAfterSeconds = info.RetryAfterSeconds,
+            ErrorMessage = info.ErrorMessage
+        };
     }
 
     // Shared per-video pipeline used by both the batch flow and the single-video (dev) flow.
@@ -354,6 +415,7 @@ public class TikTokDetailsSyncService
         {
             // Call via interface (implementation performs rate-limited HTTP calls with retry/backoff)
             var res = await _videoService.RunDetailsDiagnosticAsync(videoId, shopCipher, cancellationToken);
+            outInfo.RetryAfterSeconds = res.RetryAfterSeconds;
 
             if (res.StatusCode == 200 && res.Data.HasValue)
             {
@@ -370,12 +432,15 @@ public class TikTokDetailsSyncService
                         await _db.SaveChangesAsync(cancellationToken);
 
                         // After new metric is saved with potentially ProductsJson, re-classify ContentType
-                        // This ensures KK vs NON-KK classification is determined based on actual product link presence
+                        // This ensures KK vs NON-KK classification is determined based on actual product link presence.
+                        // Only classify when a deterministic signal exists (IsLive/HasCommerce/ProductsJson) and
+                        // only persist an actual change - same convention as BackfillContentTypeService
+                        // ("tidak membuat klasifikasi fiktif jika informasi determinan tidak tersedia").
                         log = await _db.ContentLogs.FindAsync(new object[] { log.Id }, cancellationToken: cancellationToken);
                         if (log != null)
                         {
-                            var reclassifiedTypeId = ContentTypeClassifier.ClassifyContentType(log.IsLive, log.HasCommerce, metric.ProductsJson);
-                            if (reclassifiedTypeId.HasValue)
+                            var reclassifiedTypeId = ContentTypeClassifier.TryClassify(log.IsLive, log.HasCommerce, metric.ProductsJson);
+                            if (reclassifiedTypeId.HasValue && reclassifiedTypeId != log.ContentTypeId)
                             {
                                 log.ContentTypeId = reclassifiedTypeId;
                                 await _db.SaveChangesAsync(cancellationToken);
@@ -401,6 +466,8 @@ public class TikTokDetailsSyncService
             {
                 _logger.LogWarning("Details sync: TikTok returned 429 for shop {ShopCipher}, stopping details sync run.", shopCipher);
                 outInfo.ThrottleStop = true;
+                outInfo.StatusCode = 429;
+                outInfo.ErrorMessage = "TikTok rate limited the request (HTTP 429).";
                 return outInfo;
             }
 
@@ -413,23 +480,39 @@ public class TikTokDetailsSyncService
                     // detect known rate-limit business code if present on root and treat as throttle stop
                     try
                     {
-                        if (res.Root.HasValue && res.Root.Value.ValueKind == JsonValueKind.Object && res.Root.Value.TryGetProperty("code", out var codeElem) && codeElem.ValueKind == JsonValueKind.Number && codeElem.TryGetInt32(out var codeVal) && codeVal == 36009002)
+                        if (res.Root.HasValue && res.Root.Value.ValueKind == JsonValueKind.Object)
                         {
-                            outInfo.RateLimit36009002 = true;
-                            outInfo.ThrottleStop = true; // propagate as throttle stop so batches halt
+                            var root = res.Root.Value;
+                            if (root.TryGetProperty("code", out var codeElem) && codeElem.ValueKind == JsonValueKind.Number && codeElem.TryGetInt32(out var codeVal))
+                            {
+                                outInfo.BusinessCode = codeVal;
+                                if (codeVal == 36009002)
+                                {
+                                    outInfo.RateLimit36009002 = true;
+                                    outInfo.ThrottleStop = true; // propagate as throttle stop so batches halt
+                                }
+                            }
+                            outInfo.ErrorMessage = root.GetPropertyOrDefault("message") ?? "TikTok returned no data for this video.";
+                        }
+                        else
+                        {
+                            outInfo.ErrorMessage = "TikTok returned no data for this video.";
                         }
                     }
-                    catch { }
+                    catch { outInfo.ErrorMessage = "TikTok returned no data for this video."; }
 
                     return outInfo;
                 }
 
             _logger.LogWarning("Details sync: non-200 response {Status} for video {VideoId}", res.StatusCode, videoId);
+            outInfo.StatusCode = res.StatusCode;
+            outInfo.ErrorMessage = $"Details API returned HTTP {res.StatusCode}.";
             return outInfo;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Details sync: error processing video {VideoId}", videoId);
+            outInfo.ErrorMessage = ex.Message;
             return outInfo;
         }
     }

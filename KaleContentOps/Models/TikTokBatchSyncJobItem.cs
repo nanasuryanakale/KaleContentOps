@@ -63,5 +63,13 @@ public enum TikTokBatchSyncJobItemStatus
     Pending = 0,
     Processing = 1,
     Succeeded = 2,
-    Failed = 3
+    Failed = 3,
+
+    /// <summary>
+    /// Never attempted: the job stopped (e.g. its bounded TikTok rate-limit budget ran out)
+    /// before this item was ever tried. Deliberately distinct from <see cref="Failed"/>, which
+    /// means the item WAS attempted and exhausted its own retries. Stored as int 4, so this is
+    /// an added enum value only - no schema change.
+    /// </summary>
+    NotAttempted = 4
 }

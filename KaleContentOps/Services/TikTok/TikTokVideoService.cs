@@ -529,8 +529,10 @@ public class TikTokVideoService : ITikTokVideoService
         return (500, string.Empty, System.Linq.Enumerable.Empty<System.Collections.Generic.KeyValuePair<string, System.Collections.Generic.IEnumerable<string>>>());
     }
 
-    // Development-only diagnostic: call the official v202509 per-video Details endpoint
-    public async Task<(int? StatusCode, string Endpoint, JsonElement? Root, JsonElement? Data)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default)
+    // Development-only diagnostic: call the official v202509 per-video Details endpoint.
+    // RetryAfterSeconds carries a valid _Retry-After_ header (when TikTok sent one) so the
+    // persistent batch-sync job can honor it instead of guessing its own cooldown.
+    public async Task<(int? StatusCode, string Endpoint, JsonElement? Root, JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default)
     {
         var client = _httpFactory.CreateClient("TikTokApi");
 
@@ -557,10 +559,10 @@ public class TikTokVideoService : ITikTokVideoService
         }
 
         var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
-        if (credential == null) return (null, path, null, null);
+        if (credential == null) return (null, path, null, null, null);
 
         var accessToken = await _authService.GetValidAccessTokenAsync(credential.Id, cancellationToken);
-        if (string.IsNullOrWhiteSpace(accessToken)) return (null, path, null, null);
+        if (string.IsNullOrWhiteSpace(accessToken)) return (null, path, null, null, null);
 
         var query = new Dictionary<string, string?>
         {
@@ -610,9 +612,21 @@ public class TikTokVideoService : ITikTokVideoService
             {
             }
 
+            // Honor a valid Retry-After header when present (bounded later by the job).
+            int? retryAfterSeconds = null;
+            foreach (var header in headers)
+            {
+                if (!string.Equals(header.Key, "Retry-After", StringComparison.OrdinalIgnoreCase)) continue;
+                var raw = header.Value?.FirstOrDefault();
+                // Same parsing convention as TikTokGetWithRetryAsync above (no extra culture dependency).
+                if (double.TryParse(raw, out var parsed) && parsed > 0)
+                    retryAfterSeconds = (int)Math.Min(Math.Ceiling(parsed), int.MaxValue);
+                break;
+            }
+
             if (status != 200)
             {
-                return (status, url, null, null);
+                return (status, url, null, null, retryAfterSeconds);
             }
 
             try
@@ -636,16 +650,16 @@ public class TikTokVideoService : ITikTokVideoService
                 if (code != 0)
                 {
                     // Business error: do not return data as successful. Return root but Data = null so callers treat as non-successful details.
-                    return (status, url, root, null);
+                    return (status, url, root, null, retryAfterSeconds);
                 }
 
                 var data = root.TryGetProperty("data", out var dataElem) ? dataElem.Clone() : root;
-                return (status, url, root, data);
+                return (status, url, root, data, retryAfterSeconds);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to parse TikTok details response for video {VideoId}", videoId);
-                return (status, url, null, null);
+                return (status, url, null, null, retryAfterSeconds);
             }
         }
         finally
@@ -1041,6 +1055,29 @@ public class TikTokVideoService : ITikTokVideoService
 
     public async Task<int> FetchAndSaveVideoListAsync(string shopCipher, string? startDateIso = null, string? endDateIso = null, CancellationToken cancellationToken = default)
     {
+        // Orchestration only: fetch page -> persist page -> follow page_token. Semantics
+        // (signing, parsing, upsert, classification, error behavior) are unchanged and are
+        // implemented once in FetchVideoListPageAsync / ApplyVideoListPageAsync below.
+        var state = new ListPageState();
+        var processed = 0;
+        string? pageToken = null;
+
+        do
+        {
+            var page = await FetchVideoListPageAsync(shopCipher, startDateIso, endDateIso, pageToken, cancellationToken);
+            processed += await ApplyVideoListPageAsync(shopCipher, page, state, cancellationToken);
+            pageToken = page.NextPageToken;
+        } while (!string.IsNullOrWhiteSpace(pageToken));
+
+        return processed;
+    }
+
+    /// <summary>
+    /// Fetches exactly one page of GET /analytics/202605/shop_videos/performance.
+    /// Shared by the classic full-list sync and the persistent batch-sync collector.
+    /// </summary>
+    public async Task<TikTokVideoListPage> FetchVideoListPageAsync(string shopCipher, string? startDateIso, string? endDateIso, string? pageToken, CancellationToken cancellationToken = default)
+    {
         // Validate credential
         var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
         if (credential == null)
@@ -1054,93 +1091,151 @@ public class TikTokVideoService : ITikTokVideoService
 
         var path = "/analytics/202605/shop_videos/performance";
 
-        var processed = 0;
-        var processedVideoIds = new HashSet<string>();
-        var metricsToSave = new List<ContentMetric>();
-        // Development-only diagnostics counters
-        var totalVideosReceived = 0;
-        var totalVideosMatched = 0;
-        var totalVideosWithViews = 0;
-        string? pageToken = null;
-
-        do
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        var query = new Dictionary<string, string?>
         {
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-            var query = new Dictionary<string, string?>
-            {
-                { "app_key", _options.AppKey },
-                { "timestamp", timestamp },
-                { "shop_cipher", shopCipher },
-                { "page_size", "100" }
-            };
+            { "app_key", _options.AppKey },
+            { "timestamp", timestamp },
+            { "shop_cipher", shopCipher },
+            { "page_size", "100" }
+        };
 
-            if (!string.IsNullOrWhiteSpace(pageToken)) query["page_token"] = pageToken;
-            var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? _shopTimeZone.TodayMidnight().AddDays(-30) : DateTime.Parse(startDateIso).Date;
+        if (!string.IsNullOrWhiteSpace(pageToken)) query["page_token"] = pageToken;
+        var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? _shopTimeZone.TodayMidnight().AddDays(-30) : DateTime.Parse(startDateIso).Date;
 
-            var effectiveEndDate = string.IsNullOrWhiteSpace(endDateIso)
-                ? _shopTimeZone.TodayMidnight().AddDays(1)
-                : DateTime.Parse(endDateIso).Date;
+        var effectiveEndDate = string.IsNullOrWhiteSpace(endDateIso)
+            ? _shopTimeZone.TodayMidnight().AddDays(1)
+            : DateTime.Parse(endDateIso).Date;
 
-            query["start_date_ge"] = effectiveStartDate.ToString("yyyy-MM-dd");
-            query["end_date_lt"] = effectiveEndDate.ToString("yyyy-MM-dd");
+        query["start_date_ge"] = effectiveStartDate.ToString("yyyy-MM-dd");
+        query["end_date_lt"] = effectiveEndDate.ToString("yyyy-MM-dd");
 
-            // Remove nulls for signing
-            var signInput = query.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        // Remove nulls for signing
+        var signInput = query.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-            var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
-            signInput.Add("sign", sign);
+        var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
+        signInput.Add("sign", sign);
 
-            var url = QueryHelpers.AddQueryString(path, signInput);
+        var url = QueryHelpers.AddQueryString(path, signInput);
 
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Add("x-tts-access-token", accessToken);
-            req.Headers.Add("Accept", "application/json");
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("x-tts-access-token", accessToken);
+        req.Headers.Add("Accept", "application/json");
 
-            using var res = await client.SendAsync(req, cancellationToken);
-            var status = res.StatusCode;
-            var content = await res.Content.ReadAsStringAsync(cancellationToken); // BREAKPOINT DI SINI
+        using var res = await client.SendAsync(req, cancellationToken);
+        var status = res.StatusCode;
+        var content = await res.Content.ReadAsStringAsync(cancellationToken);
 
-            _logger.LogInformation(
-                "TikTok video API response for shop {ShopCipher}: {Response}",
+        _logger.LogInformation(
+            "TikTok video API response for shop {ShopCipher}: {Response}",
+            shopCipher,
+            content);
+        if (!res.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "TikTok video list HTTP {Status} for shop {ShopCipher}. Response: {Response}",
+                status,
                 shopCipher,
                 content);
-            if (!res.IsSuccessStatusCode)
+
+            // Same message as before; StatusCode lets callers distinguish 429 (rate limit)
+            // from other transient HTTP failures without parsing the message.
+            throw new HttpRequestException(
+                $"TikTok video list HTTP {res.StatusCode}. Response: {content}", null, res.StatusCode);
+        }
+
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+        var code = root.TryGetProperty("code", out var codeElem) && codeElem.TryGetInt32(out var codeVal) ? codeVal : 0;
+        var requestId = root.GetPropertyOrDefault("request_id");
+        var message = root.GetPropertyOrDefault("message");
+        if (code != 0)
+        {
+            _logger.LogWarning("TikTok API returned code {Code} message {Message} request_id {RequestId} for shop {ShopCipher}", code, message, requestId, shopCipher);
+            throw new TikTokVideoListException($"TikTok video list error: {message ?? "(no message)"} (request_id={requestId})", code);
+        }
+
+        var data = root.TryGetProperty("data", out var dataElem) ? dataElem : root;
+
+        // Clone videos out of the document (JsonDocument is disposed at the end of this method).
+        var videos = new List<JsonElement>();
+        var videoIds = new List<string>();
+        if (data.ValueKind == JsonValueKind.Object && data.TryGetProperty("videos", out var videosElem) && videosElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var v in videosElem.EnumerateArray())
             {
-                _logger.LogWarning(
-                    "TikTok video list HTTP {Status} for shop {ShopCipher}. Response: {Response}",
-                    status,
-                    shopCipher,
-                    content);
-
-                throw new HttpRequestException(
-                    $"TikTok video list HTTP {res.StatusCode}. Response: {content}");
-            }
-
-            using var doc = JsonDocument.Parse(content);
-            var root = doc.RootElement;
-            var code = root.TryGetProperty("code", out var codeElem) && codeElem.TryGetInt32(out var codeVal) ? codeVal : 0;
-            var requestId = root.GetPropertyOrDefault("request_id");
-            var message = root.GetPropertyOrDefault("message");
-            if (code != 0)
-            {
-                _logger.LogWarning("TikTok API returned code {Code} message {Message} request_id {RequestId} for shop {ShopCipher}", code, message, requestId, shopCipher);
-                throw new InvalidOperationException($"TikTok video list error: {message ?? "(no message)"} (request_id={requestId})");
-            }
-
-            var data = root.TryGetProperty("data", out var dataElem) ? dataElem : root;
-            // process videos if present
-            if (data.ValueKind == JsonValueKind.Object && data.TryGetProperty("videos", out var videosElem) && videosElem.ValueKind == JsonValueKind.Array)
-            {
-                _logger.LogDebug("TikTok returned {Count} videos for shop {ShopCipher}", videosElem.GetArrayLength(), shopCipher);
-                // resolve shop id once per page
-                var shop = await _db.TikTokShops.FirstOrDefaultAsync(x => x.ShopCipher == shopCipher, cancellationToken);
-                long? shopId = shop?.Id;
-
-                var toSave = new List<ContentLog>();
-                var toUpdate = new List<ContentLog>();
-
-                foreach (var v in videosElem.EnumerateArray())
+                videos.Add(v.Clone());
+                var vid = v.GetPropertyOrDefault("id") ?? v.GetPropertyOrDefault("video_id");
+                if (!string.IsNullOrWhiteSpace(vid))
                 {
+                    videoIds.Add(vid!);
+                }
+            }
+        }
+
+        // determine next page token - support common variants
+        string? nextPage = null;
+        if (data.ValueKind == JsonValueKind.Object)
+        {
+            nextPage = data.GetPropertyOrDefault("page_token") ?? data.GetPropertyOrDefault("next_page_token");
+            // also support a nested page_info object
+            if (nextPage == null && data.TryGetProperty("page_info", out var pageInfo) && pageInfo.ValueKind == JsonValueKind.Object)
+            {
+                nextPage = pageInfo.GetPropertyOrDefault("page_token") ?? pageInfo.GetPropertyOrDefault("next_page_token");
+            }
+        }
+
+        return new TikTokVideoListPage
+        {
+            ShopCipher = shopCipher,
+            StartDate = effectiveStartDate,
+            EndDate = effectiveEndDate,
+            Videos = videos,
+            VideoIds = videoIds,
+            NextPageToken = string.IsNullOrWhiteSpace(nextPage) ? null : nextPage
+        };
+    }
+
+    /// <summary>Public entry point: persists a fetched page with its own per-page state.</summary>
+    public async Task<int> ApplyVideoListPageAsync(string shopCipher, TikTokVideoListPage page, CancellationToken cancellationToken = default)
+    {
+        return await ApplyVideoListPageAsync(shopCipher, page, new ListPageState(), cancellationToken);
+    }
+
+    // Shared cross-page state (one metric per video per run + cumulative diagnostics).
+    private sealed class ListPageState
+    {
+        public HashSet<string> ProcessedVideoIds { get; } = new();
+        public List<ContentMetric> MetricsToSave { get; } = new();
+        public int TotalVideosReceived { get; set; }
+        public int TotalVideosMatched { get; set; }
+        public int TotalVideosWithViews { get; set; }
+    }
+
+    private async Task<int> ApplyVideoListPageAsync(string shopCipher, TikTokVideoListPage page, ListPageState state, CancellationToken cancellationToken)
+    {
+        var effectiveStartDate = page.StartDate;
+        var effectiveEndDate = page.EndDate;
+        var processed = 0;
+        var processedVideoIds = state.ProcessedVideoIds;
+        var metricsToSave = state.MetricsToSave;
+        var totalVideosReceived = state.TotalVideosReceived;
+        var totalVideosMatched = state.TotalVideosMatched;
+        var totalVideosWithViews = state.TotalVideosWithViews;
+
+        // process videos if present
+        if (page.Videos.Count > 0)
+        {
+            _logger.LogDebug("TikTok returned {Count} videos for shop {ShopCipher}", page.Videos.Count, shopCipher);
+            // resolve shop id once per page
+            var shop = await _db.TikTokShops.FirstOrDefaultAsync(x => x.ShopCipher == shopCipher, cancellationToken);
+            long? shopId = shop?.Id;
+
+            var toSave = new List<ContentLog>();
+            var toUpdate = new List<ContentLog>();
+
+            foreach (var v in page.Videos)
+            {
                     totalVideosReceived++;
                     var videoId = v.GetPropertyOrDefault("id") ?? v.GetPropertyOrDefault("video_id");
 
@@ -1462,22 +1557,11 @@ public class TikTokVideoService : ITikTokVideoService
                 }
             }
 
-            // determine next page token - support common variants
-            string? nextPage = null;
-            if (data.ValueKind == JsonValueKind.Object)
-            {
-                nextPage = data.GetPropertyOrDefault("page_token") ?? data.GetPropertyOrDefault("next_page_token");
-                // also support a nested page_info object
-                if (nextPage == null && data.TryGetProperty("page_info", out var pageInfo) && pageInfo.ValueKind == JsonValueKind.Object)
-                {
-                    nextPage = pageInfo.GetPropertyOrDefault("page_token") ?? pageInfo.GetPropertyOrDefault("next_page_token");
-                }
-            }
+            // persist cumulative diagnostics for the next page (shared state across pages).
+            state.TotalVideosReceived = totalVideosReceived;
+            state.TotalVideosMatched = totalVideosMatched;
+            state.TotalVideosWithViews = totalVideosWithViews;
 
-            pageToken = string.IsNullOrWhiteSpace(nextPage) ? null : nextPage;
-
-        } while (!string.IsNullOrWhiteSpace(pageToken));
-
-        return processed;
+            return processed;
     }
 }

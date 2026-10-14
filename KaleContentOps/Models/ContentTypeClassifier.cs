@@ -90,6 +90,30 @@ public static class ContentTypeClassifier
     }
 
     /// <summary>
+    /// True when at least one deterministic classification signal is available:
+    /// IsLive, HasCommerce, or a non-empty ProductsJson that actually contains products.
+    /// Used to avoid fabricating a classification when the source data has no signals
+    /// (same convention as BackfillContentTypeService).
+    /// </summary>
+    public static bool HasAvailableSignals(bool? isLive, bool? hasCommerce, string? productsJson)
+    {
+        return isLive.HasValue
+            || hasCommerce.HasValue
+            || (!string.IsNullOrWhiteSpace(productsJson) && HasProducts(productsJson));
+    }
+
+    /// <summary>
+    /// Classify only when at least one signal is available.
+    /// Returns null (caller must NOT change the stored classification) when there are no signals.
+    /// </summary>
+    public static int? TryClassify(bool? isLive, bool? hasCommerce, string? productsJson)
+    {
+        return HasAvailableSignals(isLive, hasCommerce, productsJson)
+            ? ClassifyContentType(isLive, hasCommerce, productsJson)
+            : null;
+    }
+
+    /// <summary>
     /// Get ContentType code string for a given ID.
     /// </summary>
     public static string? GetCodeForId(int? typeId) => typeId switch

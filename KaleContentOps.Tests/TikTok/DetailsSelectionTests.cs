@@ -28,11 +28,16 @@ namespace KaleContentOps.TikTok.Tests
             public Task<DryRunReport> DryRunVideoClassificationAsync(string shopCipher, string? startDateIso = null, string? endDateIso = null, CancellationToken cancellationToken = default) => Task.FromResult(new DryRunReport());
             public Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Matched)> RunPerformanceDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default) => Task.FromResult<(int?, string, System.Text.Json.JsonElement?, System.Text.Json.JsonElement?)>((null, string.Empty, null, null));
 
-            public Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Data)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default)
+            public Task<TikTokVideoListPage> FetchVideoListPageAsync(string shopCipher, string? startDateIso, string? endDateIso, string? pageToken, CancellationToken cancellationToken = default) =>
+                Task.FromResult(new TikTokVideoListPage { ShopCipher = shopCipher });
+
+            public Task<int> ApplyVideoListPageAsync(string shopCipher, TikTokVideoListPage page, CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+            public Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default)
             {
                 CalledVideoIds.Add(videoId);
                 // Return 200 but no Data to allow RunDetailsSyncAsync to continue without throwing
-                return Task.FromResult<(int?, string, System.Text.Json.JsonElement?, System.Text.Json.JsonElement?)>((200, string.Empty, null, null));
+                return Task.FromResult<(int?, string, System.Text.Json.JsonElement?, System.Text.Json.JsonElement?, int?)>((200, string.Empty, null, null, null));
             }
         }
 

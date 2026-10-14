@@ -92,6 +92,44 @@ public class TikTokBatchSyncJob
     /// </summary>
     public string? LastError { get; set; }
 
+    // -------------------------
+    // Checkpoint / recovery state (added for persistent, restart-safe batch sync).
+    // -------------------------
+
+    /// <summary>
+    /// True once the video-id collection phase has fully finished (all pages fetched).
+    /// Details processing NEVER starts while this is false, so a partial collection
+    /// can never be mistaken for a complete one.
+    /// </summary>
+    public bool CollectionCompleted { get; set; }
+
+    /// <summary>
+    /// Pagination checkpoint: the page_token to resume collection with.
+    /// Null = not started (or reset); empty string is never stored.
+    /// Persisted after every successful page so a mid-collection crash resumes
+    /// from the last successful page instead of restarting or losing videos.
+    /// </summary>
+    public string? CurrentPageToken { get; set; }
+
+    /// <summary>
+    /// Earliest UTC time the worker is allowed to (re)attempt this job.
+    /// Used for rate-limit / transient-error backoff. Null = immediately.
+    /// </summary>
+    public DateTime? NextAttemptAt { get; set; }
+
+    /// <summary>
+    /// Last UTC time this job's row was touched by a worker (claim, page, item).
+    /// Serves as the worker lease: an active job whose lease has expired is
+    /// considered abandoned (crashed worker) and becomes claimable again.
+    /// </summary>
+    public DateTime? UpdatedAt { get; set; }
+
+    /// <summary>
+    /// Retry counter for the CURRENT phase (collection page failure or rate-limit pauses).
+    /// Reset when the phase succeeds. Bounded by TikTok:BatchSyncMaxAttempts etc.
+    /// </summary>
+    public int AttemptCount { get; set; }
+
     /// <summary>
     /// Related job items (video_ids and their sync status).
     /// </summary>
