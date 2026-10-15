@@ -40,5 +40,10 @@ public interface ITikTokVideoService
     // Development-only diagnostic to call the official v202509 details endpoint for a single video.
     // RetryAfterSeconds carries a valid _Retry-After_ response header when TikTok sent one, so
     // callers can honor the server's own cooldown hint instead of guessing one.
-    Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default);
+    Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(
+        string videoId,
+        string shopCipher,
+        CancellationToken cancellationToken = default,
+        DateTime? startDateInclusive = null,
+        DateTime? endDateExclusive = null);
 }

@@ -119,7 +119,7 @@ public class ContentLogNewFollowerDisplayTests
 
         var item = await GetFirstItemAsync(db);
 
-        Assert.Equal(485, item.Views);              // scalar latest-metric-wins
+        Assert.Equal(485, item.Views);              // newest snapshot carries Views -> it wins
         Assert.Equal(0.400m, item.NfMale);          // older valid NEW_FOLLOWER survives
         Assert.Equal(0.600m, item.NfFemale);
         Assert.Equal(0.500m, item.NfAge25_34);

@@ -532,30 +532,33 @@ public class TikTokVideoService : ITikTokVideoService
     // Development-only diagnostic: call the official v202509 per-video Details endpoint.
     // RetryAfterSeconds carries a valid _Retry-After_ header (when TikTok sent one) so the
     // persistent batch-sync job can honor it instead of guessing its own cooldown.
-    public async Task<(int? StatusCode, string Endpoint, JsonElement? Root, JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default)
+    public async Task<(int? StatusCode, string Endpoint, JsonElement? Root, JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(
+        string videoId,
+        string shopCipher,
+        CancellationToken cancellationToken = default,
+        DateTime? startDateInclusive = null,
+        DateTime? endDateExclusive = null)
     {
         var client = _httpFactory.CreateClient("TikTokApi");
 
         var path = $"/analytics/202509/shop_videos/{videoId}/performance"; // exact endpoint provided by user
 
-        // determine date range: prefer ContentLog.VideoPostTime if available, otherwise last 30 days
-        // Issue B: TikTok start_date_ge/end_date_lt are defined by TikTok as ISO dates in the
-        // shop registered timezone. Build the existing 30-day calendar window from the
-        // shop-local calendar date (Asia/Jakarta), not from DateTime.UtcNow.Date.
-        DateTime startDate = _shopTimeZone.TodayMidnight().AddDays(-30);
-        DateTime endDate = _shopTimeZone.TodayMidnight().AddDays(1);
-        try
+        if (startDateInclusive.HasValue != endDateExclusive.HasValue)
+            throw new ArgumentException("Details analytics period must provide both startDateInclusive and endDateExclusive.");
+
+        DateTime startDate;
+        DateTime endDate;
+        if (startDateInclusive.HasValue)
         {
-            var existing = await _db.ContentLogs.AsNoTracking().FirstOrDefaultAsync(x => x.VideoId == videoId, cancellationToken);
-            if (existing?.VideoPostTime != null)
-            {
-                var post = existing.VideoPostTime.Value.Date;
-                startDate = post;
-                endDate = post.AddDays(1);
-            }
+            startDate = startDateInclusive.Value.Date;
+            endDate = endDateExclusive!.Value.Date;
+            if (startDate >= endDate)
+                throw new ArgumentException("Details analytics period must have a start date before the exclusive end date.");
         }
-        catch
+        else
         {
+            startDate = _shopTimeZone.TodayMidnight().AddDays(-30);
+            endDate = _shopTimeZone.TodayMidnight().AddDays(1);
         }
 
         var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);

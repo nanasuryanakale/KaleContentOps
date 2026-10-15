@@ -449,4 +449,34 @@ public class DailySummaryTargetIntegrationTests
         Assert.Equal(55.7143m, contentAchievement.TargetPeriodValue);
         Assert.Equal(12, contentAchievement.ActualValue);
     }
+
+    // ============================================================
+    // Views resolution: newest snapshot that CARRIES Views
+    // ============================================================
+
+    [Fact]
+    public async Task BuildAsync_Details_Snapshot_WithoutViews_Does_Not_Erase_Older_Views()
+    {
+        var host = new TestHost();
+        var log = host.Log(new DateTime(2026, 9, 1, 10, 0, 0), host.NonKkId);
+        host.Db.ContentLogs.Add(log);
+        // Older list-sync snapshot observed the views...
+        host.Db.ContentMetrics.Add(host.Metric(log.Id, 100, new DateTime(2026, 9, 2, 0, 0, 0)));
+        // ...then a NEWER details-sync snapshot whose payload carried no views block
+        // (TikTokVideoService only assigns Views when "viewsFound"): Views = NULL.
+        host.Db.ContentMetrics.Add(new ContentMetric
+        {
+            ContentLogId = log.Id,
+            Views = null,
+            CapturedAt = new DateTime(2026, 9, 3, 0, 0, 0)
+        });
+        host.Save();
+
+        var page = await host.DailySummaryService.BuildAsync(
+            Filter(new DateTime(2026, 9, 1), new DateTime(2026, 9, 1)), CancellationToken.None);
+
+        // The observed 100 views survive the newer NULL row instead of collapsing to 0.
+        var viewsAchievement = page.TargetAchievements.Single(a => a.Code == NonKk && a.MetricName == "Total Views");
+        Assert.Equal(100, viewsAchievement.ActualValue);
+    }
 }

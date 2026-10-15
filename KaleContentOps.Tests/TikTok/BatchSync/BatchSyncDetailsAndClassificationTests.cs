@@ -11,6 +11,184 @@ namespace KaleContentOps.Tests.TikTok.BatchSync;
 
 public class BatchSyncDetailsAndClassificationTests
 {
+    [Fact]
+    public async Task Controlled_Preview_Selects_Only_Lowest_Pending_Without_Changing_Data()
+    {
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        var job = new TikTokBatchSyncJob
+        {
+            Id = 1,
+            TikTokShopId = shop.Id,
+            StartDate = new DateTime(2026, 10, 13),
+            EndDate = new DateTime(2026, 10, 15),
+            Status = TikTokBatchSyncJobStatus.ProcessingDetails,
+            CollectionCompleted = true
+        };
+        ctx.Db.TikTokBatchSyncJobs.Add(job);
+        await ctx.Db.SaveChangesAsync();
+        ctx.Db.TikTokBatchSyncJobItems.AddRange(
+            new TikTokBatchSyncJobItem { TikTokBatchSyncJobId = 1, VideoId = "V-LATER", Status = TikTokBatchSyncJobItemStatus.Pending },
+            new TikTokBatchSyncJobItem { TikTokBatchSyncJobId = 1, VideoId = "V-FIRST", Status = TikTokBatchSyncJobItemStatus.Pending },
+            new TikTokBatchSyncJobItem { TikTokBatchSyncJobId = 1, VideoId = "V-DONE", Status = TikTokBatchSyncJobItemStatus.Succeeded });
+        await ctx.Db.SaveChangesAsync();
+        var first = await ctx.Db.TikTokBatchSyncJobItems.SingleAsync(i => i.VideoId == "V-LATER");
+
+        var result = await ctx.Service.PreviewControlledSingleItemAsync();
+
+        Assert.True(result.IsAvailable);
+        Assert.Equal(first.Id, result.Preview!.ItemId);
+        Assert.Equal("V-LATER", result.Preview.VideoId);
+        Assert.Equal("2026-10-16", result.Preview.EndDateExclusive.ToString("yyyy-MM-dd"));
+        Assert.Equal(TikTokBatchSyncJobItemStatus.Pending,
+            await ctx.Db.TikTokBatchSyncJobItems.Where(i => i.VideoId == "V-LATER").Select(i => i.Status).SingleAsync());
+        Assert.Empty(ctx.Handler.RequestLog);
+    }
+
+    [Fact]
+    public async Task Controlled_Preview_Rejects_Wrong_Period_And_No_Pending_Item()
+    {
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        var job = new TikTokBatchSyncJob
+        {
+            Id = 1,
+            TikTokShopId = shop.Id,
+            StartDate = new DateTime(2026, 10, 12),
+            EndDate = new DateTime(2026, 10, 15),
+            Status = TikTokBatchSyncJobStatus.ProcessingDetails,
+            CollectionCompleted = true
+        };
+        ctx.Db.TikTokBatchSyncJobs.Add(job);
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.PreviewControlledSingleItemAsync();
+        Assert.False(result.IsAvailable);
+        Assert.Contains("period", result.Error!, StringComparison.OrdinalIgnoreCase);
+
+        job.StartDate = new DateTime(2026, 10, 13);
+        ctx.Db.TikTokBatchSyncJobItems.Add(new TikTokBatchSyncJobItem
+        {
+            TikTokBatchSyncJobId = 1, VideoId = "V-SUCCEEDED", Status = TikTokBatchSyncJobItemStatus.Succeeded
+        });
+        await ctx.Db.SaveChangesAsync();
+
+        result = await ctx.Service.PreviewControlledSingleItemAsync();
+        Assert.False(result.IsAvailable);
+        Assert.Contains("Pending", result.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(ctx.Handler.RequestLog);
+    }
+
+    [Fact]
+    public async Task Controlled_Execution_Uses_Job_Period_And_Only_Selected_Item()
+    {
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        var job = new TikTokBatchSyncJob
+        {
+            Id = 1,
+            TikTokShopId = shop.Id,
+            StartDate = new DateTime(2026, 10, 13),
+            EndDate = new DateTime(2026, 10, 15),
+            Status = TikTokBatchSyncJobStatus.ProcessingDetails,
+            CollectionCompleted = true
+        };
+        ctx.Db.TikTokBatchSyncJobs.Add(job);
+        await ctx.Db.SaveChangesAsync();
+        var selected = new TikTokBatchSyncJobItem { TikTokBatchSyncJobId = 1, VideoId = "V-SELECTED", Status = TikTokBatchSyncJobItemStatus.Pending };
+        var other = new TikTokBatchSyncJobItem { TikTokBatchSyncJobId = 1, VideoId = "V-OTHER", Status = TikTokBatchSyncJobItemStatus.Pending };
+        ctx.Db.TikTokBatchSyncJobItems.AddRange(selected, other);
+        ctx.Db.ContentLogs.Add(new ContentLog { TikTokShopId = shop.Id, VideoId = selected.VideoId });
+        await ctx.Db.SaveChangesAsync();
+        ctx.Handler.Responder = _ => FakeTikTokApiHandler.Json(BatchSyncTestContext.DetailsJson(views: 42));
+
+        var result = await ctx.Service.ExecuteControlledSingleItemAsync(1, selected.Id);
+
+        Assert.True(result.Accepted);
+        Assert.Equal("2026-10-13", ctx.Handler.DetailsRequestQueries.Single()["start_date_ge"]);
+        Assert.Equal("2026-10-16", ctx.Handler.DetailsRequestQueries.Single()["end_date_lt"]);
+        Assert.Equal(TikTokBatchSyncJobItemStatus.Succeeded, (await ctx.Db.TikTokBatchSyncJobItems.FindAsync(selected.Id))!.Status);
+        Assert.Equal(TikTokBatchSyncJobItemStatus.Pending, (await ctx.Db.TikTokBatchSyncJobItems.FindAsync(other.Id))!.Status);
+        Assert.Single(await ctx.Db.ContentLogs.Where(l => l.TikTokShopId == shop.Id && l.VideoId == selected.VideoId).ToListAsync());
+        Assert.Single(await ctx.Db.ContentMetrics.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Controlled_Execution_Rejects_Item_That_Changed_After_Preview()
+    {
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        var job = await SeedControlledJobAsync(ctx, shop.Id);
+        var item = await ctx.Db.TikTokBatchSyncJobItems.SingleAsync();
+        item.Status = TikTokBatchSyncJobItemStatus.Succeeded;
+        await ctx.Db.SaveChangesAsync();
+
+        var result = await ctx.Service.ExecuteControlledSingleItemAsync(job.Id, item.Id);
+
+        Assert.False(result.Accepted);
+        Assert.Empty(ctx.Handler.RequestLog);
+    }
+
+    private static async Task<TikTokBatchSyncJob> SeedControlledJobAsync(BatchSyncTestContext ctx, long shopId)
+    {
+        var job = new TikTokBatchSyncJob
+        {
+            Id = 1, TikTokShopId = shopId,
+            StartDate = new DateTime(2026, 10, 13), EndDate = new DateTime(2026, 10, 15),
+            Status = TikTokBatchSyncJobStatus.ProcessingDetails, CollectionCompleted = true
+        };
+        ctx.Db.TikTokBatchSyncJobs.Add(job);
+        await ctx.Db.SaveChangesAsync();
+        ctx.Db.TikTokBatchSyncJobItems.Add(new TikTokBatchSyncJobItem
+        {
+            TikTokBatchSyncJobId = 1, VideoId = "V-CHANGED", Status = TikTokBatchSyncJobItemStatus.Pending
+        });
+        await ctx.Db.SaveChangesAsync();
+        return job;
+    }
+
+    [Fact]
+    public async Task Batch_Details_Uses_Job_Period_Not_ContentLog_Post_Time()
+    {
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        var jobId = await ctx.Service.StartJobAsync(
+            shop.Id,
+            new DateTime(2026, 10, 13),
+            new DateTime(2026, 10, 15));
+
+        ctx.Handler.Responder = request =>
+            request.RequestUri!.AbsolutePath.Contains("/shop_videos/performance", StringComparison.Ordinal)
+                ? FakeTikTokApiHandler.Json(BatchSyncTestContext.ListPageJson(null, "V-PERIOD"))
+                : FakeTikTokApiHandler.Json(BatchSyncTestContext.DetailsJson(views: 42));
+
+        await ctx.Service.ProcessNextJobAsync();
+
+        var query = Assert.Single(ctx.Handler.DetailsRequestQueries);
+        Assert.Equal("2026-10-13", query["start_date_ge"]);
+        Assert.Equal("2026-10-16", query["end_date_lt"]);
+        Assert.Equal(TikTokBatchSyncJobStatus.Completed,
+            (await ctx.Db.TikTokBatchSyncJobs.SingleAsync(j => j.Id == jobId)).Status);
+    }
+
+    [Fact]
+    public async Task Invalid_Explicit_Details_Period_Is_Rejected_Before_Http()
+    {
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        var log = new ContentLog { TikTokShopId = shop.Id, VideoId = "V-INVALID" };
+        ctx.Db.ContentLogs.Add(log);
+        await ctx.Db.SaveChangesAsync();
+
+        var outcome = await ctx.DetailsService.SyncSingleContentLogDetailedAsync(
+            log.Id,
+            startDateInclusive: new DateTime(2026, 10, 16),
+            endDateExclusive: new DateTime(2026, 10, 16));
+
+        Assert.False(outcome.Synced);
+        Assert.Empty(ctx.Handler.RequestLog);
+    }
+
     // ---- details persistence + historical patching -----------------------------------
 
     [Fact]

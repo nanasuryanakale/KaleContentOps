@@ -62,6 +62,25 @@
         </div>
     </div>
 
+    <div class="mb-3">
+        <div class="card p-3">
+            <h5>Controlled Job #1 — Single Pending Item Test</h5>
+            <p class="text-muted">Read-only preview first. Execution requires an explicit confirmation and is rejected while the batch worker is enabled.</p>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="controlledItemPreviewButton">Preview Job #1 Pending Item</button>
+            <div id="controlledItemPreview" class="small mt-2"></div>
+            <form id="controlledItemExecuteForm" method="post" action="@Url.Action("ControlledSingleItemExecute", "TikTokAdmin")" class="mt-2" style="display:none;">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="jobId" id="controlledItemJobId" />
+                <input type="hidden" name="itemId" id="controlledItemId" />
+                <label class="form-check-label mb-2">
+                    <input type="checkbox" class="form-check-input" id="controlledItemConfirm" required />
+                    I confirm that exactly this item may be processed.
+                </label>
+                <button type="submit" class="btn btn-sm btn-warning">Execute Confirmed Single Item</button>
+            </form>
+        </div>
+    </div>
+
     <!-- All-P1 bulk sync card -->
     <div class="mb-3">
         <div class="card p-3">
@@ -245,3 +264,25 @@
 </div>
 <script src="~/js/calendar-popup.js" asp-append-version="true"></script>
 <script src="~/js/admin-tiktok-batch-sync.js" asp-append-version="true"></script>
+<script>
+(() => {
+    const previewButton = document.getElementById('controlledItemPreviewButton');
+    const preview = document.getElementById('controlledItemPreview');
+    const form = document.getElementById('controlledItemExecuteForm');
+    previewButton?.addEventListener('click', async () => {
+        form.style.display = 'none';
+        preview.textContent = 'Loading read-only preview...';
+        const response = await fetch('@Url.Action("ControlledSingleItemPreview", "TikTokAdmin", new { jobId = 1 })');
+        const result = await response.json();
+        if (!result.isAvailable) {
+            preview.textContent = result.error || 'No eligible Pending item.';
+            return;
+        }
+        const p = result.preview;
+        preview.textContent = `Job ${p.jobId}, item ${p.itemId}, video ${p.videoId}, status ${p.status}, period ${p.startDate} through ${p.endDateInclusive}, request end ${p.endDateExclusive}.`;
+        document.getElementById('controlledItemJobId').value = p.jobId;
+        document.getElementById('controlledItemId').value = p.itemId;
+        form.style.display = 'block';
+    });
+})();
+</script>

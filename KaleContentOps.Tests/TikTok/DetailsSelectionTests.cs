@@ -33,7 +33,7 @@ namespace KaleContentOps.TikTok.Tests
 
             public Task<int> ApplyVideoListPageAsync(string shopCipher, TikTokVideoListPage page, CancellationToken cancellationToken = default) => Task.FromResult(0);
 
-            public Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default)
+            public Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default, DateTime? startDateInclusive = null, DateTime? endDateExclusive = null)
             {
                 CalledVideoIds.Add(videoId);
                 // Return 200 but no Data to allow RunDetailsSyncAsync to continue without throwing

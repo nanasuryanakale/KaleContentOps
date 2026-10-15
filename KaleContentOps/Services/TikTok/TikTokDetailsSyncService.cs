@@ -133,8 +133,6 @@ public class TikTokDetailsSyncService
         }
 
         return processed;
-
-        return processed;
     }
 
     // Result model for P1 batch runs. In-memory only, not persisted.
@@ -168,6 +166,8 @@ public class TikTokDetailsSyncService
         public int? StatusCode { get; set; }
         public int? BusinessCode { get; set; }
         public string? ErrorMessage { get; set; }
+        public string? RequestId { get; set; }
+        public bool InvalidParameters { get; set; }
 
         /// <summary>Valid _Retry-After_ hint from TikTok (seconds), when the response carried one.</summary>
         public int? RetryAfterSeconds { get; set; }
@@ -200,6 +200,10 @@ public class TikTokDetailsSyncService
         /// batch-sync job honors it (bounded) instead of guessing its own cooldown.
         /// </summary>
         public int? RetryAfterSeconds { get; init; }
+
+        public string? RequestId { get; init; }
+
+        public bool InvalidParameters { get; init; }
 
         /// <summary>Sanitized error text; never contains tokens or credentials.</summary>
         public string? ErrorMessage { get; init; }
@@ -277,6 +281,13 @@ public class TikTokDetailsSyncService
         catch { result.P2 = 0; }
 
         result.CandidatesSelected = candidates.Count;
+
+        if (string.IsNullOrWhiteSpace(shop.ShopCipher))
+        {
+            _logger.LogWarning("Details sync P1: shop {ShopId} has no resolvable ShopCipher; skipping {CandidateCount} candidates", shop.Id, candidates.Count);
+            result.Failed = candidates.Count;
+            return result;
+        }
 
         foreach (var cl in candidates)
         {
@@ -364,7 +375,11 @@ public class TikTokDetailsSyncService
     /// everything still flows through SyncOneContentLogAsync -> RunDetailsDiagnosticAsync ->
     /// ParseDetailsMetrics -> MapDetailsMetricsToContentMetric -> SaveChangesAsync.
     /// </summary>
-    public async Task<SingleVideoSyncOutcome> SyncSingleContentLogDetailedAsync(long contentLogId, CancellationToken cancellationToken = default)
+    public async Task<SingleVideoSyncOutcome> SyncSingleContentLogDetailedAsync(
+        long contentLogId,
+        CancellationToken cancellationToken = default,
+        DateTime? startDateInclusive = null,
+        DateTime? endDateExclusive = null)
     {
         var log = await _db.ContentLogs
             .AsNoTracking()
@@ -392,7 +407,7 @@ public class TikTokDetailsSyncService
             return new SingleVideoSyncOutcome { NotResolvable = true, ErrorMessage = "ContentLog has no resolvable authorized shop." };
         }
 
-        var info = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken);
+        var info = await SyncOneContentLogAsync(log, shop.ShopCipher, cancellationToken, startDateInclusive, endDateExclusive);
 
         return new SingleVideoSyncOutcome
         {
@@ -402,20 +417,97 @@ public class TikTokDetailsSyncService
             StatusCode = info.StatusCode,
             BusinessCode = info.BusinessCode,
             RetryAfterSeconds = info.RetryAfterSeconds,
+            RequestId = info.RequestId,
+            InvalidParameters = info.InvalidParameters,
             ErrorMessage = info.ErrorMessage
         };
     }
 
+    // Compact, credential-free summary of which metric fields a parsed details response actually
+    // populated. Field names only - never values, never credentials - so it is safe to log during
+    // a normal sync run. Used solely by the bounded NoEnrichment diagnostic above.
+    private static string DescribeParsedFields(DetailsMetrics dm)
+    {
+        static void AddIf(List<string> target, bool present, string name)
+        {
+            if (present) target.Add(name);
+        }
+
+        var traffic = new List<string>();
+        AddIf(traffic, dm.Views.HasValue, "views");
+        AddIf(traffic, dm.Likes.HasValue, "likes");
+        AddIf(traffic, dm.Comments.HasValue, "comments");
+        AddIf(traffic, dm.Shares.HasValue, "shares");
+        AddIf(traffic, dm.NewFollowers.HasValue, "new_followers");
+        AddIf(traffic, dm.Reach.HasValue, "reach");
+        AddIf(traffic, dm.AverageWatch.HasValue, "average_watch");
+        AddIf(traffic, dm.FullWatchRate.HasValue, "full_watch_rate");
+
+        bool viewersPopulated = dm.Male.HasValue || dm.Female.HasValue || dm.NoGender.HasValue
+            || dm.Age18.HasValue || dm.Age25.HasValue || dm.Age35.HasValue || dm.Age45.HasValue || dm.Age55.HasValue
+            || dm.Countries is { Count: > 0 };
+        bool newFollowerPopulated = dm.NfMale.HasValue || dm.NfFemale.HasValue || dm.NfNoGender.HasValue
+            || dm.NfAge18.HasValue || dm.NfAge25.HasValue || dm.NfAge35.HasValue || dm.NfAge45.HasValue || dm.NfAge55.HasValue
+            || dm.NfCountries is { Count: > 0 };
+
+        var profiles = new List<string>();
+        AddIf(profiles, viewersPopulated, "VIEWERS");
+        AddIf(profiles, newFollowerPopulated, "NEW_FOLLOWER");
+
+        return $"traffic=[{string.Join(",", traffic)}] profiles=[{string.Join(",", profiles)}]";
+    }
+
+    private static string GetEndpointVersion(string endpoint)
+    {
+        var marker = "/analytics/";
+        var start = endpoint.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return "unknown";
+        var versionStart = start + marker.Length;
+        var versionEnd = endpoint.IndexOf('/', versionStart);
+        return versionEnd > versionStart ? endpoint[versionStart..versionEnd] : "unknown";
+    }
+
+    private static string? TryGetRequestId(JsonElement? root)
+    {
+        if (!root.HasValue || root.Value.ValueKind != JsonValueKind.Object) return null;
+        return root.Value.GetPropertyOrDefault("request_id");
+    }
+
+    private static bool IsInvalidParameterMessage(string? message) =>
+        !string.IsNullOrWhiteSpace(message)
+        && message.Contains("invalid parameter", StringComparison.OrdinalIgnoreCase);
+
     // Shared per-video pipeline used by both the batch flow and the single-video (dev) flow.
-    private async Task<SyncOneResult> SyncOneContentLogAsync(ContentLog log, string shopCipher, CancellationToken cancellationToken)
+    private async Task<SyncOneResult> SyncOneContentLogAsync(
+        ContentLog log,
+        string shopCipher,
+        CancellationToken cancellationToken,
+        DateTime? startDateInclusive = null,
+        DateTime? endDateExclusive = null)
     {
         var videoId = log.VideoId!;
         var outInfo = new SyncOneResult();
         try
         {
             // Call via interface (implementation performs rate-limited HTTP calls with retry/backoff)
-            var res = await _videoService.RunDetailsDiagnosticAsync(videoId, shopCipher, cancellationToken);
+            var res = await _videoService.RunDetailsDiagnosticAsync(
+                videoId,
+                shopCipher,
+                cancellationToken,
+                startDateInclusive,
+                endDateExclusive);
             outInfo.RetryAfterSeconds = res.RetryAfterSeconds;
+            outInfo.RequestId = TryGetRequestId(res.Root);
+            outInfo.StatusCode = res.StatusCode;
+
+            _logger.LogInformation(
+                "TikTok details request: video {VideoId}, endpoint {Endpoint}, start_date_ge {StartDate}, end_date_lt {EndDate}, status {Status}, request_id {RequestId}",
+                videoId,
+                GetEndpointVersion(res.Endpoint),
+                startDateInclusive?.ToString("yyyy-MM-dd") ?? "manual-default",
+                endDateExclusive?.ToString("yyyy-MM-dd") ?? "manual-default",
+                res.StatusCode,
+                outInfo.RequestId ?? "none");
 
             if (res.StatusCode == 200 && res.Data.HasValue)
             {
@@ -436,13 +528,13 @@ public class TikTokDetailsSyncService
                         // Only classify when a deterministic signal exists (IsLive/HasCommerce/ProductsJson) and
                         // only persist an actual change - same convention as BackfillContentTypeService
                         // ("tidak membuat klasifikasi fiktif jika informasi determinan tidak tersedia").
-                        log = await _db.ContentLogs.FindAsync(new object[] { log.Id }, cancellationToken: cancellationToken);
-                        if (log != null)
+                        var refreshedLog = await _db.ContentLogs.FindAsync(new object[] { log.Id }, cancellationToken: cancellationToken);
+                        if (refreshedLog != null)
                         {
-                            var reclassifiedTypeId = ContentTypeClassifier.TryClassify(log.IsLive, log.HasCommerce, metric.ProductsJson);
-                            if (reclassifiedTypeId.HasValue && reclassifiedTypeId != log.ContentTypeId)
+                            var reclassifiedTypeId = ContentTypeClassifier.TryClassify(refreshedLog.IsLive, refreshedLog.HasCommerce, metric.ProductsJson);
+                            if (reclassifiedTypeId.HasValue && reclassifiedTypeId != refreshedLog.ContentTypeId)
                             {
-                                log.ContentTypeId = reclassifiedTypeId;
+                                refreshedLog.ContentTypeId = reclassifiedTypeId;
                                 await _db.SaveChangesAsync(cancellationToken);
                             }
                         }
@@ -453,8 +545,20 @@ public class TikTokDetailsSyncService
                         return outInfo;
                     }
 
-                    _logger.LogDebug("Details sync: no metric fields returned for video {VideoId}", videoId);
+                    // Bounded, credential-free diagnostic: a 200 response that yielded NO storable
+                    // metric is exactly where "details sync never produced a row" used to disappear
+                    // into LogDebug. Emit one Information line listing which sections the payload
+                    // actually populated (field NAMES only - never response values, access tokens
+                    // or signatures) so the next normal sync run can tell apart:
+                    //   traffic=[] profiles=[]     -> endpoint returned nothing for this video,
+                    //   traffic=[views] profiles=[] -> engagement genuinely absent from the payload,
+                    //   traffic=[...] profiles=[..] -> a mapper/persistence bug worth investigating.
+                    _logger.LogInformation(
+                        "Details sync: response for video {VideoId} carried no storable metric. Parsed fields: {Fields}",
+                        videoId,
+                        DescribeParsedFields(dm));
                     outInfo.NoEnrichment = true;
+                    outInfo.InvalidParameters = IsInvalidParameterMessage(outInfo.ErrorMessage);
                     return outInfo;
                 }
 

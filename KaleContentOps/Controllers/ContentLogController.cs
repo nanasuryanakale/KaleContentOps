@@ -97,7 +97,9 @@ public class ContentLogController : Controller
                     || (x.ContentType != null && (x.ContentType.Code != null && x.ContentType.Code.Contains(search) || x.ContentType.Name != null && x.ContentType.Name.Contains(search)))
                     || (x.ProductionMethod != null && x.ProductionMethod.Name != null && x.ProductionMethod.Name.Contains(search))
                     || (x.Pic != null && x.Pic.Name != null && x.Pic.Name.Contains(search))
-                    || (parsedViews.HasValue && x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Views).FirstOrDefault() == parsedViews.Value)
+                    // Views filter matches the resolved display value: the newest snapshot that
+                    // CARRIES Views (a newer details snapshot may omit them entirely).
+                    || (parsedViews.HasValue && x.Metrics.Where(m => m.Views != null).OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Views).FirstOrDefault() == parsedViews.Value)
                 );
             }
         }
@@ -134,29 +136,19 @@ public class ContentLogController : Controller
                 PicId = x.PicId,
                 Title = x.Title,
                 VideoUrl = x.VideoUrl,
-                // correlated subquery for latest metric per content log -> project metric scalars
-                Views = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Views).FirstOrDefault(),
-                Reach = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Reach).FirstOrDefault(),
-                AverageWatch = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.AverageWatch).FirstOrDefault(),
-                FullWatchRate = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.FullWatchRate).FirstOrDefault(),
-                Likes = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Likes).FirstOrDefault(),
-                Comments = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Comments).FirstOrDefault(),
-                Shares = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.Shares).FirstOrDefault(),
-                NewFollowers = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.NewFollowers).FirstOrDefault(),
+                // Metric SCALARS (Views, engagement, commerce/attribute) are deliberately NOT
+                // projected here - only their timestamp is. The two syncs write disjoint column
+                // sets: the list sync owns Views/commerce/date-range and stores engagement and
+                // demographics as NULL; the details sync owns engagement/demographics and stores
+                // commerce as NULL. Projecting "the newest row" therefore let whichever sync ran
+                // LAST blank the fields the other one had already fetched. Each scalar is resolved
+                // after materialization from the newest snapshot that carries it (one page-scoped
+                // query) - which also replaces one correlated subquery per scalar per row.
                 // NOTE: DemographicsJson is intentionally NOT taken from the latest metric here.
                 // A newer views-only metric (DemographicsJson NULL - the ingestion representation
                 // of "no demographic observation", e.g. viewer_profile=[]) must not hide an older
                 // valid demographic snapshot. It is resolved after materialization from the most
-                // recent meaningful snapshot below; all scalar metrics keep latest-metric-wins.
-                // Commerce/attribute metrics (verified from actual TikTok response)
-                GmvAmount = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.GmvAmount).FirstOrDefault(),
-                GmvCurrency = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.GmvCurrency).FirstOrDefault(),
-                ItemsSold = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.ItemsSold).FirstOrDefault(),
-                SkuOrders = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (long?)m.SkuOrders).FirstOrDefault(),
-                AvgCustomers = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.AvgCustomers).FirstOrDefault(),
-                ClickThroughRate = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (decimal?)m.ClickThroughRate).FirstOrDefault(),
-                HashtagsJson = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.HashtagsJson).FirstOrDefault(),
-                ProductsJson = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (string?)m.ProductsJson).FirstOrDefault(),
+                // recent meaningful snapshot below, exactly like every metric scalar.
                 LatestMetricCapturedAt = x.Metrics.OrderByDescending(m => m.CapturedAt).Select(m => (DateTime?)m.CapturedAt).FirstOrDefault()
             })
             .AsNoTracking()
@@ -200,10 +192,96 @@ public class ContentLogController : Controller
             }
         }
 
+        // Every metric scalar is resolved field-wise from the newest snapshot that carries a value
+        // for that field - the same rule this page already applies to demographics. The two
+        // producers write disjoint column sets: the list sync owns Views / commerce / date-range and
+        // stores engagement + demographics as NULL; the details sync owns engagement + demographics
+        // and stores commerce as NULL (MapDetailsMetricsToContentMetric never sets it), and it only
+        // sets Views when the response actually reports them ("if (viewsFound)"). Reading any scalar
+        // from "the single newest metric" therefore let whichever sync ran LAST blank the fields the
+        // other one had already fetched: a list re-sync hid engagement, and a details re-sync hid GMV
+        // / ItemsSold / Products / Views. Ordering explicitly by Id as well keeps the choice
+        // deterministic when two snapshots share an instant. A field no snapshot anywhere carries
+        // stays NULL (never a fabricated 0), and an observed 0 is kept (0 is a value, not an absence).
+        var metricSnapshots = new Dictionary<long, List<MetricSnapshot>>();
+        if (pageLogIds.Count > 0)
+        {
+            // Only rows carrying at least one resolvable scalar are candidates - a row that carries
+            // none cannot contribute. One page-scoped query (no N+1), mirroring the demographics
+            // lookup directly above.
+            var metricRows = await _db.ContentMetrics.AsNoTracking()
+                .Where(m => pageLogIds.Contains(m.ContentLogId)
+                            && (m.Views != null || m.Reach != null || m.Likes != null || m.Comments != null
+                                || m.Shares != null || m.NewFollowers != null
+                                || m.AverageWatch != null || m.FullWatchRate != null
+                                || m.GmvAmount != null || m.GmvCurrency != null
+                                || m.ItemsSold != null || m.SkuOrders != null
+                                || m.AvgCustomers != null || m.ClickThroughRate != null
+                                || m.HashtagsJson != null || m.ProductsJson != null))
+                .OrderByDescending(m => m.CapturedAt)
+                .ThenByDescending(m => m.Id)
+                .Select(m => new MetricSnapshot
+                {
+                    ContentLogId = m.ContentLogId,
+                    Views = m.Views,
+                    Reach = m.Reach,
+                    Likes = m.Likes,
+                    Comments = m.Comments,
+                    Shares = m.Shares,
+                    NewFollowers = m.NewFollowers,
+                    AverageWatch = m.AverageWatch,
+                    FullWatchRate = m.FullWatchRate,
+                    GmvAmount = m.GmvAmount,
+                    GmvCurrency = m.GmvCurrency,
+                    ItemsSold = m.ItemsSold,
+                    SkuOrders = m.SkuOrders,
+                    AvgCustomers = m.AvgCustomers,
+                    ClickThroughRate = m.ClickThroughRate,
+                    HashtagsJson = m.HashtagsJson,
+                    ProductsJson = m.ProductsJson
+                })
+                .ToListAsync();
+
+            // GroupBy preserves source order within each group (CapturedAt DESC, then Id DESC), so the
+            // first snapshot that carries a field holds that field's most recent observation.
+            foreach (var group in metricRows.GroupBy(m => m.ContentLogId))
+            {
+                metricSnapshots[group.Key] = group.ToList();
+            }
+        }
+
         // Parse the selected DemographicsJson into display fields (0..1 viewer shares).
         // Done after materialization to keep the query translatable to SQL (no client-eval in projection).
         foreach (var item in items)
         {
+            // Resolve every metric scalar from the ordered snapshot list below: first non-null
+            // wins, which is exactly "the newest snapshot that carries this field" (CapturedAt DESC,
+            // Id DESC - deterministic even when two snapshots share an instant). The projection never
+            // sets these columns, so they start null and this loop is their single source of truth -
+            // including HashtagsJson/ProductsJson, which are parsed further down in this same loop.
+            if (metricSnapshots.TryGetValue(item.Id, out var metricCandidates))
+            {
+                foreach (var snapshot in metricCandidates)
+                {
+                    item.Views ??= snapshot.Views;
+                    item.Reach ??= snapshot.Reach;
+                    item.Likes ??= snapshot.Likes;
+                    item.Comments ??= snapshot.Comments;
+                    item.Shares ??= snapshot.Shares;
+                    item.NewFollowers ??= snapshot.NewFollowers;
+                    item.AverageWatch ??= snapshot.AverageWatch;
+                    item.FullWatchRate ??= snapshot.FullWatchRate;
+                    item.GmvAmount ??= snapshot.GmvAmount;
+                    item.GmvCurrency ??= snapshot.GmvCurrency;
+                    item.ItemsSold ??= snapshot.ItemsSold;
+                    item.SkuOrders ??= snapshot.SkuOrders;
+                    item.AvgCustomers ??= snapshot.AvgCustomers;
+                    item.ClickThroughRate ??= snapshot.ClickThroughRate;
+                    item.HashtagsJson ??= snapshot.HashtagsJson;
+                    item.ProductsJson ??= snapshot.ProductsJson;
+                }
+            }
+
             item.DemographicsJson = null;
             if (viewersDemographicCandidates.TryGetValue(item.Id, out var candidates))
             {
@@ -387,6 +465,33 @@ public class ContentLogController : Controller
         };
 
         return View(vm);
+    }
+
+    /// <summary>
+    /// One persisted metric snapshot, carrying every scalar column Content Log resolves field-wise
+    /// (see the lookup in <see cref="Index"/>): a newer snapshot that does not carry a field must
+    /// not blank a value an older snapshot observed. Columns of BOTH producers are present - list
+    /// sync (Views / commerce) and details sync (engagement) - because neither writes them all.
+    /// </summary>
+    private sealed class MetricSnapshot
+    {
+        public long ContentLogId { get; set; }
+        public long? Views { get; set; }
+        public long? Reach { get; set; }
+        public long? Likes { get; set; }
+        public long? Comments { get; set; }
+        public long? Shares { get; set; }
+        public long? NewFollowers { get; set; }
+        public decimal? AverageWatch { get; set; }
+        public decimal? FullWatchRate { get; set; }
+        public decimal? GmvAmount { get; set; }
+        public string? GmvCurrency { get; set; }
+        public long? ItemsSold { get; set; }
+        public long? SkuOrders { get; set; }
+        public decimal? AvgCustomers { get; set; }
+        public decimal? ClickThroughRate { get; set; }
+        public string? HashtagsJson { get; set; }
+        public string? ProductsJson { get; set; }
     }
 
     // Reads a single 0..1 demographic share (numeric, or numeric-string) from a JSON object

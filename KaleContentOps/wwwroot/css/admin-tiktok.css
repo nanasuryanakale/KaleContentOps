@@ -77,18 +77,35 @@
 .admin-tiktok-page .batch-sync-card .batch-sync-title { margin-bottom: 10px; }
 .admin-tiktok-page .batch-sync-note {
     margin: 0 0 14px;
-    max-width: 980px;
     color: var(--calp-muted);
     font-size: .85rem;
     line-height: 1.5;
 }
 
-.admin-tiktok-page .batch-sync-form { max-width: 980px; margin-top: 4px; }
+.admin-tiktok-page .batch-sync-form { margin-top: 4px; }
 .admin-tiktok-page .batch-form-grid {
+    /* One control height for select + date trigger + submit button. The date trigger used to
+     * render 39px against Bootstrap's 31px form-control-sm / btn-sm, which (with
+     * align-items: flex-end) lifted "Periode analytics" 7-8px above "Authorized shop" and left
+     * the three controls on visibly different baselines. Equal heights align both the labels
+     * and the controls without any markup change. */
+    --att-control-h: 32px;
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
     gap: 14px 16px;
+}
+.admin-tiktok-page .batch-field-shop select,
+.admin-tiktok-page .batch-field-submit button { height: var(--att-control-h); }
+.admin-tiktok-page .batch-field-submit button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.admin-tiktok-page .date-range-button {
+    height: var(--att-control-h);
+    padding-top: 0;
+    padding-bottom: 0;
 }
 .admin-tiktok-page .batch-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 /* Proportion follows content length: the shop select takes the flexible column,

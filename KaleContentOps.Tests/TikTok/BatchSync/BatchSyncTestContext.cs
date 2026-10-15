@@ -30,6 +30,9 @@ internal sealed class FakeTikTokApiHandler : HttpMessageHandler
     /// <summary>Query params of every list request, in order (key -> raw value).</summary>
     public List<Dictionary<string, string>> ListRequestQueries { get; } = new();
 
+    /// <summary>Query params of every per-video details request, in order (key -> raw value).</summary>
+    public List<Dictionary<string, string>> DetailsRequestQueries { get; } = new();
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var query = QueryHelpers.ParseQuery(request.RequestUri!.Query)
@@ -46,6 +49,7 @@ internal sealed class FakeTikTokApiHandler : HttpMessageHandler
             var idx = Array.IndexOf(seg, "shop_videos");
             var videoId = idx >= 0 && idx + 1 < seg.Length ? seg[idx + 1] : "?";
             RequestLog.Add("details:" + videoId);
+            DetailsRequestQueries.Add(query);
         }
 
         return Task.FromResult(Responder(request));

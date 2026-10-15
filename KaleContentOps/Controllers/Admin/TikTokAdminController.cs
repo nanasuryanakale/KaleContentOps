@@ -9,6 +9,7 @@ using KaleContentOps.Security;
 using KaleContentOps.Services.TikTok;
 using KaleContentOps.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace KaleContentOps.Controllers.Admin
 {
@@ -22,8 +23,9 @@ namespace KaleContentOps.Controllers.Admin
         private readonly TikTokBatchSyncService _batchSyncService;
         private readonly AppDbContext _db;
         private readonly Microsoft.AspNetCore.Hosting.IWebHostEnvironment _env;
+        private readonly IConfiguration _configuration;
 
-        public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, TikTokBatchSyncService batchSyncService, AppDbContext db, Microsoft.AspNetCore.Hosting.IWebHostEnvironment env)
+        public TikTokAdminController(ITikTokShopService shopService, ITikTokVideoService videoService, TikTokDetailsSyncService detailsService, TikTokBatchSyncService batchSyncService, AppDbContext db, Microsoft.AspNetCore.Hosting.IWebHostEnvironment env, IConfiguration configuration)
         {
             _shopService = shopService;
             _videoService = videoService;
@@ -31,6 +33,7 @@ namespace KaleContentOps.Controllers.Admin
             _batchSyncService = batchSyncService;
             _db = db;
             _env = env;
+            _configuration = configuration;
         }
 
         [HttpGet("")]
@@ -83,6 +86,24 @@ namespace KaleContentOps.Controllers.Admin
         {
             var history = await _batchSyncService.GetHistoryAsync(take, cancellationToken);
             return Json(history);
+        }
+
+        [HttpGet("ControlledSingleItemPreview/{jobId:long}")]
+        public async Task<IActionResult> ControlledSingleItemPreview(long jobId = TikTokBatchSyncService.ControlledTestJobId, CancellationToken cancellationToken = default)
+        {
+            var result = await _batchSyncService.PreviewControlledSingleItemAsync(jobId, cancellationToken);
+            return Json(result);
+        }
+
+        [HttpPost("ControlledSingleItemExecute")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ControlledSingleItemExecute(long jobId, long itemId, CancellationToken cancellationToken = default)
+        {
+            if (_configuration.GetValue<bool>("TikTok:EnableBatchSyncWorker", true))
+                return Conflict(new { error = "Controlled execution is disabled while TikTokBatchSyncWorker is enabled." });
+
+            var result = await _batchSyncService.ExecuteControlledSingleItemAsync(jobId, itemId, cancellationToken);
+            return result.Accepted ? Ok(new { message = result.Message }) : Conflict(new { error = result.Message });
         }
 
         [HttpPost("SyncAuthorizedShops")]

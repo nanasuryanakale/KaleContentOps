@@ -20,8 +20,12 @@ namespace KaleContentOps.Tests.ContentLogMapping;
 /// an older enriched snapshot and render dashes, even though valid demographic data existed.
 ///
 /// Invariants pinned here:
-///   - Ordinary metrics (Views, Likes, Comments, Shares, NewFollowers) keep
-///     latest-metric-wins semantics, unaffected by the demographics fallback.
+///   - Views and the commerce fields keep latest-metric-wins semantics, unaffected by the
+///     demographics fallback.
+///   - The scalar engagement fields (Reach / Likes / Comments / Shares / NewFollowers /
+///     AverageWatch / FullWatchRate) are resolved from the newest snapshot that actually
+///     carries each field, because the list sync never writes them: a newer views-only row
+///     must not blank engagement that was already fetched (same rule as demographics).
 ///   - The newest meaningful demographic snapshot wins (including explicit zeros).
 ///   - Malformed / "{}" / unrecognized newest JSON never fabricates values and never
 ///     shadows an older valid snapshot.
@@ -85,9 +89,13 @@ public class ContentLogDemographicsFallbackTests
 
         var item = await GetFirstItemAsync(db);
 
-        // Ordinary metrics: latest-metric-wins preserved.
+        // Views: latest-metric-wins preserved (the list sync owns Views).
         Assert.Equal(485, item.Views);
-        Assert.Null(item.Likes); // newest metric's NULL, NOT the older 13
+        // Engagement: the newer row is views-only, so it carries no engagement observation at all.
+        // Likes therefore resolves to the older snapshot's 13 instead of being blanked to NULL -
+        // identical to the demographic fallback right below, and required because the per-video
+        // details sync is the only producer of these columns.
+        Assert.Equal(13, item.Likes);
 
         // Demographics: older valid snapshot survives the views-only newest metric.
         Assert.NotNull(item.DemographicsJson);
@@ -334,8 +342,9 @@ public class ContentLogDemographicsFallbackTests
     [Fact]
     public async Task Ordinary_Metrics_Keep_Latest_Metric_Wins_Regardless_Of_Demographics()
     {
-        // Views/Likes/Comments/Shares/NewFollowers always come from the newest metric,
-        // even while demographics fall back to the older snapshot.
+        // When the newest metric carries these scalars it still wins (unchanged), even while
+        // demographics fall back to the older snapshot. A newest metric that does NOT carry a
+        // field falls back to the newest one that does - see ContentLogMetricFallbackTests.
         var db = CreateDb();
         var log = SeedLog(db);
         db.ContentMetrics.AddRange(

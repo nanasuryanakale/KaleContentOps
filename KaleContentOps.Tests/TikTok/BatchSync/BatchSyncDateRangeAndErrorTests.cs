@@ -108,6 +108,67 @@ public class BatchSyncDateRangeAndErrorTests
         Assert.Equal("2026-09-16", query["end_date_lt"]);
     }
 
+    // ---- per-video details window (start_date_ge / end_date_lt) ----------------------
+
+    [Theory]
+    [InlineData("2026-09-05T10:00:00", "2026-09-05", "2026-09-06")] // ordinary post day
+    [InlineData("2026-09-05T23:30:00", "2026-09-05", "2026-09-06")] // late Jakarta evening keeps its own date
+    [InlineData("2026-09-30T01:00:00", "2026-09-30", "2026-10-01")] // month boundary
+    [InlineData("2026-12-31T22:00:00", "2026-12-31", "2027-01-01")] // year boundary
+    public async Task Details_Window_Is_The_Video_Post_Day_With_Exclusive_End(
+        string postTime, string expectedStartGe, string expectedEndLt)
+    {
+        // Pins the payload actually sent: the details call asks for exactly the video's post
+        // calendar day, with end_date_lt one day later (TikTok's end_date_lt is exclusive, so
+        // start_date_ge=end_date_lt-1 day = a one-day window). Nothing is inferred from the UTC
+        // clock here - the date comes from the post time TikTok itself returned.
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        ctx.Db.ContentLogs.Add(new ContentLog
+        {
+            VideoId = "V-DT",
+            TikTokShopId = shop.Id,
+            ProductionMethodId = 1,
+            VideoPostTime = DateTime.Parse(postTime, System.Globalization.CultureInfo.InvariantCulture)
+        });
+        await ctx.Db.SaveChangesAsync();
+        ctx.Handler.Responder = _ => FakeTikTokApiHandler.Json(BatchSyncTestContext.DetailsJson());
+
+        await ((TikTokVideoService)ctx.VideoService).RunDetailsDiagnosticAsync("V-DT", "SHOP-TEST");
+
+        var query = Assert.Single(ctx.Handler.DetailsRequestQueries);
+        Assert.Equal(expectedStartGe, query["start_date_ge"]);
+        Assert.Equal(expectedEndLt, query["end_date_lt"]);
+    }
+
+    [Fact]
+    public async Task Details_Window_Falls_Back_To_Shop_Local_Last_30_Days_When_Post_Time_Is_Unknown()
+    {
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync();
+        ctx.Db.ContentLogs.Add(new ContentLog
+        {
+            VideoId = "V-NODATE",
+            TikTokShopId = shop.Id,
+            ProductionMethodId = 1,
+            VideoPostTime = null
+        });
+        await ctx.Db.SaveChangesAsync();
+        ctx.Handler.Responder = _ => FakeTikTokApiHandler.Json(BatchSyncTestContext.DetailsJson());
+
+        await ((TikTokVideoService)ctx.VideoService).RunDetailsDiagnosticAsync("V-NODATE", "SHOP-TEST");
+
+        // The fallback is anchored on the shop reporting calendar day (Asia/Jakarta), never on
+        // DateTime.UtcNow.Date. Same source of truth as the date picker.
+        var shopTimeZone = new KaleContentOps.Services.ShopTimeZone(
+            Microsoft.Extensions.Options.Options.Create(new KaleContentOps.Services.ShopTimeZoneOptions()));
+        var today = shopTimeZone.TodayMidnight();
+
+        var query = Assert.Single(ctx.Handler.DetailsRequestQueries);
+        Assert.Equal(today.AddDays(-30).ToString("yyyy-MM-dd"), query["start_date_ge"]);
+        Assert.Equal(today.AddDays(1).ToString("yyyy-MM-dd"), query["end_date_lt"]);
+    }
+
     // ---- Error Classification Tests ------------------------------------------------
 
     [Fact]

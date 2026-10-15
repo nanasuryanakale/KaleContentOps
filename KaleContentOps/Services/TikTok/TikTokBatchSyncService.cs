@@ -36,6 +36,9 @@ namespace KaleContentOps.Services.TikTok;
 /// </summary>
 public class TikTokBatchSyncService
 {
+    public const long ControlledTestJobId = 1;
+    private static readonly DateTime ControlledTestStartDate = new(2026, 10, 13);
+    private static readonly DateTime ControlledTestEndDate = new(2026, 10, 15);
     private readonly AppDbContext _db;
     private readonly ITikTokVideoService _videoService;
     private readonly TikTokDetailsSyncService _detailsService;
@@ -131,6 +134,167 @@ public class TikTokBatchSyncService
             job.Id, shopId, start, end);
 
         return job.Id;
+    }
+
+    public sealed record SingleItemTestPreview(
+        long JobId,
+        long ItemId,
+        string VideoId,
+        TikTokBatchSyncJobItemStatus Status,
+        DateTime StartDate,
+        DateTime EndDateInclusive,
+        DateTime EndDateExclusive);
+
+    public sealed record SingleItemTestPreviewResult(
+        SingleItemTestPreview? Preview,
+        string? Error)
+    {
+        public bool IsAvailable => Preview != null;
+    }
+
+    public async Task<SingleItemTestPreviewResult> PreviewControlledSingleItemAsync(
+        long jobId = ControlledTestJobId,
+        CancellationToken cancellationToken = default)
+    {
+        if (jobId != ControlledTestJobId)
+            return new(null, "Only Job #1 is eligible for the controlled single-item test.");
+
+        var job = await _db.TikTokBatchSyncJobs.AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        if (job == null || job.StartDate.Date != ControlledTestStartDate
+            || job.EndDate.Date != ControlledTestEndDate)
+            return new(null, "Job #1 was not found or does not have the required analytics period 2026-10-13 through 2026-10-15.");
+
+        var item = await _db.TikTokBatchSyncJobItems.AsNoTracking()
+            .Where(i => i.TikTokBatchSyncJobId == jobId
+                && i.Status == TikTokBatchSyncJobItemStatus.Pending)
+            .OrderBy(i => i.Id)
+            .Select(i => new { i.Id, i.VideoId, i.Status })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (item == null)
+            return new(null, "Job #1 has no Pending item available for the controlled test.");
+
+        return new(new SingleItemTestPreview(
+            job.Id, item.Id, item.VideoId, item.Status,
+            job.StartDate.Date, job.EndDate.Date, job.EndDate.Date.AddDays(1)), null);
+    }
+
+    public async Task<(bool Accepted, string Message)> ExecuteControlledSingleItemAsync(
+        long jobId,
+        long itemId,
+        CancellationToken cancellationToken = default)
+    {
+        if (jobId != ControlledTestJobId)
+            return (false, "Only Job #1 is eligible for the controlled single-item test.");
+
+        var job = await _db.TikTokBatchSyncJobs
+            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        if (job == null || job.StartDate.Date != ControlledTestStartDate
+            || job.EndDate.Date != ControlledTestEndDate)
+            return (false, "Job #1 was not found or does not have the required analytics period.");
+
+        var item = await _db.TikTokBatchSyncJobItems
+            .FirstOrDefaultAsync(i => i.Id == itemId
+                && i.TikTokBatchSyncJobId == jobId
+                && i.Status == TikTokBatchSyncJobItemStatus.Pending, cancellationToken);
+        if (item == null)
+            return (false, "The selected item is no longer Pending or does not belong to Job #1.");
+
+        item.Status = TikTokBatchSyncJobItemStatus.Processing;
+        job.UpdatedAt = DateTime.UtcNow;
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return (false, "The selected item changed before it could be claimed; no request was sent.");
+        }
+
+        var shop = await _db.TikTokShops.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == job.TikTokShopId, cancellationToken);
+        if (shop == null || string.IsNullOrWhiteSpace(shop.ShopCipher))
+        {
+            item.Status = TikTokBatchSyncJobItemStatus.Failed;
+            item.LastError = "Shop is not authorized.";
+            item.ProcessedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            return (false, item.LastError);
+        }
+
+        var log = await _db.ContentLogs.FirstOrDefaultAsync(
+            cl => cl.TikTokShopId == shop.Id && cl.VideoId == item.VideoId, cancellationToken);
+        if (log == null)
+        {
+            item.Status = TikTokBatchSyncJobItemStatus.Failed;
+            item.LastError = "No existing ContentLog matches the selected shop and VideoId.";
+            item.ProcessedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            return (false, item.LastError);
+        }
+
+        TikTokDetailsSyncService.SingleVideoSyncOutcome outcome;
+        try
+        {
+            outcome = await _detailsService.SyncSingleContentLogDetailedAsync(
+                log.Id, cancellationToken, job.StartDate.Date, job.EndDate.Date.AddDays(1));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            outcome = new TikTokDetailsSyncService.SingleVideoSyncOutcome { ErrorMessage = ex.Message };
+        }
+
+        var now = DateTime.UtcNow;
+        item.AttemptCount++;
+        item.ProcessedAt = now;
+        job.AttemptCount = 0;
+
+        if (outcome.Throttled)
+        {
+            item.Status = TikTokBatchSyncJobItemStatus.Pending;
+            item.LastError = Sanitize(outcome.ErrorMessage ?? "TikTok rate limited the request.");
+            job.AttemptCount = 1;
+            job.NextAttemptAt = now + ComputeRateLimitCooldown(job.AttemptCount, outcome.RetryAfterSeconds);
+        }
+        else if (outcome.Synced || outcome.NoEnrichment)
+        {
+            item.Status = TikTokBatchSyncJobItemStatus.Succeeded;
+            item.LastError = outcome.NoEnrichment ? "Details response contained no additional metric fields." : null;
+        }
+        else if (outcome.NotResolvable || outcome.InvalidParameters
+            || ClassifyOutcome(outcome) == ErrorKind.Permanent
+            || item.AttemptCount >= Math.Max(1, _options.BatchSyncMaxItemAttempts))
+        {
+            item.Status = TikTokBatchSyncJobItemStatus.Failed;
+            item.LastError = Sanitize(outcome.ErrorMessage ?? "Details sync failed permanently.");
+        }
+        else
+        {
+            item.Status = TikTokBatchSyncJobItemStatus.Pending;
+            item.LastError = Sanitize(outcome.ErrorMessage ?? "Details sync failed transiently.");
+            job.NextAttemptAt = now + ComputeBackoff(item.AttemptCount);
+        }
+
+        await ClassifyContentLogAsync(log, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+        await RefreshCountersAsync(job, cancellationToken);
+        job.UpdatedAt = now;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Controlled Details test: job {JobId}, item {ItemId}, video {VideoId}, status Processing -> {Status}, period {Start}..{End}, result {Result}, request_id {RequestId}",
+            job.Id, item.Id, item.VideoId, item.Status, job.StartDate.Date, job.EndDate.Date.AddDays(1),
+            item.Status == TikTokBatchSyncJobItemStatus.Succeeded ? "Succeeded" : item.LastError ?? "Pending/Failed",
+            outcome.RequestId ?? "none");
+
+        return (item.Status == TikTokBatchSyncJobItemStatus.Succeeded,
+            item.Status == TikTokBatchSyncJobItemStatus.Succeeded
+                ? "The selected item completed successfully."
+                : item.LastError ?? "The selected item did not complete successfully.");
     }
 
     public async Task<BatchSyncJobStatusDto?> GetStatusAsync(long jobId, CancellationToken cancellationToken = default)
@@ -624,7 +788,11 @@ public class TikTokBatchSyncService
             TikTokDetailsSyncService.SingleVideoSyncOutcome outcome;
             try
             {
-                outcome = await _detailsService.SyncSingleContentLogDetailedAsync(log.Id, ct);
+                outcome = await _detailsService.SyncSingleContentLogDetailedAsync(
+                    log.Id,
+                    ct,
+                    job.StartDate,
+                    job.EndDate.Date.AddDays(1));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -883,11 +1051,25 @@ public class TikTokBatchSyncService
                     || i.Status == TikTokBatchSyncJobItemStatus.Processing))
             .ToListAsync(ct);
 
+        // A terminal job failure stops the job, it does not fail the videos it never got to. Open
+        // items with AttemptCount == 0 were never sent to the TikTok API (AttemptCount only ever
+        // increments on a real per-item outcome), so they are recorded as NotAttempted - exactly
+        // the distinction AbandonForRateLimitAsync makes for a spent rate-limit budget. Items that
+        // WERE attempted (e.g. left Pending by a bounded per-item retry) are genuine failures.
         foreach (var item in openItems)
         {
-            item.Status = TikTokBatchSyncJobItemStatus.Failed;
-            item.LastError = Sanitize(reason);
-            item.ProcessedAt = DateTime.UtcNow;
+            if (item.AttemptCount == 0)
+            {
+                item.Status = TikTokBatchSyncJobItemStatus.NotAttempted;
+                item.LastError = Sanitize($"Not attempted: {reason}");
+                item.ProcessedAt = null;
+            }
+            else
+            {
+                item.Status = TikTokBatchSyncJobItemStatus.Failed;
+                item.LastError = Sanitize(reason);
+                item.ProcessedAt = DateTime.UtcNow;
+            }
         }
 
         // Persist item transitions first so the counter query below reads current state.
@@ -1020,6 +1202,7 @@ public class TikTokBatchSyncService
     {
         if (outcome.Throttled) return ErrorKind.RateLimit;
         if (outcome.BusinessCode == 36009002) return ErrorKind.RateLimit;
+        if (outcome.InvalidParameters) return ErrorKind.Permanent;
         if (outcome.StatusCode.HasValue)
         {
             var code = outcome.StatusCode.Value;

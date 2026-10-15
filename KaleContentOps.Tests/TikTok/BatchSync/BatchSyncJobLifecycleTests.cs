@@ -490,4 +490,65 @@ public class BatchSyncJobLifecycleTests
         Assert.Equal(second, history[0].JobId);
         Assert.Equal(first, history[1].JobId);
     }
+
+    // ---- terminal failure vs never-attempted items -------------------------------------
+
+    [Fact]
+    public async Task Terminal_Job_Failure_Keeps_Untried_Items_NotAttempted_Not_Failed()
+    {
+        // A job that stops for a job-level reason (here: the shop lost its authorized cipher) was
+        // never able to send its queued videos to the API. Those videos must NOT be reported as
+        // failed item requests - only the video that was genuinely attempted is a failure.
+        using var ctx = new BatchSyncTestContext();
+        var shop = await ctx.AddShopAsync(cipher: "SHOP-CIPHER-REVOKED");
+        var job = await ctx.SeedCollectedJobAsync(shop.Id, "V-U1", "V-U2", "V-U3");
+
+        // V-U3 was really attempted once and left Pending by a bounded per-item retry.
+        var attempted = await ctx.Db.TikTokBatchSyncJobItems.SingleAsync(i => i.VideoId == "V-U3");
+        attempted.AttemptCount = 1;
+        attempted.LastError = "Details sync failed.";
+
+        // Authorization revoked between collection and details processing.
+        shop.ShopCipher = null;
+        await ctx.Db.SaveChangesAsync();
+
+        var processed = await ctx.Service.ProcessNextJobAsync();
+        Assert.Equal(job.Id, processed);
+
+        var finished = await ctx.Db.TikTokBatchSyncJobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(TikTokBatchSyncJobStatus.Failed, finished.Status);
+        Assert.Null(finished.NextAttemptAt);
+        Assert.NotNull(finished.CompletedAt);
+
+        var items = await ctx.Db.TikTokBatchSyncJobItems
+            .Where(i => i.TikTokBatchSyncJobId == job.Id)
+            .OrderBy(i => i.VideoId)
+            .ToListAsync();
+
+        // Never sent to the API -> NotAttempted, with no processing timestamp.
+        Assert.Equal(TikTokBatchSyncJobItemStatus.NotAttempted, items[0].Status); // V-U1
+        Assert.Equal(TikTokBatchSyncJobItemStatus.NotAttempted, items[1].Status); // V-U2
+        Assert.Contains("Not attempted", items[0].LastError);
+        Assert.Contains("Not attempted", items[1].LastError);
+        Assert.Null(items[0].ProcessedAt);
+        Assert.Null(items[1].ProcessedAt);
+
+        // Actually attempted -> a real failure.
+        Assert.Equal(TikTokBatchSyncJobItemStatus.Failed, items[2].Status); // V-U3
+        Assert.NotNull(items[2].ProcessedAt);
+
+        // The job's own failure reason is unchanged (item-level state carries the distinction).
+        Assert.Contains("authorized TikTok shop", finished.LastError);
+
+        // Counters: 1 real failure + 2 never attempted, and no fake failures.
+        Assert.Equal(1, finished.FailedItemsCount);
+
+        var status = await ctx.Service.GetStatusAsync(job.Id);
+        Assert.NotNull(status);
+        Assert.Equal(1, status!.Failed);
+        Assert.Equal(2, status.NotAttempted);
+        Assert.Equal(0, status.Pending);
+        Assert.Equal(3, status.TotalVideoIdsFound);
+        Assert.False(status.IsActive);
+    }
 }
