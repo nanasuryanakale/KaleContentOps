@@ -108,6 +108,21 @@ public class DailyPerformanceServiceTests
         Assert.Single(source.Queries);
     }
 
+    [Fact]
+    public async Task UnavailableSource_NoticeSurfacesActualProviderReason()
+    {
+        // Proven 2026-10-21: a transport failure must not be reported as a generic
+        // "not integrated" state - the page notice carries the provider's real
+        // reason so the operator can tell a config gap from a network failure.
+        const string reason =
+            "Request TikTok Shop Analytics gagal (jaringan/transport) - data video views level akun belum dapat diambil.";
+        var service = CreateService(new FakeSource(_ => AccountDailyMetricResult.Unavailable(reason)));
+
+        var data = await service.BuildAsync(Filter(8, 23, 9, 5));
+
+        Assert.Contains(data.Notices, n => n.Contains(reason));
+    }
+
     // ------------------------------------------------------------------
     // Full-coverage dataset: cards, deltas, ordering
     // ------------------------------------------------------------------
@@ -470,5 +485,164 @@ public class DailyPerformanceServiceTests
         Assert.Equal(28000m, reach.PreviousValue);
         Assert.Equal(-14000m, reach.Difference);
         Assert.Equal(-50m, reach.GrowthPercentage);
+    }
+
+    // ------------------------------------------------------------------
+    // Shop-video commerce funnel (Metrik Shop Video): own section only
+    // ------------------------------------------------------------------
+
+    private static DailyReportMetric ShopCard(DailyReportData data, string key)
+        => data.ShopVideoMetrics.Single(c => c.Key == key);
+
+    private static AccountDailyMetricRecord ShopRecord(DateTime date, long? impressions, long? clicks, long? orders = null)
+        => new()
+        {
+            Date = date,
+            Reach = 100,
+            VideoViews = 500,
+            ProfileViews = 5,
+            Likes = 10,
+            Comments = 1,
+            Shares = 1,
+            FollowersGained = 2,
+            FollowersLost = 0,
+            ProductImpressions = impressions,
+            ProductClicks = clicks,
+            VideoAttributedSkuOrders = orders
+        };
+
+    private static FakeSource ShopFunnelSource()
+    {
+        // Complete 14-day current + previous period, shop fields recorded every day.
+        return new FakeSource(query =>
+        {
+            var records = new List<AccountDailyMetricRecord>();
+            for (var day = query.Start; day < query.EndExclusive; day = day.AddDays(1))
+            {
+                var i = (day.Day % 7) + 1;
+                records.Add(ShopRecord(day, impressions: 100 * i, clicks: 5 * i, orders: i));
+            }
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "fake-shop-overview-source",
+                AvailableMetricKeys = new HashSet<string>
+                {
+                    DailyReportMetrics.VideoViews,
+                    DailyReportMetrics.ProductImpressions,
+                    DailyReportMetrics.ProductClicks,
+                    DailyReportMetrics.VideoAttributedSkuOrders
+                }
+            });
+        });
+    }
+
+    [Fact]
+    public async Task ShopVideoMetrics_RenderImpressionsAndClicks_WithPeriodSums_AndDeltas()
+    {
+        var data = await CreateService(ShopFunnelSource()).BuildAsync(Filter(8, 23, 9, 5));
+
+        var impressions = ShopCard(data, DailyReportMetrics.ProductImpressions);
+        Assert.True(impressions.IsAvailable);
+        Assert.Equal(DailyMetricStatus.Complete, impressions.CurrentStatus);
+        Assert.Equal(DailyMetricStatus.Complete, impressions.PreviousStatus);
+        Assert.Equal(data.Trend.Sum(r => r.ProductImpressions ?? 0L), impressions.CurrentValue!.Value);
+        Assert.Equal(data.DailyRows.Sum(r => r.ProductImpressions ?? 0L), impressions.CurrentValue!.Value);
+
+        var clicks = ShopCard(data, DailyReportMetrics.ProductClicks);
+        Assert.True(clicks.IsAvailable);
+        Assert.Equal(DailyMetricStatus.Complete, clicks.CurrentStatus);
+        Assert.Equal(data.Trend.Sum(r => r.ProductClicks ?? 0L), clicks.CurrentValue!.Value);
+        Assert.NotNull(clicks.Difference);
+        Assert.NotNull(clicks.GrowthPercentage);
+        Assert.Equal(
+            DailyReportCalculator.GrowthPercentage(clicks.CurrentValue, clicks.PreviousValue),
+            clicks.GrowthPercentage);
+
+        // Own section only: never part of the account summary cards / comparison table.
+        Assert.DoesNotContain(data.Cards, c => c.Key == DailyReportMetrics.ProductImpressions);
+        Assert.DoesNotContain(data.Cards, c => c.Key == DailyReportMetrics.ProductClicks);
+        Assert.DoesNotContain(data.ComparisonRows, r => r.Key == DailyReportMetrics.ProductImpressions);
+        Assert.DoesNotContain(data.ComparisonRows, r => r.Key == DailyReportMetrics.ProductClicks);
+
+        // Video Views (existing behaviour) stays on the summary cards, untouched.
+        Assert.True(Card(data, DailyReportMetrics.VideoViews).IsAvailable);
+        Assert.True(data.HasAnyMetricData);
+    }
+
+    [Fact]
+    public async Task ShopVideoMetrics_Unavailable_WhenSourceDoesNotDeclareThem_NeverLeaks()
+    {
+        // Verified-partial source: only Video Views declared - even though the records
+        // physically carry shop fields, no value may surface for undeclared metrics.
+        var source = new FakeSource(query => AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+        {
+            Records = new[] { ShopRecord(new DateTime(2026, 8, 23), impressions: 438, clicks: 22) },
+            SourceName = "video-views-only-source",
+            AvailableMetricKeys = new HashSet<string> { DailyReportMetrics.VideoViews }
+        }));
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        foreach (var key in new[] { DailyReportMetrics.ProductImpressions, DailyReportMetrics.ProductClicks })
+        {
+            var metric = ShopCard(data, key);
+            Assert.Null(metric.CurrentValue);
+            Assert.Equal(DailyMetricStatus.Unavailable, metric.CurrentStatus);
+            Assert.False(metric.IsAvailable);
+            Assert.False(string.IsNullOrWhiteSpace(metric.UnavailableReason));
+        }
+
+        Assert.All(data.Trend, row =>
+        {
+            Assert.Null(row.ProductImpressions);
+            Assert.Null(row.ProductClicks);
+        });
+
+        // The declared metric keeps working - the shop extension does not break Video Views.
+        Assert.True(Card(data, DailyReportMetrics.VideoViews).IsAvailable);
+    }
+
+    [Fact]
+    public async Task ShopVideoMetrics_MissingDaysStayNull_PartialNeverZero()
+    {
+        var source = new FakeSource(_ => AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+        {
+            Records = new[]
+            {
+                ShopRecord(new DateTime(2026, 8, 23), impressions: 438, clicks: 22),
+                ShopRecord(new DateTime(2026, 8, 24), impressions: 100, clicks: null)
+            }
+        }));
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        // Impressions recorded on BOTH days of the 2-day period -> Complete.
+        var impressions = ShopCard(data, DailyReportMetrics.ProductImpressions);
+        Assert.Equal(538m, impressions.CurrentValue);
+        Assert.Equal(DailyMetricStatus.Complete, impressions.CurrentStatus);
+        Assert.False(impressions.IsPartial);
+
+        // Clicks missing on day 2 -> Partial (never presented as a full-period total).
+        var clicks = ShopCard(data, DailyReportMetrics.ProductClicks);
+        Assert.Equal(22m, clicks.CurrentValue);
+        Assert.Equal(DailyMetricStatus.Partial, clicks.CurrentStatus);
+        Assert.True(clicks.IsPartial);
+
+        // A recorded day without the field stays null (never 0).
+        var dayWithoutClicks = data.Trend.Single(r => r.Date == new DateTime(2026, 8, 24));
+        Assert.Equal(100L, dayWithoutClicks.ProductImpressions);
+        Assert.Null(dayWithoutClicks.ProductClicks);
+
+        Assert.True(dayWithoutClicks.HasRecord);
+
+        // Days with no record at all stay null in both fields (never 0).
+        Assert.All(data.Trend.Where(r => r.Date > new DateTime(2026, 8, 24)), row =>
+        {
+            Assert.False(row.HasRecord);
+            Assert.Null(row.ProductImpressions);
+            Assert.Null(row.ProductClicks);
+        });
     }
 }

@@ -273,6 +273,41 @@
         }
     </section>
 
+    <!-- ============ Shop-video commerce funnel (own section: NOT account engagement) ============ -->
+    <section class="cpd-panel cpd-shop-video" aria-label="Metrik Shop Video">
+        <div class="cpd-panel-head">
+            <h2 class="cpd-panel-title">METRIK SHOP VIDEO &middot; @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd)</h2>
+            <span class="cpd-panel-hint">funnel video &times; produk (TikTok Shop Video Performance Overview)</span>
+        </div>
+        <div class="cpd-shop-video-metrics-grid">
+            @foreach (var metric in Model.ShopVideoMetrics)
+            {
+                var badge = DeltaBadge(metric);
+                <div class="cpd-card @(metric.IsAvailable ? string.Empty : "cpd-card-unavailable")" data-metric="@metric.Key">
+                    <div class="cpd-card-label"><span class="cpd-dot cpd-dot-@metric.Key" aria-hidden="true"></span>@metric.Label.ToUpperInvariant()</div>
+                    <div class="cpd-card-value" title="@(metric.IsAvailable ? metric.CoverageNote : metric.UnavailableReason)">@(metric.IsAvailable && metric.CurrentValue.HasValue ? NumDec(metric.CurrentValue) : Dash())</div>
+                    @if (badge is not null)
+                    {
+                        <p class="cpd-card-delta @badge.Value.Class" title="@(metric.IsPartial ? metric.CoverageNote : null)">
+                            <span class="cpd-card-arrow" aria-hidden="true">@badge.Value.Arrow</span> @badge.Value.Text
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="cpd-card-delta flat" title="@metric.UnavailableReason">@Dash() vs periode sebelumnya</p>
+                    }
+                    <p class="cpd-card-caption">periode sebelumnya: @(metric.IsAvailable && metric.PreviousValue.HasValue ? NumDec(metric.PreviousValue) : Dash())</p>
+                </div>
+            }
+        </div>
+        <p class="cpd-table-note">
+            Nilai berasal dari interval harian TikTok Shop Video Performance Overview (product_impressions,
+            product_clicks, video_attributed_sku_orders) dan hanya menjelaskan funnel video &times; produk &mdash;
+            bukan Reach, Interactions, Engagement Rate, maupun pertumbuhan follower akun.
+            Tanggal tanpa rekaman ditampilkan &ldquo;-&rdquo;, bukan 0.
+        </p>
+    </section>
+
     <!-- ============ Period comparison table ============ -->
     <section class="cpd-panel cpd-comparison">
         <h2 class="cpd-panel-title">PERBANDINGAN PERIODE &middot; @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd)</h2>

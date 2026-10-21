@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using KaleContentOps.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace KaleContentOps.Services.CreativePerformance;
 
@@ -17,11 +19,21 @@ namespace KaleContentOps.Services.CreativePerformance;
 /// no verified source stays null and carries an Unavailable reason.
 ///
 /// Data source: <see cref="IAccountDailyMetricSource"/>. The provider registered in
-/// DI today is <see cref="UnavailableAccountDailyMetricSource"/> (BLOCKED - only
-/// per-video metrics exist in this workspace), so the page renders honest empty
-/// states until an account-level integration is verified. Swapping the DI
-/// registration to a verified EF Core / TikTok account provider activates every
-/// section without touching this class or the UI.
+/// DI today is <see cref="TikTokShopVideoOverviewMetricSource"/>, which maps ONLY the
+/// verified daily video_views field of the shop-video overview API and declares that
+/// scope through <see cref="AccountDailyMetricDataset.AvailableMetricKeys"/>. Every
+/// metric outside that declared set is rendered as Unavailable ("-") with an honest
+/// reason - never "no data recorded", never populated from unrelated fields. The
+/// previous <see cref="UnavailableAccountDailyMetricSource"/> remains the documented
+/// fallback for environments without verified sources.
+///
+/// 2026-10-21 extension: the same verified endpoint also supplies the commerce-funnel
+/// record-level fields product_impressions, product_clicks and video_attributed_sku_orders.
+/// Those three are now surfaced as their OWN summary cards + comparison rows + shop-video
+/// detail panel. They are NOT folded into Reach/Interactions/Engagement Rate/follower
+/// families (reach and interactions remain profile-engagement metrics only). The source
+/// reads them from the identical daily interval that carries video_views, so no new API
+/// call or new provider is introduced here.
 /// </summary>
 public sealed class DailyPerformanceService : IDailyPerformanceService
 {
@@ -29,11 +41,16 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
 
     private readonly IAccountDailyMetricSource _source;
     private readonly IShopTimeZone _shopTimeZone;
+    private readonly ILogger<DailyPerformanceService> _logger;
 
-    public DailyPerformanceService(IAccountDailyMetricSource source, IShopTimeZone shopTimeZone)
+    public DailyPerformanceService(
+        IAccountDailyMetricSource source,
+        IShopTimeZone shopTimeZone,
+        ILogger<DailyPerformanceService>? logger = null)
     {
         _source = source;
         _shopTimeZone = shopTimeZone;
+        _logger = logger ?? NullLogger<DailyPerformanceService>.Instance;
     }
 
     public async Task<DailyReportData> BuildAsync(DailyReportFilter filter, CancellationToken cancellationToken = default)
@@ -59,7 +76,23 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         var previousContext = BuildContext(previous, previousResult);
 
         var cards = BuildCards(currentContext, previousContext);
+        var shopVideoMetrics = BuildShopVideoMetrics(currentContext, previousContext);
         var rows = BuildRows(currentContext);
+
+        // Safe per-build diagnostics (no tokens/secrets): which period was built, how
+        // many daily records survived date filtering and the final Video Views card
+        // state - enough to locate a suppression without a debugger.
+        var videoViewsCard = cards.Single(c => c.Key == DailyReportMetrics.VideoViews);
+        _logger.LogInformation(
+            "Daily Report built {Start}..{End}: sourceAvailable={SourceAvailable}, recordsInCurrentPeriod={Records}, VideoViews={Value} ({Status}), previous VideoViews={PreviousValue} ({PreviousStatus})",
+            current.Start.ToString("yyyy-MM-dd"),
+            current.End.ToString("yyyy-MM-dd"),
+            currentResult.IsAvailable,
+            currentContext.RecordsByDate.Count,
+            videoViewsCard.CurrentValue,
+            videoViewsCard.CurrentStatus,
+            videoViewsCard.PreviousValue,
+            videoViewsCard.PreviousStatus);
 
         var interactionComposition = BuildInteractionComposition(currentContext);
         var viewerComposition = BuildViewerComposition(currentContext);
@@ -77,21 +110,49 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 ? "GMT+7"
                 : _shopTimeZone.TimeZoneId,
             Cards = cards,
+            // Shop-video commerce funnel: rendered in its own section, never mixed
+            // into the account summary cards or the account comparison rows.
+            ShopVideoMetrics = shopVideoMetrics,
             ComparisonRows = cards.Where(c => c.ShowInComparison).ToList(),
             // Same row objects, opposite order: charts read ascending, the table descending.
             Trend = rows,
             DailyRows = rows.AsEnumerable().Reverse().ToList(),
             InteractionComposition = interactionComposition,
             ViewerComposition = viewerComposition,
-            Notices = BuildNotices(currentResult, previousResult, cards),
+            Notices = BuildNotices(currentResult, previousResult, cards.Concat(shopVideoMetrics).ToList()),
             SourceNotes = BuildSourceNotes(currentResult),
-            HasAnyMetricData = cards.Any(c => c.CurrentValue.HasValue)
+            HasAnyMetricData = cards.Concat(shopVideoMetrics).Any(c => c.CurrentValue.HasValue)
         };
     }
 
     // ------------------------------------------------------------------
     // Period evaluation
     // ------------------------------------------------------------------
+
+    /// <summary>Metric keys of the summary cards, with their display labels (mockup order).</summary>
+    private static readonly (string Key, string Label)[] CardMetrics =
+    {
+        (DailyReportMetrics.Reach, "Reach"),
+        (DailyReportMetrics.VideoViews, "Video Views"),
+        (DailyReportMetrics.ProfileViews, "Profile Views"),
+        (DailyReportMetrics.Interactions, "Interactions"),
+        (DailyReportMetrics.EngagementRate, "Engagement Rate"),
+        (DailyReportMetrics.NetFollower, "Net Follower"),
+        (DailyReportMetrics.TotalFollower, "Total Follower")
+    };
+
+    /// <summary>
+    /// Additional commerce-funnel metrics surfaced on their own cards and daily rows.
+    /// They are sourced from the SAME verified TikTok Shop Video Performance Overview
+    /// endpoint that carries video_views, and they are NOT mapped to Reach / Interactions /
+    /// Engagement Rate / follower families.
+    /// </summary>
+    private static readonly (string Key, string Label)[] ShopVideoCardMetrics =
+    {
+        (DailyReportMetrics.ProductImpressions, "Product Impressions"),
+        (DailyReportMetrics.ProductClicks, "Product Clicks"),
+        (DailyReportMetrics.VideoAttributedSkuOrders, "Video-attributed SKU Orders")
+    };
 
     /// <summary>All aggregates of one period, evaluated once and reused everywhere.</summary>
     private sealed class PeriodContext
@@ -101,6 +162,15 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         public string SourceUnavailableReason { get; init; } = string.Empty;
         public string SourceName { get; init; } = string.Empty;
         public int DaysInPeriod { get; init; }
+
+        /// <summary>Declared metric keys of the dataset (null = every metric supplied).</summary>
+        public IReadOnlySet<string>? AvailableMetricKeys { get; init; }
+
+        /// <summary>Reason used for metrics OUTSIDE the declared set (null when the dataset is complete).</summary>
+        public string? LimitedSourceReason { get; init; }
+
+        /// <summary>True when the source actually supplies this metric key (declared or complete dataset).</summary>
+        public bool Supplies(string key) => AvailableMetricKeys is null || AvailableMetricKeys.Contains(key);
 
         public DailyMetricAggregate Reach { get; init; }
         public DailyMetricAggregate VideoViews { get; init; }
@@ -113,6 +183,16 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
 
         public PeriodValue? EngagementRate { get; init; }
         public PeriodValue? TotalFollower { get; init; }
+
+        /// <summary>
+        /// Additional commerce-funnel period values (Product Impressions, Product Clicks,
+        /// Video-attributed SKU Orders). Same aggregation contract as the other absolute
+        /// metrics - never Reach/Interactions/follower substitutes.
+        /// </summary>
+        public PeriodValue? ProductImpressions { get; init; }
+        public PeriodValue? ProductClicks { get; init; }
+        public PeriodValue? VideoAttributedSkuOrders { get; init; }
+
         public AccountViewerComposition? ViewerComposition { get; init; }
         public IReadOnlyDictionary<DateTime, AccountDailyMetricRecord> RecordsByDate { get; init; }
             = new Dictionary<DateTime, AccountDailyMetricRecord>();
@@ -156,7 +236,10 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 Interactions = none,
                 NetFollower = none,
                 EngagementRate = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
-                TotalFollower = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count)
+                TotalFollower = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                ProductImpressions = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                ProductClicks = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                VideoAttributedSkuOrders = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count)
             };
         }
 
@@ -173,6 +256,19 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             records[date] = record;
         }
 
+        // Declared metric scope of this dataset (null = complete dataset, every metric).
+        // A VERIFIED PARTIAL source (e.g. only daily video_views) declares exactly its
+        // keys; every other metric is then rendered Unavailable with an honest reason
+        // instead of "no data recorded", and its per-day values are forced to null so
+        // a value from an unrelated field can never leak into it.
+        var availableKeys = result.Dataset.AvailableMetricKeys;
+        var limitedReason = availableKeys is null
+            ? null
+            : $"Metrik ini belum memiliki sumber data terverifikasi dan ditampilkan \"-\". " +
+              $"Sumber saat ini hanya menyediakan: {string.Join(", ", CardMetrics.Concat(ShopVideoCardMetrics).Where(m => availableKeys.Contains(m.Key)).Select(m => m.Label))}.";
+
+        bool Supplies(string key) => availableKeys is null || availableKeys.Contains(key);
+
         var reach = new List<long?>(days.Count);
         var videoViews = new List<long?>(days.Count);
         var profileViews = new List<long?>(days.Count);
@@ -181,29 +277,47 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         var shares = new List<long?>(days.Count);
         var interactions = new List<long?>(days.Count);
         var netFollower = new List<long?>(days.Count);
+        var productImpressions = new List<long?>(days.Count);
+        var productClicks = new List<long?>(days.Count);
+        var videoAttributedSkuOrders = new List<long?>(days.Count);
 
         foreach (var day in days)
         {
             var record = records.GetValueOrDefault(day);
 
-            reach.Add(record?.Reach);
-            videoViews.Add(record?.VideoViews);
-            profileViews.Add(record?.ProfileViews);
+            reach.Add(Supplies(DailyReportMetrics.Reach) ? record?.Reach : null);
+            videoViews.Add(Supplies(DailyReportMetrics.VideoViews) ? record?.VideoViews : null);
+            profileViews.Add(Supplies(DailyReportMetrics.ProfileViews) ? record?.ProfileViews : null);
             likes.Add(record?.Likes);
             comments.Add(record?.Comments);
             shares.Add(record?.Shares);
             // Composite metrics: a record missing any component yields null, never a partial total.
-            interactions.Add(record is null
+            interactions.Add(record is null || !Supplies(DailyReportMetrics.Interactions)
                 ? null
                 : DailyReportCalculator.Interactions(record.Likes, record.Comments, record.Shares));
-            netFollower.Add(record is null
+            netFollower.Add(record is null || !Supplies(DailyReportMetrics.NetFollower)
                 ? null
                 : DailyReportCalculator.NetFollower(record.FollowersGained, record.FollowersLost));
+            // Additional shop-video commerce metrics (Funnel): aggregated per the same
+            // verified record-level fields, never mapped to Reach/Interactions/follower families.
+            productImpressions.Add(record is null || !Supplies(DailyReportMetrics.ProductImpressions)
+                ? null
+                : record.ProductImpressions);
+            productClicks.Add(record is null || !Supplies(DailyReportMetrics.ProductClicks)
+                ? null
+                : record.ProductClicks);
+            videoAttributedSkuOrders.Add(record is null || !Supplies(DailyReportMetrics.VideoAttributedSkuOrders)
+                ? null
+                : record.VideoAttributedSkuOrders);
         }
 
         var sourceReason = string.Empty;
-        var reachAgg = DailyReportCalculator.Sum(reach, days.Count);
-        var interactionsAgg = DailyReportCalculator.Sum(interactions, days.Count);
+        var reachAgg = Supplies(DailyReportMetrics.Reach)
+            ? DailyReportCalculator.Sum(reach, days.Count)
+            : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
+        var interactionsAgg = Supplies(DailyReportMetrics.Interactions)
+            ? DailyReportCalculator.Sum(interactions, days.Count)
+            : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
 
         // Period ER = Total Interactions / Total Reach x 100 (never the average of daily ERs).
         PeriodValue engagementRate;
@@ -213,7 +327,7 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             engagementRate = new PeriodValue(
                 null,
                 status,
-                status == DailyMetricStatus.Unavailable ? sourceReason : NoDataReason,
+                status == DailyMetricStatus.Unavailable ? limitedReason ?? sourceReason : NoDataReason,
                 0,
                 days.Count);
         }
@@ -237,13 +351,17 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         }
 
         // Total Follower: latest snapshot INSIDE the period and never after EndDate.
-        var snapshot = DailyReportCalculator.FollowerSnapshotAtOrBefore(
-            result.Dataset.FollowerSnapshots
-                .Where(s => s.AsOfDate.Date >= range.Start)
-                .ToList(),
-            range.End);
+        var snapshot = Supplies(DailyReportMetrics.TotalFollower)
+            ? DailyReportCalculator.FollowerSnapshotAtOrBefore(
+                result.Dataset.FollowerSnapshots
+                    .Where(s => s.AsOfDate.Date >= range.Start)
+                    .ToList(),
+                range.End)
+            : null;
 
-        var totalFollower = snapshot is null
+        var totalFollower = !Supplies(DailyReportMetrics.TotalFollower)
+            ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+            : snapshot is null
             ? new PeriodValue(
                 null,
                 DailyMetricStatus.NoData,
@@ -260,17 +378,34 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             SourceUnavailableReason = sourceReason,
             SourceName = result.Dataset.SourceName,
             RecordsByDate = records,
+            AvailableMetricKeys = availableKeys,
+            LimitedSourceReason = limitedReason,
             Reach = reachAgg,
-            VideoViews = DailyReportCalculator.Sum(videoViews, days.Count),
-            ProfileViews = DailyReportCalculator.Sum(profileViews, days.Count),
+            VideoViews = Supplies(DailyReportMetrics.VideoViews)
+                ? DailyReportCalculator.Sum(videoViews, days.Count)
+                : DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+            ProfileViews = Supplies(DailyReportMetrics.ProfileViews)
+                ? DailyReportCalculator.Sum(profileViews, days.Count)
+                : DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
             Likes = DailyReportCalculator.Sum(likes, days.Count),
             Comments = DailyReportCalculator.Sum(comments, days.Count),
             Shares = DailyReportCalculator.Sum(shares, days.Count),
             Interactions = interactionsAgg,
-            NetFollower = DailyReportCalculator.Sum(netFollower, days.Count),
+            NetFollower = Supplies(DailyReportMetrics.NetFollower)
+                ? DailyReportCalculator.Sum(netFollower, days.Count)
+                : DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
             EngagementRate = engagementRate,
             TotalFollower = totalFollower,
-            ViewerComposition = result.Dataset.ViewerComposition
+            ViewerComposition = result.Dataset.ViewerComposition,
+            ProductImpressions = Supplies(DailyReportMetrics.ProductImpressions)
+                ? periodCommerceValue(productImpressions, days.Count)
+                : new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count),
+            ProductClicks = Supplies(DailyReportMetrics.ProductClicks)
+                ? periodCommerceValue(productClicks, days.Count)
+                : new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count),
+            VideoAttributedSkuOrders = Supplies(DailyReportMetrics.VideoAttributedSkuOrders)
+                ? periodCommerceValue(videoAttributedSkuOrders, days.Count)
+                : new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
         };
     }
 
@@ -282,6 +417,24 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             _ => new PeriodValue(aggregate.Value, aggregate.Status, null, aggregate.DaysCovered, daysInPeriod)
         };
 
+    private static PeriodValue periodCommerceValue(List<long?> values, int daysInPeriod)
+    {
+        var covered = values.Count(v => v.HasValue);
+        var sum = values.Where(v => v.HasValue).Select(v => v!.Value).Aggregate(0L, (acc, v) => acc + v);
+        var status = covered == daysInPeriod
+            ? DailyMetricStatus.Complete
+            : covered > 0
+                ? DailyMetricStatus.Partial
+                : DailyMetricStatus.NoData;
+
+        return new PeriodValue(
+            covered > 0 ? sum : null,
+            status,
+            status == DailyMetricStatus.NoData ? NoDataReason : null,
+            covered,
+            daysInPeriod);
+    }
+
     // ------------------------------------------------------------------
     // Cards + comparison rows
     // ------------------------------------------------------------------
@@ -290,8 +443,21 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
     {
         var sourceReason = current.SourceUnavailableReason;
 
-        PeriodValue Cur(DailyMetricAggregate agg) => ToValue(agg, current.DaysInPeriod, sourceReason);
-        PeriodValue Prev(DailyMetricAggregate agg) => ToValue(agg, previous.DaysInPeriod, previous.SourceUnavailableReason);
+        // A fully unavailable source explains itself with SourceUnavailableReason; a
+        // limited (verified-partial) source explains each unsupplied metric with the
+        // LimitedSourceReason instead.
+        PeriodValue Cur(DailyMetricAggregate agg) => ToValue(
+            agg,
+            current.DaysInPeriod,
+            agg.Status == DailyMetricStatus.Unavailable && string.IsNullOrEmpty(sourceReason)
+                ? current.LimitedSourceReason ?? string.Empty
+                : sourceReason);
+        PeriodValue Prev(DailyMetricAggregate agg) => ToValue(
+            agg,
+            previous.DaysInPeriod,
+            agg.Status == DailyMetricStatus.Unavailable && string.IsNullOrEmpty(previous.SourceUnavailableReason)
+                ? previous.LimitedSourceReason ?? string.Empty
+                : previous.SourceUnavailableReason);
 
         var cards = new List<DailyReportMetric>
         {
@@ -321,6 +487,24 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
 
         return cards;
     }
+
+    /// <summary>
+    /// Shop-video commerce funnel (Product Impressions, Product Clicks,
+    /// Video-attributed SKU Orders). They get their OWN section and their own
+    /// comparison block: they are NOT Reach / Interactions / Engagement Rate /
+    /// follower metrics, so they never enter the account summary cards or the
+    /// account comparison rows.
+    /// </summary>
+    private static IReadOnlyList<DailyReportMetric> BuildShopVideoMetrics(PeriodContext current, PeriodContext previous)
+        => new List<DailyReportMetric>
+        {
+            Build(DailyReportMetrics.ProductImpressions, "Product Impressions",
+                current.ProductImpressions!, previous.ProductImpressions!, DailyMetricDeltaKind.Absolute),
+            Build(DailyReportMetrics.ProductClicks, "Product Clicks",
+                current.ProductClicks!, previous.ProductClicks!, DailyMetricDeltaKind.Absolute),
+            Build(DailyReportMetrics.VideoAttributedSkuOrders, "Video-attributed SKU Orders",
+                current.VideoAttributedSkuOrders!, previous.VideoAttributedSkuOrders!, DailyMetricDeltaKind.Absolute)
+        };
 
     private static DailyReportMetric Build(
         string key,
@@ -380,8 +564,8 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 context.RecordsByDate.TryGetValue(day, out record);
             }
 
-            var reach = record?.Reach;
-            var interactions = record is null
+            var reach = context.Supplies(DailyReportMetrics.Reach) ? record?.Reach : null;
+            var interactions = record is null || !context.Supplies(DailyReportMetrics.Interactions)
                 ? null
                 : DailyReportCalculator.Interactions(record.Likes, record.Comments, record.Shares);
 
@@ -389,13 +573,17 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             {
                 Date = day,
                 Reach = reach,
-                VideoViews = record?.VideoViews,
-                ProfileViews = record?.ProfileViews,
+                VideoViews = context.Supplies(DailyReportMetrics.VideoViews) ? record?.VideoViews : null,
+                ProfileViews = context.Supplies(DailyReportMetrics.ProfileViews) ? record?.ProfileViews : null,
                 Interactions = interactions,
                 EngagementRate = DailyReportCalculator.EngagementRate(interactions, reach),
-                NetFollower = record is null
+                NetFollower = record is null || !context.Supplies(DailyReportMetrics.NetFollower)
                     ? null
                     : DailyReportCalculator.NetFollower(record.FollowersGained, record.FollowersLost),
+                // Shop-video commerce funnel of the day (null = not recorded, never 0).
+                ProductImpressions = context.Supplies(DailyReportMetrics.ProductImpressions) ? record?.ProductImpressions : null,
+                ProductClicks = context.Supplies(DailyReportMetrics.ProductClicks) ? record?.ProductClicks : null,
+                VideoAttributedSkuOrders = context.Supplies(DailyReportMetrics.VideoAttributedSkuOrders) ? record?.VideoAttributedSkuOrders : null,
                 HasRecord = record is not null
             });
         }
@@ -423,9 +611,12 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         if (!DailyReportCalculator.CanRenderComposition(statuses, total))
         {
             var partial = statuses.Any(s => s == DailyMetricStatus.Partial);
+            var unavailable = statuses.Any(s => s == DailyMetricStatus.Unavailable);
             return Unavailable(key, title, partial
                 ? $"Komponen interaksi tidak lengkap pada periode ini ({context.Interactions.DaysCovered} dari {context.DaysInPeriod} hari) - komposisi tidak ditampilkan agar tidak menyesatkan."
-                : NoDataReason, InteractionSegments(context, total: null));
+                : unavailable
+                    ? context.LimitedSourceReason ?? context.SourceUnavailableReason
+                    : NoDataReason, InteractionSegments(context, total: null));
         }
 
         return new DailyReportComposition
@@ -464,7 +655,9 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         if (viewers is null || viewers.NewViewers is null || viewers.ReturningViewers is null)
         {
             return Unavailable(key, title,
-                "Komposisi viewer baru/lama level akun belum tersedia dari sumber yang terverifikasi.",
+                context.LimitedSourceReason is null
+                    ? "Komposisi viewer baru/lama level akun belum tersedia dari sumber yang terverifikasi."
+                    : context.LimitedSourceReason,
                 ViewerSegments(null, null));
             // ViewerSegments(null, null): slots stay, percentages stay null.
         }
@@ -544,11 +737,34 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
 
         if (!currentResult.IsAvailable)
         {
-            notices.Add("Seluruh metrik ditampilkan \"-\" karena sumber analytics level akun (harian) belum terintegrasi.");
+            // Surface the provider's ACTUAL reason (transport failure, HTTP/business
+            // error, missing configuration...). Proven 2026-10-21: a transport failure
+            // previously rendered a notice that only said the source was "not
+            // integrated", hiding the real cause from the operator.
+            var reason = string.IsNullOrWhiteSpace(currentResult.UnavailableReason)
+                ? UnavailableAccountDailyMetricSource.Reason
+                : currentResult.UnavailableReason!;
+            notices.Add(
+                "Seluruh metrik ditampilkan \"-\" karena sumber analytics level akun (harian) belum terintegrasi " +
+                "atau belum dapat dihubungi pada permintaan ini. Detail: " + reason);
         }
-        else if (!previousResult.IsAvailable)
+        else
         {
-            notices.Add("Periode pembanding tidak tersedia sehingga kolom Periode Sebelumnya dan Selisih ditampilkan \"-\".");
+            if (!previousResult.IsAvailable)
+            {
+                notices.Add("Periode pembanding tidak tersedia sehingga kolom Periode Sebelumnya dan Selisih ditampilkan \"-\".");
+            }
+
+            // Verified-partial source: some metric families are still without a verified
+            // source and must be called out explicitly instead of silently showing "-".
+            var unavailable = cards
+                .Where(c => c.CurrentStatus == DailyMetricStatus.Unavailable)
+                .Select(c => c.Label)
+                .ToList();
+            if (unavailable.Count > 0)
+            {
+                notices.Add($"Metrik {string.Join(", ", unavailable)} belum memiliki sumber data yang terverifikasi dan ditampilkan \"-\".");
+            }
         }
 
         var partial = cards
@@ -570,9 +786,17 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
 
     private static IReadOnlyList<DailyReportSourceNote> BuildSourceNotes(AccountDailyMetricResult currentResult)
     {
-        var accountStatus = currentResult.IsAvailable
-            ? $"tersedia dari {currentResult.Dataset?.SourceName ?? "sumber account-level"}"
-            : "belum tersambung (blocked)";
+        var sourceName = currentResult.Dataset?.SourceName ?? "sumber account-level";
+        var availableKeys = currentResult.Dataset?.AvailableMetricKeys;
+
+        // Per-metric footer status: a metric is only "tersedia" when the registered
+        // provider explicitly declares it (verified mapping). Everything else is
+        // honestly reported as not-yet-verified, even when the source itself answers.
+        string StatusFor(string key) => !currentResult.IsAvailable
+            ? "belum tersambung (blocked)"
+            : availableKeys is null || availableKeys.Contains(key)
+                ? $"tersedia dari {sourceName}"
+                : "belum tersedia dari sumber yang terverifikasi";
 
         return new List<DailyReportSourceNote>
         {
@@ -580,25 +804,25 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             {
                 Metric = "Reach",
                 Definition = "Agregasi harian Reach / Total Viewers level akun (bukan jumlah Reach per-video).",
-                Status = accountStatus
+                Status = StatusFor(DailyReportMetrics.Reach)
             },
             new()
             {
                 Metric = "Video Views",
                 Definition = "Agregasi harian Video Views level akun.",
-                Status = accountStatus
+                Status = StatusFor(DailyReportMetrics.VideoViews)
             },
             new()
             {
                 Metric = "Profile Views",
                 Definition = "Agregasi harian Profile Views level akun.",
-                Status = accountStatus
+                Status = StatusFor(DailyReportMetrics.ProfileViews)
             },
             new()
             {
                 Metric = "Interactions",
                 Definition = "Likes + Comments + Shares, dihitung sistem (field gabungan tidak disediakan API).",
-                Status = accountStatus
+                Status = StatusFor(DailyReportMetrics.Interactions)
             },
             new()
             {
@@ -610,13 +834,31 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             {
                 Metric = "Net Follower",
                 Definition = "Followers Gained - Followers Lost (harian, kemudian diakumulasi per periode).",
-                Status = accountStatus
+                Status = StatusFor(DailyReportMetrics.NetFollower)
             },
             new()
             {
                 Metric = "Total Follower",
                 Definition = "Follower count pada posisi akhir Current Period dari snapshot historis valid - tidak pernah memakai data setelah EndDate.",
-                Status = accountStatus
+                Status = StatusFor(DailyReportMetrics.TotalFollower)
+            },
+            new()
+            {
+                Metric = "Product Impressions",
+                Definition = "Jumlah tampilan produk (product_impressions) dari interval harian TikTok Shop Video Performance Overview - bukan metric engagement profile.",
+                Status = StatusFor(DailyReportMetrics.ProductImpressions)
+            },
+            new()
+            {
+                Metric = "Product Clicks",
+                Definition = "Jumlah klik produk (product_clicks) dari interval harian TikTok Shop Video Performance Overview - bukan metric engagement profile.",
+                Status = StatusFor(DailyReportMetrics.ProductClicks)
+            },
+            new()
+            {
+                Metric = "Video-attributed SKU Orders",
+                Definition = "Jumlah pesanan SKU yang dikaitkan ke video (video_attributed_sku_orders) dari interval harian TikTok Shop Video Performance Overview - bukan metric engagement profile.",
+                Status = StatusFor(DailyReportMetrics.VideoAttributedSkuOrders)
             },
             new()
             {

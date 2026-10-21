@@ -24,6 +24,13 @@ public static class DailyReportMetrics
     public const string EngagementRate = "engagement_rate";
     public const string NetFollower = "net_follower";
     public const string TotalFollower = "total_follower";
+
+    // Shop-video commerce funnel (TikTok Shop Video Performance Overview).
+    // These are NOT Reach / Interactions / Engagement Rate / follower metrics:
+    // they describe the shop funnel of the videos, not account engagement.
+    public const string ProductImpressions = "product_impressions";
+    public const string ProductClicks = "product_clicks";
+    public const string VideoAttributedSkuOrders = "video_attributed_sku_orders";
 }
 
 /// <summary>Requested period for the Daily Report (inclusive calendar dates, Asia/Jakarta).</summary>
@@ -131,6 +138,16 @@ public sealed class DailyReportRow
 
     public long? NetFollower { get; init; }
 
+    /// <summary>
+    /// Shop-video commerce funnel of the day (TikTok Shop Video Performance Overview).
+    /// Null = the field was not recorded for that day - never 0.
+    /// </summary>
+    public long? ProductImpressions { get; init; }
+
+    public long? ProductClicks { get; init; }
+
+    public long? VideoAttributedSkuOrders { get; init; }
+
     /// <summary>False when the day has no record at all (all metrics null) - charts must skip it, never plot zero.</summary>
     public bool HasRecord { get; init; }
 }
@@ -194,6 +211,13 @@ public sealed class DailyReportData
 
     /// <summary>7 summary cards in mockup order (Reach ... Total Follower).</summary>
     public IReadOnlyList<DailyReportMetric> Cards { get; init; } = Array.Empty<DailyReportMetric>();
+
+    /// <summary>
+    /// Shop-video commerce funnel (Product Impressions, Product Clicks,
+    /// Video-attributed SKU Orders) rendered in its own section. Kept out of
+    /// <see cref="Cards"/> on purpose: they are not account-engagement metrics.
+    /// </summary>
+    public IReadOnlyList<DailyReportMetric> ShopVideoMetrics { get; init; } = Array.Empty<DailyReportMetric>();
 
     /// <summary>Comparison-table rows (the 6 metrics with a delta; Total Follower excluded).</summary>
     public IReadOnlyList<DailyReportMetric> ComparisonRows { get; init; } = Array.Empty<DailyReportMetric>();

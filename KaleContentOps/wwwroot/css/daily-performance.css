@@ -142,6 +142,16 @@
 .cpd-dot-engagement_rate { background: var(--cpd-yellow); }
 .cpd-dot-net_follower { background: var(--cpd-green); }
 .cpd-dot-total_follower { background: var(--cpd-muted); }
+.cpd-dot-product_impressions { background: var(--cpd-yellow); }
+.cpd-dot-product_clicks { background: var(--cpd-green); }
+.cpd-dot-video_attributed_sku_orders { background: var(--cpd-purple); }
+
+/* ============ Shop-video commerce funnel (own section) ============ */
+.cpd-shop-video-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
 
 /* ============ Panels ============ */
 .cpd-panel {
@@ -256,6 +266,7 @@
 /* ============ Responsive ============ */
 @media (max-width: 1400px) {
     .cpd-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .cpd-shop-video-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1100px) {
@@ -272,6 +283,7 @@
 
 @media (max-width: 767px) {
     .cpd-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cpd-shop-video-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .cpd-card-value { font-size: 22px; }
     .cpd-donut-body { flex-direction: column; align-items: flex-start; gap: 14px; }
     .cpd-title h1 { font-size: 20px; }
@@ -281,4 +293,5 @@
 
 @media (max-width: 480px) {
     .cpd-cards { grid-template-columns: minmax(0, 1fr); }
+    .cpd-shop-video-metrics-grid { grid-template-columns: minmax(0, 1fr); }
 }

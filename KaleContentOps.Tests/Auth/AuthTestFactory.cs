@@ -25,7 +25,7 @@ namespace KaleContentOps.Tests;
 /// - Reuses the real Program.cs pipeline: Identity, cookie auth, fallback policy,
 ///   permission policies, MVC routing, antiforgery.
 /// </summary>
-public sealed class AuthTestFactory : WebApplicationFactory<Program>
+public class AuthTestFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"AuthTests_{Guid.NewGuid():N}";
 
@@ -51,7 +51,20 @@ public sealed class AuthTestFactory : WebApplicationFactory<Program>
 
             // Disable the startup seeder for the host under test.
             services.Configure<AdminSeedOptions>(o => o.Enabled = false);
+
+            // Test-specific registration overrides (runs AFTER Program.cs and the
+            // InMemory swap above, so RemoveAll + re-register wins). Default: no-op.
+            ConfigureTestServices(services);
         });
+    }
+
+    /// <summary>
+    /// Hook for derived test factories that must swap individual registrations of the
+    /// real host (e.g. replacing IAccountDailyMetricSource with a scripted fake).
+    /// Intentionally empty by default so every existing test keeps the real wiring.
+    /// </summary>
+    protected virtual void ConfigureTestServices(IServiceCollection services)
+    {
     }
 
     /// <summary>
