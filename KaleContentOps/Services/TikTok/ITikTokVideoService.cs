@@ -6,6 +6,21 @@ using KaleContentOps.Models;
 
 namespace KaleContentOps.Services.TikTok;
 
+/// <summary>
+/// Outcome of ONE batch_performance request carrying MANY video ids
+/// (GET /analytics/202609/shop_videos/batch_performance).
+/// StatusCode is the HTTP status (0 = never sent / credential problem).
+/// Code/Message/RequestId mirror the TikTok envelope; Code null or 0 = success.
+/// VideoEntries = data.videos[] entries VERBATIM (each {video_id, video, performance}),
+/// cloned out of the parsed document so callers can read them after this call returns.
+/// </summary>
+public sealed record TikTokBatchPerformanceResult(
+    int StatusCode,
+    int? Code,
+    string? Message,
+    string? RequestId,
+    System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement> VideoEntries);
+
 public interface ITikTokVideoService
 {
     /// <summary>
@@ -46,4 +61,24 @@ public interface ITikTokVideoService
         CancellationToken cancellationToken = default,
         DateTime? startDateInclusive = null,
         DateTime? endDateExclusive = null);
+
+    /// <summary>
+    /// Fetches shop-video performance for MANY videos in ONE request
+    /// (GET /analytics/202609/shop_videos/batch_performance: video_ids=comma-separated,
+    /// optional granularity=1D for daily intervals). Verified live 2026-10-22, code=0:
+    /// granularity=1D returns per-video daily intervals whose traffic object carries
+    /// likes/comments/shares/views.
+    ///
+    /// Contract: business errors are NOT thrown and NOT retried here - Code/Message
+    /// carry them and VideoEntries is empty; HTTP-level transport goes through the
+    /// shared TikTokGetWithRetryAsync path (Retry-After, per-shop suspension) and the
+    /// details semaphore so this call never outpaces the existing sync traffic.
+    /// </summary>
+    Task<TikTokBatchPerformanceResult> FetchBatchPerformanceAsync(
+        System.Collections.Generic.IReadOnlyList<string> videoIds,
+        string shopCipher,
+        DateTime startDateInclusive,
+        DateTime endDateExclusive,
+        string? granularity,
+        CancellationToken cancellationToken = default);
 }

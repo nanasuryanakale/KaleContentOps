@@ -645,4 +645,549 @@ public class DailyPerformanceServiceTests
             Assert.Null(row.ProductClicks);
         });
     }
+
+    // ------------------------------------------------------------------
+    // Period interactions (TikTok shop video list): windowed aggregates
+    // ------------------------------------------------------------------
+
+    private static FakeSource InteractionsSource(
+        AccountPeriodInteractions current,
+        AccountPeriodInteractions? previous,
+        IReadOnlyCollection<string>? availableKeys,
+        bool recordsCarryDailyInteractions = false)
+    {
+        return new FakeSource(query =>
+        {
+            var isPrevious = query.Start < new DateTime(2026, 8, 23);
+            var records = new List<AccountDailyMetricRecord>();
+            for (var day = query.Start; day < query.EndExclusive; day = day.AddDays(1))
+            {
+                // TikTok shop overview shape by default: daily video views only;
+                // interactions exist solely as period aggregates.
+                records.Add(new AccountDailyMetricRecord
+                {
+                    Date = day,
+                    VideoViews = 100,
+                    Likes = recordsCarryDailyInteractions ? 999 : null,
+                    Comments = recordsCarryDailyInteractions ? 888 : null,
+                    Shares = recordsCarryDailyInteractions ? 777 : null
+                });
+            }
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "tiktok-shop-video-overview",
+                PeriodInteractions = isPrevious ? previous : current,
+                AvailableMetricKeys = availableKeys is null
+                    ? null
+                    : new HashSet<string>(availableKeys)
+            });
+        });
+    }
+
+    [Fact]
+    public async Task PeriodInteractions_SupplyCardCompositionAndDelta_DailyRowsStayNull()
+    {
+        var source = InteractionsSource(
+            new AccountPeriodInteractions { Likes = 100, Comments = 50, Shares = 25, VideoCount = 12 },
+            new AccountPeriodInteractions { Likes = 60, Comments = 20, Shares = 20, VideoCount = 9 },
+            new[] { DailyReportMetrics.VideoViews, DailyReportMetrics.Interactions });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.True(interactions.IsAvailable);
+        Assert.Equal(DailyMetricStatus.Complete, interactions.CurrentStatus);
+        Assert.Equal(175m, interactions.CurrentValue); // 100 + 50 + 25
+        Assert.Equal(100m, interactions.PreviousValue); // 60 + 20 + 20
+        Assert.Equal(75m, interactions.Difference);
+        Assert.Equal(75m, interactions.GrowthPercentage);
+
+        // A period aggregate is NEVER distributed across days: rows stay null.
+        Assert.All(data.Trend, row => Assert.Null(row.Interactions));
+        Assert.All(data.DailyRows, row => Assert.Null(row.Interactions));
+
+        // Composition from the exact period totals, locked segment order.
+        Assert.True(data.InteractionComposition.IsAvailable);
+        Assert.Equal(175m, data.InteractionComposition.Total);
+        Assert.Equal(new[] { "like", "comment", "share" },
+            data.InteractionComposition.Segments.Select(s => s.Key));
+        Assert.Equal(100m, data.InteractionComposition.Segments.Single(s => s.Key == "like").Value);
+        Assert.Equal(50m, data.InteractionComposition.Segments.Single(s => s.Key == "comment").Value);
+        Assert.Equal(25m, data.InteractionComposition.Segments.Single(s => s.Key == "share").Value);
+        Assert.Equal(100m, data.InteractionComposition.Segments.Sum(s => s.Percentage!.Value));
+
+        // ER keeps the locked formula: Reach is not supplied, so the card stays "-"
+        // with an explicit reason - never swapped for Views.
+        var er = Card(data, DailyReportMetrics.EngagementRate);
+        Assert.Null(er.CurrentValue);
+        Assert.Equal(DailyMetricStatus.Unavailable, er.CurrentStatus);
+        Assert.Contains("Reach", er.UnavailableReason);
+
+        // Video Views is untouched by the interactions flow.
+        Assert.True(Card(data, DailyReportMetrics.VideoViews).IsAvailable);
+    }
+
+    [Fact]
+    public async Task PeriodInteractions_AllZeros_AreValidZeros_NotMissing()
+    {
+        var source = InteractionsSource(
+            new AccountPeriodInteractions { Likes = 0, Comments = 0, Shares = 0, VideoCount = 0 },
+            null,
+            new[] { DailyReportMetrics.VideoViews, DailyReportMetrics.Interactions });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.True(interactions.IsAvailable);
+        Assert.Equal(0m, interactions.CurrentValue); // a real zero, not "-"
+        Assert.Equal(DailyMetricStatus.Complete, interactions.CurrentStatus);
+        Assert.Null(interactions.PreviousValue);
+
+        // A 0/0/0 donut would be meaningless: the composition honestly stays empty
+        // with a reason instead of rendering fabricated 33/33/33 shares.
+        Assert.False(data.InteractionComposition.IsAvailable);
+        Assert.False(string.IsNullOrWhiteSpace(data.InteractionComposition.UnavailableReason));
+        // Slots are locked, but NO percentage may ever be derived from it.
+        Assert.All(data.InteractionComposition.Segments, s => Assert.Null(s.Percentage));
+    }
+
+    [Fact]
+    public async Task UndeclaredInteractions_StayUnavailable_EvenWhenPeriodTotalsExist()
+    {
+        // Verified-partial source that declares only Video Views: period interaction
+        // totals and daily likes/comments/shares on records must both stay hidden.
+        var source = InteractionsSource(
+            new AccountPeriodInteractions { Likes = 100, Comments = 50, Shares = 25, VideoCount = 12 },
+            null,
+            new[] { DailyReportMetrics.VideoViews },
+            recordsCarryDailyInteractions: true);
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Null(interactions.CurrentValue);
+        Assert.Equal(DailyMetricStatus.Unavailable, interactions.CurrentStatus);
+        Assert.False(interactions.IsAvailable);
+        Assert.False(string.IsNullOrWhiteSpace(interactions.UnavailableReason));
+
+        Assert.False(data.InteractionComposition.IsAvailable);
+        Assert.False(string.IsNullOrWhiteSpace(data.InteractionComposition.UnavailableReason));
+
+        Assert.All(data.Trend, row => Assert.Null(row.Interactions));
+
+        var er = Card(data, DailyReportMetrics.EngagementRate);
+        Assert.Null(er.CurrentValue);
+        Assert.Contains("Reach", er.UnavailableReason);
+
+        // Declared metric keeps working.
+        Assert.True(Card(data, DailyReportMetrics.VideoViews).IsAvailable);
+    }
+
+    [Fact]
+    public async Task PartialPeriodInteractionFields_NeverPresentACompleteTotal()
+    {
+        // Only likes present (comments/shares fields absent from the API response):
+        // the sum of one component is NOT the Interactions total.
+        var source = InteractionsSource(
+            new AccountPeriodInteractions { Likes = 100, Comments = null, Shares = null, VideoCount = 5 },
+            null,
+            new[] { DailyReportMetrics.VideoViews, DailyReportMetrics.Interactions });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Null(interactions.CurrentValue); // no fabricated total from one component
+        Assert.Equal(DailyMetricStatus.NoData, interactions.CurrentStatus);
+
+        Assert.False(data.InteractionComposition.IsAvailable);
+    }
+
+    [Fact]
+    public async Task EngagementRate_UsesPeriodInteractionsOverPeriodReach()
+    {
+        // Full provider: records carry Reach AND daily interactions that DIFFER from
+        // the period totals - the period totals must win (verified windowed sums).
+        var source = new FakeSource(query =>
+        {
+            var records = new List<AccountDailyMetricRecord>();
+            for (var day = query.Start; day < query.EndExclusive; day = day.AddDays(1))
+            {
+                records.Add(Record(day, reach: 100, views: 500, profileViews: 5,
+                    likes: 5, comments: 1, shares: 1, gained: 2, lost: 0));
+            }
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                PeriodInteractions = new AccountPeriodInteractions { Likes = 40, Comments = 10, Shares = 10, VideoCount = 7 }
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Equal(60m, interactions.CurrentValue); // period totals (daily sum would be 24)
+
+        var er = Card(data, DailyReportMetrics.EngagementRate);
+        // 60 / 200 x 100 = 30%.
+        Assert.Equal(30m, er.CurrentValue);
+        Assert.Equal(DailyMetricDeltaKind.PercentagePoints, er.DeltaKind);
+    }
+
+    // ------------------------------------------------------------------
+    // Shop-video analytics extras (verified overview-interval fields):
+    // CTR/CTOR/GPM recomputed from period SUMS, GMV subtypes per-subtype only,
+    // avg customers = mean of covered days, viewers = daily accumulation.
+    // ------------------------------------------------------------------
+
+    private static AccountDailyMetricRecord AnalyticsRecord(
+        DateTime date,
+        long views,
+        long? impressions,
+        long? clicks,
+        long? orders,
+        decimal? attributedGmv,
+        decimal? videoGmv,
+        decimal? indirectGmv,
+        decimal? gpm,
+        string currency = "IDR",
+        decimal? ctr = null,
+        decimal? ctor = null,
+        long? viewers = null,
+        decimal? adc = null)
+        => new()
+        {
+            Date = date,
+            VideoViews = views,
+            ProductImpressions = impressions,
+            ProductClicks = clicks,
+            VideoAttributedSkuOrders = orders,
+            VideoAttributedGmvAmount = attributedGmv,
+            VideoAttributedGmvCurrency = attributedGmv is null ? null : currency,
+            VideoGmvAmount = videoGmv,
+            VideoGmvCurrency = videoGmv is null ? null : currency,
+            VideoIndirectGmvAmount = indirectGmv,
+            VideoIndirectGmvCurrency = indirectGmv is null ? null : currency,
+            GpmAmount = gpm,
+            GpmCurrency = gpm is null ? null : currency,
+            Ctr = ctr,
+            CtorSkuOrder = ctor,
+            VideoProductViewers = viewers,
+            AvgDailyCustomers = adc
+        };
+
+    private static readonly string[] AllShopAnalyticsKeys =
+    {
+        DailyReportMetrics.VideoViews,
+        DailyReportMetrics.ProductImpressions,
+        DailyReportMetrics.ProductClicks,
+        DailyReportMetrics.VideoAttributedSkuOrders,
+        DailyReportMetrics.ProductCtr,
+        DailyReportMetrics.CtorSkuOrder,
+        DailyReportMetrics.VideoAttributedGmv,
+        DailyReportMetrics.VideoGmv,
+        DailyReportMetrics.VideoIndirectGmv,
+        DailyReportMetrics.Gpm,
+        DailyReportMetrics.VideoProductViewers,
+        DailyReportMetrics.AvgDailyCustomers
+    };
+
+    [Fact]
+    public async Task ShopVideoAnalytics_PeriodValues_RecomputeRatesFromSums_NeverAverageDailyRates()
+    {
+        // Two days with DIFFERENT daily rates so a naive average would differ from the
+        // correct sum-based recomputation (CTR: avg 15% vs sum-based 16.67%).
+        var source = new FakeSource(query =>
+        {
+            var records = new List<AccountDailyMetricRecord>();
+            for (var day = query.Start; day < query.EndExclusive; day = day.AddDays(1))
+            {
+                var first = day == query.Start;
+                records.Add(AnalyticsRecord(day,
+                    views: first ? 1000 : 2000,
+                    impressions: first ? 100 : 200,
+                    clicks: first ? 10 : 40,       // daily ctr 10% vs 20%
+                    orders: first ? 1 : 3,         // daily ctor 10% vs 7.5%
+                    attributedGmv: first ? 1000 : 2000,
+                    videoGmv: first ? 800 : 1500,
+                    indirectGmv: first ? 200 : 500,
+                    gpm: first ? 1000 : 1000,
+                    ctr: first ? 0.10m : 0.20m,
+                    ctor: first ? 0.10m : 0.075m,
+                    viewers: first ? 50 : 60,
+                    adc: first ? 2 : 4));
+            }
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "fake-shop-overview-source",
+                AvailableMetricKeys = new HashSet<string>(AllShopAnalyticsKeys)
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24)); // 2 days
+
+        // CTR = (10+40)/(100+200) x 100 = 16.666.., NOT (10%+20%)/2 = 15%.
+        var ctr = ShopCard(data, DailyReportMetrics.ProductCtr);
+        Assert.True(ctr.IsAvailable);
+        Assert.Equal(50m / 300m * 100m, ctr.CurrentValue!.Value);
+        Assert.Equal(DailyMetricDeltaKind.PercentagePoints, ctr.DeltaKind);
+
+        // CTOR = (1+3)/(10+40) x 100 = 8%, NOT (10%+7.5%)/2 = 8.75%.
+        var ctor = ShopCard(data, DailyReportMetrics.CtorSkuOrder);
+        Assert.Equal(4m / 50m * 100m, ctor.CurrentValue!.Value);
+        Assert.Equal(DailyMetricDeltaKind.PercentagePoints, ctor.DeltaKind);
+
+        // GPM = 3000 / 3000 x 1000 = 1000 (currency preserved).
+        var gpm = ShopCard(data, DailyReportMetrics.Gpm);
+        Assert.Equal(1000m, gpm.CurrentValue);
+        Assert.Equal("IDR", gpm.Currency);
+
+        // GMV subtypes summed PER SUBTYPE only, never combined.
+        Assert.Equal(3000m, ShopCard(data, DailyReportMetrics.VideoAttributedGmv).CurrentValue);
+        Assert.Equal("IDR", ShopCard(data, DailyReportMetrics.VideoAttributedGmv).Currency);
+        Assert.Equal(2300m, ShopCard(data, DailyReportMetrics.VideoGmv).CurrentValue);
+        Assert.Equal(700m, ShopCard(data, DailyReportMetrics.VideoIndirectGmv).CurrentValue);
+
+        // Viewers accumulate per day; avg customers = mean over covered days.
+        Assert.Equal(110m, ShopCard(data, DailyReportMetrics.VideoProductViewers).CurrentValue);
+        Assert.Equal(3m, ShopCard(data, DailyReportMetrics.AvgDailyCustomers).CurrentValue);
+
+        // Daily rows carry the VERIFIED per-day values as percent points + currency.
+        var day1 = data.DailyRows.Single(r => r.Date == Filter(8, 23, 8, 24).StartDate);
+        Assert.Equal(10m, day1.ProductCtrPercent);
+        Assert.Equal(10m, day1.CtorSkuOrderPercent);
+        Assert.Equal(1000m, day1.GpmAmount);
+        Assert.Equal("IDR", day1.GpmCurrency);
+        Assert.Equal(1000m, day1.VideoAttributedGmvAmount);
+        Assert.Equal(50L, day1.VideoProductViewers);
+        Assert.Equal(2m, day1.AvgDailyCustomers);
+    }
+
+    [Fact]
+    public async Task ShopVideoAnalytics_MixedCurrencies_AreNeverSummed()
+    {
+        var source = new FakeSource(query =>
+        {
+            var records = new List<AccountDailyMetricRecord>
+            {
+                AnalyticsRecord(query.Start, views: 100, impressions: 10, clicks: 1, orders: 1,
+                    attributedGmv: 500, videoGmv: 500, indirectGmv: 0, gpm: 100, currency: "IDR"),
+                AnalyticsRecord(query.Start.AddDays(1), views: 100, impressions: 10, clicks: 1, orders: 1,
+                    attributedGmv: 5, videoGmv: 5, indirectGmv: 0, gpm: 1, currency: "USD")
+            };
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "fake-shop-overview-source",
+                AvailableMetricKeys = new HashSet<string>(AllShopAnalyticsKeys)
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var gmv = ShopCard(data, DailyReportMetrics.VideoAttributedGmv);
+        Assert.Null(gmv.CurrentValue); // amounts in different currencies are never added
+        Assert.Equal(DailyMetricStatus.NoData, gmv.CurrentStatus);
+        Assert.Contains("mata uang", gmv.UnavailableReason, StringComparison.OrdinalIgnoreCase);
+
+        // GPM inherits the same refusal (its numerator is the attributed GMV sum).
+        var gpm = ShopCard(data, DailyReportMetrics.Gpm);
+        Assert.Null(gpm.CurrentValue);
+    }
+
+    [Fact]
+    public async Task ShopVideoAnalytics_MissingDays_MarkPartialWithCoverage()
+    {
+        var source = new FakeSource(query =>
+        {
+            var records = new List<AccountDailyMetricRecord>
+            {
+                AnalyticsRecord(query.Start, views: 1000, impressions: 100, clicks: 10, orders: 2,
+                    attributedGmv: 1000, videoGmv: 800, indirectGmv: 200, gpm: 1000,
+                    viewers: 40, adc: 2),
+                // second day: NO record at all
+            };
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "fake-shop-overview-source",
+                AvailableMetricKeys = new HashSet<string>(AllShopAnalyticsKeys)
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var gmv = ShopCard(data, DailyReportMetrics.VideoAttributedGmv);
+        Assert.Equal(1000m, gmv.CurrentValue);
+        Assert.Equal(DailyMetricStatus.Partial, gmv.CurrentStatus);
+        Assert.True(gmv.IsPartial);
+        Assert.Contains("1 dari 2", gmv.CoverageNote);
+
+        var ctr = ShopCard(data, DailyReportMetrics.ProductCtr);
+        Assert.Equal(DailyMetricStatus.Partial, ctr.CurrentStatus);
+        Assert.Equal(10m, ctr.CurrentValue); // 10/100 x 100
+
+        var adc = ShopCard(data, DailyReportMetrics.AvgDailyCustomers);
+        Assert.Equal(2m, adc.CurrentValue); // mean over the ONE covered day
+        Assert.Equal(DailyMetricStatus.Partial, adc.CurrentStatus);
+    }
+
+    [Fact]
+    public async Task ShopVideoAnalytics_ZeroDenominator_NeverFabricatesRate()
+    {
+        var source = new FakeSource(query =>
+        {
+            var records = new List<AccountDailyMetricRecord>
+            {
+                AnalyticsRecord(query.Start, views: 0, impressions: 0, clicks: 0, orders: 0,
+                    attributedGmv: 0, videoGmv: 0, indirectGmv: 0, gpm: 0)
+            };
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "fake-shop-overview-source",
+                AvailableMetricKeys = new HashSet<string>(AllShopAnalyticsKeys)
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 23));
+
+        var ctr = ShopCard(data, DailyReportMetrics.ProductCtr);
+        Assert.Null(ctr.CurrentValue);
+        Assert.Contains("Product Impressions", ctr.UnavailableReason);
+
+        var ctor = ShopCard(data, DailyReportMetrics.CtorSkuOrder);
+        Assert.Null(ctor.CurrentValue);
+        Assert.Contains("Product Clicks", ctor.UnavailableReason);
+
+        var gpm = ShopCard(data, DailyReportMetrics.Gpm);
+        Assert.Null(gpm.CurrentValue);
+        Assert.Contains("Video Views", gpm.UnavailableReason);
+
+        // Amounts with an explicit zero are real values, not "no data".
+        Assert.Equal(0m, ShopCard(data, DailyReportMetrics.VideoAttributedGmv).CurrentValue);
+    }
+
+    [Fact]
+    public async Task ShopVideoAnalytics_UndeclaredBySource_AllNewMetricsUnavailable()
+    {
+        var source = new FakeSource(query => AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+        {
+            Records = new List<AccountDailyMetricRecord>
+            {
+                AnalyticsRecord(query.Start, views: 100, impressions: 10, clicks: 1, orders: 1,
+                    attributedGmv: 100, videoGmv: 100, indirectGmv: 0, gpm: 100, viewers: 5, adc: 1)
+            },
+            SourceName = "views-only-source",
+            AvailableMetricKeys = new HashSet<string> { DailyReportMetrics.VideoViews }
+        }));
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 23));
+
+        foreach (var key in new[]
+        {
+            DailyReportMetrics.ProductCtr, DailyReportMetrics.CtorSkuOrder,
+            DailyReportMetrics.VideoAttributedGmv, DailyReportMetrics.VideoGmv,
+            DailyReportMetrics.VideoIndirectGmv, DailyReportMetrics.Gpm,
+            DailyReportMetrics.VideoProductViewers, DailyReportMetrics.AvgDailyCustomers
+        })
+        {
+            var card = ShopCard(data, key);
+            Assert.False(card.IsAvailable);
+            Assert.Null(card.CurrentValue);
+            Assert.Equal(DailyMetricStatus.Unavailable, card.CurrentStatus);
+        }
+
+        var row = Assert.Single(data.DailyRows);
+        Assert.Null(row.ProductCtrPercent);
+        Assert.Null(row.VideoAttributedGmvAmount);
+        Assert.Null(row.GpmAmount);
+        Assert.Null(row.VideoProductViewers);
+        Assert.Null(row.AvgDailyCustomers);
+    }
+
+    // ------------------------------------------------------------------
+    // Daily interactions from a batch breakdown attached to the records
+    // (never a period total spread across days)
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task DailyInteractions_FromRecords_PerDayRowsAndPeriodSum()
+    {
+        var source = new FakeSource(query =>
+        {
+            var day1 = query.Start;
+            var day2 = query.Start.AddDays(1);
+            var records = new List<AccountDailyMetricRecord>
+            {
+                new() { Date = day1, VideoViews = 100, Likes = 5, Comments = 1, Shares = 1 },
+                new() { Date = day2, VideoViews = 100, Likes = 2, Comments = 0, Shares = 3 }
+            };
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "fake-daily-breakdown-source",
+                AvailableMetricKeys = new HashSet<string> { DailyReportMetrics.VideoViews, DailyReportMetrics.Interactions }
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        // Daily rows show the REAL per-day values (7 and 5), not the period total each.
+        var rows = data.DailyRows.OrderBy(r => r.Date).ToList();
+        Assert.Equal(7, rows[0].Interactions);
+        Assert.Equal(5, rows[1].Interactions);
+
+        // Period = sum of the daily breakdown (Complete: every day has the breakdown).
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Equal(12, interactions.CurrentValue!.Value);
+        Assert.Equal(DailyMetricStatus.Complete, interactions.CurrentStatus);
+
+        // Composition derives from the same per-day components.
+        Assert.True(data.InteractionComposition.IsAvailable);
+        var like = data.InteractionComposition.Segments.Single(s => s.Key == "like");
+        Assert.Equal(Math.Round(7m / 12m * 100m, 4), like.Percentage!.Value); // calculator rounds to 4dp
+    }
+
+    [Fact]
+    public async Task DailyInteractions_DayWithoutBreakdown_StaysNull_AndPartialIsHonest()
+    {
+        var source = new FakeSource(query =>
+        {
+            var records = new List<AccountDailyMetricRecord>
+            {
+                new() { Date = query.Start, VideoViews = 100, Likes = 5, Comments = 1, Shares = 1 },
+                new() { Date = query.Start.AddDays(1), VideoViews = 100 } // no breakdown that day
+            };
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "fake-daily-breakdown-source",
+                AvailableMetricKeys = new HashSet<string> { DailyReportMetrics.VideoViews, DailyReportMetrics.Interactions }
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var rows = data.DailyRows.OrderBy(r => r.Date).ToList();
+        Assert.Equal(7, rows[0].Interactions);
+        Assert.Null(rows[1].Interactions); // honest gap, never 0
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Equal(7, interactions.CurrentValue!.Value);
+        Assert.Equal(DailyMetricStatus.Partial, interactions.CurrentStatus);
+        Assert.Contains("1 dari 2", interactions.CoverageNote);
+
+        // A partial denominator never produces a composition.
+        Assert.False(data.InteractionComposition.IsAvailable);
+    }
 }

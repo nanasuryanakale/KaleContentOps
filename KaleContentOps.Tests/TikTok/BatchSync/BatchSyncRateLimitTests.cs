@@ -134,9 +134,9 @@ public class BatchSyncRateLimitTests
 
         ctx.Handler.Responder = request =>
         {
-            var path = request.RequestUri!.AbsolutePath;
             // One permanent 404 plus two identical 500s: the 500s are the dominant cause.
-            return path.Contains("V-D3")
+            // Video identity matches EITHER shape (path for legacy, video_ids for batch).
+            return FakeTikTokApiHandler.TargetsVideo(request, "V-D3")
                 ? FakeTikTokApiHandler.Json("{\"error\":\"gone\"}", HttpStatusCode.NotFound)
                 : FakeTikTokApiHandler.Json("{\"error\":\"server\"}", HttpStatusCode.InternalServerError);
         };

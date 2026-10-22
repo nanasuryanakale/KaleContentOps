@@ -97,6 +97,12 @@ public class ContentLogListItem
     // 0..1 rate, same convention as FullWatchRate; UI renders as percentage
     public decimal? ClickThroughRate { get; set; }
 
+    // Per-video LIST endpoint quality/attribution fields (windowed by the sync request,
+    // verified 2026-10-22). Rates are 0..1; VToLRate = VToLClicks / Views at the source.
+    public decimal? VideoFinishRate { get; set; }
+    public long? VToLClicks { get; set; }
+    public decimal? VToLRate { get; set; }
+
     // Parsed from HashtagsJson / ProductsJson after materialization (transport pattern
     // identical to DemographicsJson). Null when absent.
     public List<string>? Hashtags { get; set; }

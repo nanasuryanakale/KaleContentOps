@@ -130,23 +130,31 @@ builder.Services.AddScoped<ITargetService, TargetService>();
 // Team Performance: operational workload / historical contribution per PIC
 builder.Services.AddScoped<ITeamPerformanceService, TeamPerformanceService>();
 // Creative Performance - Daily Report (account-level analytics).
-// Registered provider: TikTokShopVideoOverviewMetricSource - maps ONLY the verified
+// Registered provider: TikTokShopVideoOverviewMetricSource - maps the verified
 // daily video_views of GET /analytics/202609/shop_videos/overview_performance
-// (granularity=1D). Every other metric family (Reach, Profile Views, interactions,
-// followers, viewer composition) has no verified account-level source yet and is
-// rendered as Unavailable ("-") via AccountDailyMetricDataset.AvailableMetricKeys.
+// (granularity=1D) plus the verified PERIOD interaction totals (likes/comments/shares)
+// from the paginated GET /analytics/202605/shop_videos/performance list. Metric
+// families without a verified account-level source (Reach, Profile Views, followers,
+// viewer composition) are rendered as Unavailable ("-") via
+// AccountDailyMetricDataset.AvailableMetricKeys.
 // On any credential/network/API failure the provider degrades to Unavailable with
 // an honest reason - never fabricated zeros. UnavailableAccountDailyMetricSource
 // remains in code as the documented all-blocked fallback.
 builder.Services.AddScoped<IDailyPerformanceService, DailyPerformanceService>();
+// The list endpoint returns the whole catalog per window (~28 requests per period),
+// so a short-lived singleton cache bounds the TikTok request cost per report render
+// (see TikTokPeriodInteractionsCache).
+builder.Services.AddSingleton<TikTokPeriodInteractionsCache>();
 builder.Services.AddScoped<IAccountDailyMetricSource, TikTokShopVideoOverviewMetricSource>();
 
-// NOTE: TikTokShopVideoOverviewMetricSource now also maps and stores the verified
+// NOTE: TikTokShopVideoOverviewMetricSource also maps and stores the verified
 // TikTok shop video extra record fields (product_impressions, product_clicks,
 // video_attributed_sku_orders, the GMV subtypes, ctr, ctor_sku_order, gpm.amount +
-// currency, avg_daily_customers, video_product_viewers) as READ-ONLY per-day metadata
-// on AccountDailyMetricRecord. Those are NOT added to the dashboard summary card set,
-// so Program.cs DI registration does not need to change for this extension.
+// currency, avg_daily_customers, video_product_viewers) as per-day fields on
+// AccountDailyMetricRecord. Impressions/clicks/orders feed the "Metrik Shop Video"
+// funnel cards inside DailyPerformanceService (still card-gated by their own keys in
+// AvailableMetricKeys); the remaining subtypes stay read-only metadata. No extra DI
+// registration is needed for this extension.
 
 // Register named HttpClients for TikTok API and Auth endpoints. Concrete services will be registered later.
 builder.Services.AddHttpClient("TikTokApi", client =>

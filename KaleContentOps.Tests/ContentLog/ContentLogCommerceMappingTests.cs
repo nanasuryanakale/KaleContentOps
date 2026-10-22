@@ -480,4 +480,154 @@ public class ContentLogCommerceMappingTests
         Assert.Equal(0m, metric.AvgCustomers);
         Assert.Equal(0m, metric.ClickThroughRate);
     }
+
+    // ---------- Per-video LIST quality/attribution fields (verified 2026-10-22) ----------
+    // video_finish_rate (0..1), v_to_l_clicks (count), v_to_l_rate (0..1, verified
+    // = v_to_l_clicks / views at the source). Windowed by the sync request - each
+    // metric row carries MetricStartDate/MetricEndDate, never an all-time figure.
+
+    [Fact]
+    public async Task Parser_Extracts_VideoQuality_Fields_StringAndNumeric()
+    {
+        var db = CreateDb();
+        db.TikTokCredentials.Add(new TikTokCredential { AppKey = "K" });
+        db.TikTokShops.Add(new TikTokShop { ShopCipher = "SC" });
+        await db.SaveChangesAsync();
+
+        var json = JsonSerializer.Serialize(new
+        {
+            code = 0,
+            data = new
+            {
+                videos = new[]
+                {
+                    new
+                    {
+                        video_id = "7690609410107919637",
+                        title = "Quality video",
+                        username = "u",
+                        video_post_time = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        duration = 38,
+                        views = 850,
+                        // string-encoded values as sent by the actual API
+                        video_finish_rate = "0.0733",
+                        v_to_l_clicks = 5,
+                        v_to_l_rate = "0.0094"
+                    }
+                }
+            }
+        });
+
+        var svc = CreateService(db, json);
+        var count = await svc.FetchAndSaveVideoListAsync("SC");
+        Assert.Equal(1, count);
+
+        var metric = await db.ContentMetrics.SingleAsync();
+        Assert.Equal(0.0733m, metric.VideoFinishRate); // stored 0..1, same convention as FullWatchRate
+        Assert.Equal(5, metric.VToLClicks);
+        Assert.Equal(0.0094m, metric.VToLRate);
+    }
+
+    [Fact]
+    public async Task Parser_Missing_VideoQuality_Fields_Leave_Nulls_NeverZeros()
+    {
+        var db = CreateDb();
+        db.TikTokCredentials.Add(new TikTokCredential { AppKey = "K" });
+        db.TikTokShops.Add(new TikTokShop { ShopCipher = "SC" });
+        await db.SaveChangesAsync();
+
+        var json = JsonSerializer.Serialize(new
+        {
+            code = 0,
+            data = new
+            {
+                videos = new[]
+                {
+                    new
+                    {
+                        video_id = "456",
+                        title = "No quality fields",
+                        username = "u",
+                        video_post_time = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        duration = 10,
+                        views = 10
+                    }
+                }
+            }
+        });
+
+        var svc = CreateService(db, json);
+        var count = await svc.FetchAndSaveVideoListAsync("SC");
+        Assert.Equal(1, count);
+
+        var metric = await db.ContentMetrics.SingleAsync();
+        Assert.Null(metric.VideoFinishRate); // absent field stays null - never a fabricated 0
+        Assert.Null(metric.VToLClicks);
+        Assert.Null(metric.VToLRate);
+    }
+
+    [Fact]
+    public async Task Parser_ExplicitZero_VideoQuality_Fields_AreRealZeros()
+    {
+        var db = CreateDb();
+        db.TikTokCredentials.Add(new TikTokCredential { AppKey = "K" });
+        db.TikTokShops.Add(new TikTokShop { ShopCipher = "SC" });
+        await db.SaveChangesAsync();
+
+        var json = JsonSerializer.Serialize(new
+        {
+            code = 0,
+            data = new
+            {
+                videos = new[]
+                {
+                    new
+                    {
+                        video_id = "789",
+                        title = "Zero quality fields",
+                        username = "u",
+                        video_post_time = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        duration = 10,
+                        views = 10,
+                        video_finish_rate = "0.0000",
+                        v_to_l_clicks = 0,
+                        v_to_l_rate = "0"
+                    }
+                }
+            }
+        });
+
+        var svc = CreateService(db, json);
+        var count = await svc.FetchAndSaveVideoListAsync("SC");
+        Assert.Equal(1, count);
+
+        var metric = await db.ContentMetrics.SingleAsync();
+        Assert.Equal(0m, metric.VideoFinishRate); // observed 0 is a value, not an absence
+        Assert.Equal(0, metric.VToLClicks);
+        Assert.Equal(0m, metric.VToLRate);
+    }
+
+    [Fact]
+    public async Task VideoQuality_Fields_Are_Projected_To_ViewModel()
+    {
+        var db = CreateDb();
+        var log = new ContentLog { VideoId = "V1", Title = "t" };
+        db.ContentLogs.Add(log);
+        db.ContentMetrics.Add(new ContentMetric
+        {
+            ContentLogId = log.Id,
+            Views = 100,
+            VideoFinishRate = 0.0733m,
+            VToLClicks = 5,
+            VToLRate = 0.0094m,
+            CapturedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var item = await GetFirstItemAsync(db);
+
+        Assert.Equal(0.0733m, item.VideoFinishRate);
+        Assert.Equal(5, item.VToLClicks);
+        Assert.Equal(0.0094m, item.VToLRate);
+    }
 }

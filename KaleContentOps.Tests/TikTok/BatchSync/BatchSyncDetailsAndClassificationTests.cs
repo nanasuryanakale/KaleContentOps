@@ -535,7 +535,7 @@ public class BatchSyncDetailsAndClassificationTests
         {
             var path = request.RequestUri!.AbsolutePath;
             if (path.Contains("/shop_videos/performance")) return FakeTikTokApiHandler.Json(BatchSyncTestContext.EmptyListJson());
-            if (path.Contains("V-BAD")) return FakeTikTokApiHandler.Json("{\"code\":40401,\"message\":\"video not found\"}", HttpStatusCode.NotFound);
+            if (FakeTikTokApiHandler.TargetsVideo(request, "V-BAD")) return FakeTikTokApiHandler.Json("{\"code\":40401,\"message\":\"video not found\"}", HttpStatusCode.NotFound);
             return FakeTikTokApiHandler.Json(BatchSyncTestContext.DetailsJson());
         };
 
@@ -567,7 +567,7 @@ public class BatchSyncDetailsAndClassificationTests
 
         ctx.Handler.Responder = request =>
         {
-            if (request.RequestUri!.AbsolutePath.Contains("V-T1"))
+            if (FakeTikTokApiHandler.TargetsVideo(request, "V-T1"))
                 return FakeTikTokApiHandler.Json("{\"error\":\"server\"}", HttpStatusCode.InternalServerError);
             return FakeTikTokApiHandler.Json(BatchSyncTestContext.DetailsJson());
         };

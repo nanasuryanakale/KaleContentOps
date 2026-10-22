@@ -153,7 +153,8 @@ public class TikTokShopVideoOverviewMetricSourceTests
         string responseJson,
         string? accessToken = "TEST-ACCESS-TOKEN",
         bool seedCredential = true,
-        bool seedShop = true)
+        bool seedShop = true,
+        string? defaultShopCipher = null)
     {
         var handler = new ScriptedHandler(() => OkJson(responseJson));
         var factory = new SimpleHttpClientFactory(new HttpClient(handler)
@@ -177,7 +178,7 @@ public class TikTokShopVideoOverviewMetricSourceTests
 
         db.SaveChanges();
 
-        var options = Options.Create(new TikTokOptions { AppKey = "K", AppSecret = "S" });
+        var options = Options.Create(new TikTokOptions { AppKey = "K", AppSecret = "S", DefaultShopCipher = defaultShopCipher });
         var provider = new TikTokShopVideoOverviewMetricSource(
             factory,
             options,
@@ -255,10 +256,14 @@ public class TikTokShopVideoOverviewMetricSourceTests
         {
             await provider.GetAsync(Window(10, 14, 10, 21));
 
-            var request = Assert.Single(handler.Requests);
+            // Two requests are expected: the overview call, then the paginated video
+            // list for the same window (period interactions). Only the overview
+            // request carries the verified daily-interval parameters.
+            var overviewRequests = handler.Requests
+                .Where(r => r.RequestUri!.AbsolutePath == "/analytics/202609/shop_videos/overview_performance")
+                .ToList();
+            var request = Assert.Single(overviewRequests);
             var uri = request.RequestUri!;
-
-            Assert.Equal("/analytics/202609/shop_videos/overview_performance", uri.AbsolutePath);
 
             var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
             Assert.Equal("2026-10-14", query["start_date_ge"]);
@@ -657,6 +662,50 @@ public class TikTokShopVideoOverviewMetricSourceTests
 
             Assert.False(result.IsAvailable);
             Assert.Empty(handler.Requests);
+        }
+    }
+
+    /// <summary>
+    /// Development laptop scenario (2026-10-22): the database has NO registered shop
+    /// row, but TikTok:DefaultShopCipher IS configured. The configured cipher must be
+    /// used so the provider still resolves a shop - and the request must actually
+    /// carry that cipher.
+    /// </summary>
+    [Fact]
+    public async Task ConfiguredDefaultShopCipher_IsUsed_WhenDatabaseHasNoShop()
+    {
+        var (provider, handler, db) = CreateProvider(
+            VerifiedResponseJson, seedShop: false, defaultShopCipher: "CONFIG-CIPHER-1");
+        using (db)
+        {
+            var result = await provider.GetAsync(Window(10, 14, 10, 21));
+
+            Assert.True(result.IsAvailable);
+            var request = Assert.Single(handler.Requests
+                .Where(r => r.RequestUri!.AbsolutePath == "/analytics/202609/shop_videos/overview_performance"));
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri!.Query);
+            Assert.Equal("CONFIG-CIPHER-1", query["shop_cipher"].ToString());
+        }
+    }
+
+    /// <summary>
+    /// The explicit option always wins over the first database row (same rule the
+    /// sync services follow: config override first, database fallback second).
+    /// </summary>
+    [Fact]
+    public async Task ConfiguredDefaultShopCipher_WinsOverDatabaseShop()
+    {
+        var (provider, handler, db) = CreateProvider(
+            VerifiedResponseJson, seedShop: true, defaultShopCipher: "CONFIG-CIPHER-1");
+        using (db)
+        {
+            var result = await provider.GetAsync(Window(10, 14, 10, 21));
+
+            Assert.True(result.IsAvailable);
+            var request = Assert.Single(handler.Requests
+                .Where(r => r.RequestUri!.AbsolutePath == "/analytics/202609/shop_videos/overview_performance"));
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri!.Query);
+            Assert.Equal("CONFIG-CIPHER-1", query["shop_cipher"].ToString());
         }
     }
 
@@ -1345,13 +1394,19 @@ public class TikTokShopVideoOverviewMetricSourceTests
 
             Assert.True(result.IsAvailable);
             Assert.Equal(6, result.Dataset!.Records.Count);
-            Assert.Equal(2, handler.Requests.Count);
+
+            // Overview: two attempts (one failed + one retry). List: one call after
+            // the overview succeeded (here it receives the overview JSON, which has
+            // no videos array - interactions degrade to unavailable, never to zeros).
+            var overviewRequests = handler.Requests
+                .Where(r => r.RequestUri!.AbsolutePath == "/analytics/202609/shop_videos/overview_performance")
+                .ToList();
+            Assert.Equal(2, overviewRequests.Count);
 
             // Every attempt is a fully valid, independently signed request.
-            foreach (var request in handler.Requests)
+            foreach (var request in overviewRequests)
             {
-                Assert.Equal("/analytics/202609/shop_videos/overview_performance", request.RequestUri!.AbsolutePath);
-                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri.Query);
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri!.Query);
                 Assert.Equal("2026-10-14", query["start_date_ge"]);
                 Assert.Equal("2026-10-21", query["end_date_lt"]);
                 Assert.False(string.IsNullOrWhiteSpace(query["sign"]));
@@ -1375,7 +1430,10 @@ public class TikTokShopVideoOverviewMetricSourceTests
 
             Assert.True(result.IsAvailable);
             Assert.Equal(6, result.Dataset!.Records.Count);
-            Assert.Equal(2, handler.Requests.Count);
+            // One thrown overview attempt + one successful overview + one list call.
+            Assert.Equal(3, handler.Requests.Count);
+            Assert.Single(handler.Requests
+                .Where(r => r.RequestUri!.AbsolutePath == "/analytics/202605/shop_videos/performance"));
         }
     }
 

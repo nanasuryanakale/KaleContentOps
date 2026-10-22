@@ -175,7 +175,9 @@ public class DailyPerformancePageIntegrationTests
             Assert.Contains("Data belum tersedia", firstDonutTail);
             Assert.True(firstDonutTail.IndexOf("cpd-donut-arc", StringComparison.Ordinal) < 0,
                 "interaction donut renders an interactive arc when data is unavailable");
-            Assert.True(firstDonutTail.IndexOf("cpd-legend[hidden]", StringComparison.Ordinal) >= 0,
+            // The legend must be ACTUALLY hidden (attribute), not a bogus literal
+            // "cpd-legend[hidden]" class name which browsers ignore.
+            Assert.True(firstDonutTail.Contains("<ul class=\"cpd-legend\" hidden", StringComparison.Ordinal),
                 "interaction donut legend is not hidden when data is unavailable");
 
             var secondDonutTail = html[secondDonutSvgStart..(html.Length > secondDonutSvgStart + 2000 ? secondDonutSvgStart + 2000 : html.Length)];
@@ -184,7 +186,7 @@ public class DailyPerformancePageIntegrationTests
             Assert.Contains("Data belum tersedia", secondDonutTail);
             Assert.True(secondDonutTail.IndexOf("cpd-donut-arc", StringComparison.Ordinal) < 0,
                 "viewer donut renders an interactive arc when data is unavailable");
-            Assert.True(secondDonutTail.IndexOf("cpd-legend[hidden]", StringComparison.Ordinal) >= 0,
+            Assert.True(secondDonutTail.Contains("<ul class=\"cpd-legend\" hidden", StringComparison.Ordinal),
                 "viewer donut legend is not hidden when data is unavailable");
         }
     }

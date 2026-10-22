@@ -105,11 +105,15 @@ public sealed class AccountDailyMetricRecord
 
     public long? ProfileViews { get; init; }
 
-    public long? Likes { get; init; }
+    // Likes/Comments/Shares are settable: the provider builds the overview records
+    // first and attaches the batch endpoint's DAILY interaction breakdown afterwards
+    // (both come from the same verified shop-video analytics family). They stay null
+    // when no verified daily breakdown exists - a period aggregate is never spread.
+    public long? Likes { get; set; }
 
-    public long? Comments { get; init; }
+    public long? Comments { get; set; }
 
-    public long? Shares { get; init; }
+    public long? Shares { get; set; }
 
     public long? FollowersGained { get; init; }
 
@@ -200,6 +204,34 @@ public sealed class AccountViewerComposition
 }
 
 /// <summary>
+/// Period-level interaction totals for exactly one queried half-open window,
+/// supplied by the source when the verified endpoint reports likes/comments/shares
+/// only as WINDOWED aggregates (no daily intervals).
+///
+/// Verified (2026-10-22, live code=0): GET /analytics/202605/shop_videos/performance
+/// returns per-video <c>likes</c>, <c>comments</c> and <c>shares</c> at the top level of
+/// each <c>data.videos[]</c> entry, and the values CHANGE with start_date_ge/end_date_lt
+/// (the same video showed 3 likes for a 1-day window and 40 likes for the 7-day window),
+/// i.e. they are windowed aggregates of the requested period - NOT all-time totals.
+///
+/// Contract: these sums cover the WHOLE window by construction (every page of every
+/// video is summed exactly once) and they are NEVER distributed across individual days
+/// (an aggregate of the period cannot be attributed to a date).
+/// </summary>
+public sealed class AccountPeriodInteractions
+{
+    /// <summary>Sum of per-video likes across all pages of the window. Null = field never present.</summary>
+    public long? Likes { get; init; }
+
+    public long? Comments { get; init; }
+
+    public long? Shares { get; init; }
+
+    /// <summary>Unique videos that contributed to the sums (dedup proof: each id counted once).</summary>
+    public long? VideoCount { get; init; }
+}
+
+/// <summary>
 /// Verified TikTok shop video metric keys used by <see cref="TikTokShopVideoOverviewMetricSource"/>
 /// for the per-record (daily interval) fields. These are NOT dashboard summary-metric keys
 /// (<see cref="DailyReportMetrics"/>). They exist so callers can inspect what this source
@@ -237,6 +269,16 @@ public sealed class AccountDailyMetricDataset
         = Array.Empty<FollowerSnapshot>();
 
     public AccountViewerComposition? ViewerComposition { get; init; }
+
+    /// <summary>
+    /// Period-level Likes + Comments + Shares for the queried window when the verified
+    /// source reports them only as windowed aggregates (no daily intervals). Null means
+    /// "not supplied" - never 0. See <see cref="AccountPeriodInteractions"/> for the
+    /// field-level verification and the no-distribution rule. The dashboard derives the
+    /// Interactions card and its composition from these exact totals; daily rows stay
+    /// null (honest "-") because the source has no per-day breakdown for them.
+    /// </summary>
+    public AccountPeriodInteractions? PeriodInteractions { get; init; }
 
     /// <summary>Human-readable provider name for the footer ("sumber data").</summary>
     public string SourceName { get; init; } = string.Empty;

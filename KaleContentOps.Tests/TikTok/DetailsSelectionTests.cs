@@ -33,6 +33,9 @@ namespace KaleContentOps.TikTok.Tests
 
             public Task<int> ApplyVideoListPageAsync(string shopCipher, TikTokVideoListPage page, CancellationToken cancellationToken = default) => Task.FromResult(0);
 
+            public Task<TikTokBatchPerformanceResult> FetchBatchPerformanceAsync(IReadOnlyList<string> videoIds, string shopCipher, DateTime startDateInclusive, DateTime endDateExclusive, string? granularity, CancellationToken cancellationToken = default) =>
+                Task.FromResult(new TikTokBatchPerformanceResult(0, 0, null, null, Array.Empty<System.Text.Json.JsonElement>()));
+
             public Task<(int? StatusCode, string Endpoint, System.Text.Json.JsonElement? Root, System.Text.Json.JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default, DateTime? startDateInclusive = null, DateTime? endDateExclusive = null)
             {
                 CalledVideoIds.Add(videoId);

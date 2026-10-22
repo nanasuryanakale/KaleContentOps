@@ -147,11 +147,19 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
     /// endpoint that carries video_views, and they are NOT mapped to Reach / Interactions /
     /// Engagement Rate / follower families.
     /// </summary>
-    private static readonly (string Key, string Label)[] ShopVideoCardMetrics =
+    private static readonly (string Key, string Label)[] ShopCardMetrics =
     {
         (DailyReportMetrics.ProductImpressions, "Product Impressions"),
         (DailyReportMetrics.ProductClicks, "Product Clicks"),
-        (DailyReportMetrics.VideoAttributedSkuOrders, "Video-attributed SKU Orders")
+        (DailyReportMetrics.VideoAttributedSkuOrders, "Video-attributed SKU Orders"),
+        (DailyReportMetrics.VideoAttributedGmv, "Video-attributed GMV"),
+        (DailyReportMetrics.VideoGmv, "Video GMV"),
+        (DailyReportMetrics.VideoIndirectGmv, "Video Indirect GMV"),
+        (DailyReportMetrics.Gpm, "GPM"),
+        (DailyReportMetrics.ProductCtr, "Product CTR"),
+        (DailyReportMetrics.CtorSkuOrder, "CTOR SKU Order"),
+        (DailyReportMetrics.VideoProductViewers, "Video Product Viewers"),
+        (DailyReportMetrics.AvgDailyCustomers, "Avg Daily Customers")
     };
 
     /// <summary>All aggregates of one period, evaluated once and reused everywhere.</summary>
@@ -193,6 +201,20 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         public PeriodValue? ProductClicks { get; init; }
         public PeriodValue? VideoAttributedSkuOrders { get; init; }
 
+        // ---- Verified shop-video analytics extras (period aggregates) ----
+        // CTR / CTOR are recomputed from period SUMS (never averaged daily rates);
+        // GPM = period video_attributed_gmv / period video_views x 1000 (verified exact
+        // per-day, so the summed form is exact too); GMV subtypes are summed per subtype
+        // only and keep their currency; avg_daily_customers is the mean over covered days.
+        public PeriodValue? ProductCtr { get; init; }
+        public PeriodValue? CtorSkuOrder { get; init; }
+        public PeriodValue? VideoAttributedGmv { get; init; }
+        public PeriodValue? VideoGmv { get; init; }
+        public PeriodValue? VideoIndirectGmv { get; init; }
+        public PeriodValue? Gpm { get; init; }
+        public PeriodValue? VideoProductViewers { get; init; }
+        public PeriodValue? AvgDailyCustomers { get; init; }
+
         public AccountViewerComposition? ViewerComposition { get; init; }
         public IReadOnlyDictionary<DateTime, AccountDailyMetricRecord> RecordsByDate { get; init; }
             = new Dictionary<DateTime, AccountDailyMetricRecord>();
@@ -204,7 +226,8 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         DailyMetricStatus Status,
         string? Reason,
         int DaysCovered,
-        int DaysInPeriod)
+        int DaysInPeriod,
+        string? Currency = null)
     {
         public string? CoverageNote => Status == DailyMetricStatus.Partial
             ? $"Data parsial: {DaysCovered} dari {DaysInPeriod} hari tercatat."
@@ -239,7 +262,15 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 TotalFollower = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
                 ProductImpressions = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
                 ProductClicks = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
-                VideoAttributedSkuOrders = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count)
+                VideoAttributedSkuOrders = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                VideoAttributedGmv = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                VideoGmv = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                VideoIndirectGmv = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                Gpm = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                ProductCtr = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                CtorSkuOrder = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                VideoProductViewers = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count),
+                AvgDailyCustomers = new PeriodValue(null, DailyMetricStatus.Unavailable, reason, 0, days.Count)
             };
         }
 
@@ -265,7 +296,7 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         var limitedReason = availableKeys is null
             ? null
             : $"Metrik ini belum memiliki sumber data terverifikasi dan ditampilkan \"-\". " +
-              $"Sumber saat ini hanya menyediakan: {string.Join(", ", CardMetrics.Concat(ShopVideoCardMetrics).Where(m => availableKeys.Contains(m.Key)).Select(m => m.Label))}.";
+              $"Sumber saat ini hanya menyediakan: {string.Join(", ", CardMetrics.Concat(ShopCardMetrics).Where(m => availableKeys.Contains(m.Key)).Select(m => m.Label))}.";
 
         bool Supplies(string key) => availableKeys is null || availableKeys.Contains(key);
 
@@ -280,6 +311,16 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         var productImpressions = new List<long?>(days.Count);
         var productClicks = new List<long?>(days.Count);
         var videoAttributedSkuOrders = new List<long?>(days.Count);
+
+        // Shop-video analytics extras of the same verified overview interval. Monetary
+        // values travel with their currency; rates stay FRACTIONS here (percent points
+        // only at the presentation boundary, same convention as EngagementRate).
+        var attributedGmv = new List<(decimal? Amount, string? Currency)>(days.Count);
+        var videoGmv = new List<(decimal? Amount, string? Currency)>(days.Count);
+        var indirectGmv = new List<(decimal? Amount, string? Currency)>(days.Count);
+        var gpmAmounts = new List<(decimal? Amount, string? Currency)>(days.Count);
+        var videoProductViewersDaily = new List<long?>(days.Count);
+        var avgDailyCustomersDaily = new List<decimal?>(days.Count);
 
         foreach (var day in days)
         {
@@ -309,25 +350,67 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             videoAttributedSkuOrders.Add(record is null || !Supplies(DailyReportMetrics.VideoAttributedSkuOrders)
                 ? null
                 : record.VideoAttributedSkuOrders);
+
+            attributedGmv.Add(Supplies(DailyReportMetrics.VideoAttributedGmv) && record?.VideoAttributedGmvAmount is not null
+                ? (record.VideoAttributedGmvAmount, record.VideoAttributedGmvCurrency)
+                : (null, null));
+            videoGmv.Add(Supplies(DailyReportMetrics.VideoGmv) && record?.VideoGmvAmount is not null
+                ? (record.VideoGmvAmount, record.VideoGmvCurrency)
+                : (null, null));
+            indirectGmv.Add(Supplies(DailyReportMetrics.VideoIndirectGmv) && record?.VideoIndirectGmvAmount is not null
+                ? (record.VideoIndirectGmvAmount, record.VideoIndirectGmvCurrency)
+                : (null, null));
+            gpmAmounts.Add(Supplies(DailyReportMetrics.Gpm) && record?.GpmAmount is not null
+                ? (record.GpmAmount, record.GpmCurrency)
+                : (null, null));
+            videoProductViewersDaily.Add(Supplies(DailyReportMetrics.VideoProductViewers)
+                ? record?.VideoProductViewers
+                : null);
+            avgDailyCustomersDaily.Add(Supplies(DailyReportMetrics.AvgDailyCustomers)
+                ? record?.AvgDailyCustomers
+                : null);
         }
 
         var sourceReason = string.Empty;
         var reachAgg = Supplies(DailyReportMetrics.Reach)
             ? DailyReportCalculator.Sum(reach, days.Count)
             : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
-        var interactionsAgg = Supplies(DailyReportMetrics.Interactions)
-            ? DailyReportCalculator.Sum(interactions, days.Count)
-            : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
+
+        // Interactions: the EXACT period totals supplied by the source (windowed sums over
+        // the whole half-open window - complete by construction) win over the daily sums.
+        // Daily sums remain the fallback for sources that carry per-day components. A period
+        // aggregate is NEVER spread across individual days: daily rows keep their own
+        // record-level values (null when the source has no daily breakdown for them).
+        var periodInteractions = result.Dataset.PeriodInteractions;
+        var hasPeriodInteractions = periodInteractions is not null
+            && periodInteractions.Likes.HasValue
+            && periodInteractions.Comments.HasValue
+            && periodInteractions.Shares.HasValue;
+
+        var interactionsAgg = !Supplies(DailyReportMetrics.Interactions)
+            ? DailyMetricAggregate.None(DailyMetricStatus.Unavailable)
+            : hasPeriodInteractions
+                ? new DailyMetricAggregate(
+                    periodInteractions!.Likes!.Value + periodInteractions.Comments!.Value + periodInteractions.Shares!.Value,
+                    days.Count,
+                    DailyMetricStatus.Complete)
+                : DailyReportCalculator.Sum(interactions, days.Count);
 
         // Period ER = Total Interactions / Total Reach x 100 (never the average of daily ERs).
         PeriodValue engagementRate;
         if (interactionsAgg.Value is null || reachAgg.Value is null)
         {
             var status = DailyReportCalculator.Worst(interactionsAgg.Status, reachAgg.Status);
+            // When Reach is the missing side, say WHY with the locked formula - the
+            // denominator stays Reach and is never swapped for Views to fill the card.
+            var erReason = reachAgg.Status == DailyMetricStatus.Unavailable
+                ? "Engagement Rate membutuhkan Reach (formula Interactions / Reach x 100%) dan Reach belum memiliki " +
+                  "sumber data terverifikasi - nilai tetap ditampilkan \"-\" (bukan diganti dengan Views)."
+                : status == DailyMetricStatus.Unavailable ? limitedReason ?? sourceReason : NoDataReason;
             engagementRate = new PeriodValue(
                 null,
                 status,
-                status == DailyMetricStatus.Unavailable ? limitedReason ?? sourceReason : NoDataReason,
+                erReason,
                 0,
                 days.Count);
         }
@@ -370,6 +453,103 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 days.Count)
             : new PeriodValue(snapshot.FollowerCount, DailyMetricStatus.Complete, null, days.Count, days.Count);
 
+        // ---- Shop-video analytics extras (same verified overview interval) ----
+        // Aggregation follows the FIELD-VERIFIED TikTok definitions (2026-10-22 live
+        // response): ctr = clicks/impressions, ctor = orders/clicks, gpm = attributed
+        // GMV/views x 1000. Rates are aggregated with their REAL denominators - never
+        // by averaging daily rates. GMV subtypes are summed per subtype only.
+        var videoViewsAgg = Supplies(DailyReportMetrics.VideoViews)
+            ? DailyReportCalculator.Sum(videoViews, days.Count)
+            : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
+        var impressionsAgg = Supplies(DailyReportMetrics.ProductImpressions)
+            ? DailyReportCalculator.Sum(productImpressions, days.Count)
+            : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
+        var clicksAgg = Supplies(DailyReportMetrics.ProductClicks)
+            ? DailyReportCalculator.Sum(productClicks, days.Count)
+            : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
+        var ordersAgg = Supplies(DailyReportMetrics.VideoAttributedSkuOrders)
+            ? DailyReportCalculator.Sum(videoAttributedSkuOrders, days.Count)
+            : DailyMetricAggregate.None(DailyMetricStatus.Unavailable);
+        var attributedGmvSum = SumMoney(attributedGmv, days.Count);
+        var videoGmvSum = SumMoney(videoGmv, days.Count);
+        var indirectGmvSum = SumMoney(indirectGmv, days.Count);
+
+        // Local ratio helper: numerator/denominator x multiplier (percent points or per-mille).
+        // Zero/absent denominator -> null with an honest reason, never a fabricated rate.
+        PeriodValue Ratio(
+            decimal? numerator, DailyMetricStatus numeratorStatus, int numeratorDays,
+            long? denominator, DailyMetricStatus denominatorStatus, int denominatorDays,
+            decimal multiplier, string zeroDenominatorReason, string? currency = null)
+        {
+            if (numerator is null || denominator is null)
+            {
+                var status = DailyReportCalculator.Worst(numeratorStatus, denominatorStatus);
+                return new PeriodValue(null, status,
+                    status == DailyMetricStatus.Unavailable ? limitedReason : NoDataReason,
+                    0, days.Count);
+            }
+
+            if (denominator.Value <= 0)
+            {
+                return new PeriodValue(null, DailyMetricStatus.NoData, zeroDenominatorReason,
+                    Math.Min(numeratorDays, denominatorDays), days.Count);
+            }
+
+            return new PeriodValue(
+                numerator.Value / denominator.Value * multiplier,
+                DailyReportCalculator.Worst(numeratorStatus, denominatorStatus),
+                null,
+                Math.Min(numeratorDays, denominatorDays),
+                days.Count,
+                currency);
+        }
+
+        PeriodValue MoneyPeriodValue(MoneySum sum, string? unavailableReason)
+            => sum.Status == DailyMetricStatus.Unavailable
+                ? new PeriodValue(null, DailyMetricStatus.Unavailable, unavailableReason, 0, days.Count)
+                : sum.Sum is null
+                    ? new PeriodValue(null, sum.Status, sum.Reason ?? NoDataReason, 0, days.Count)
+                    : new PeriodValue(sum.Sum, sum.Status, null, sum.DaysCovered, days.Count, sum.Currency);
+
+        var productCtrValue = !Supplies(DailyReportMetrics.ProductCtr)
+            ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+            : Ratio(clicksAgg.Value, clicksAgg.Status, clicksAgg.DaysCovered,                impressionsAgg.Value, impressionsAgg.Status, impressionsAgg.DaysCovered,
+                100m,
+                "Product CTR tidak dapat dihitung karena Product Impressions periode ini tidak tersedia atau 0.");
+
+        var ctorSkuOrderValue = !Supplies(DailyReportMetrics.CtorSkuOrder)
+            ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+            : Ratio(ordersAgg.Value, ordersAgg.Status, ordersAgg.DaysCovered,
+                clicksAgg.Value, clicksAgg.Status, clicksAgg.DaysCovered,
+                100m,
+                "CTOR SKU Order tidak dapat dihitung karena Product Clicks periode ini tidak tersedia atau 0.");
+
+        // GPM = attributed GMV / Video Views x 1000 (currency preserved). The Ratio
+        // helper handles a null/absent numerator (unavailable or no-data GMV) honestly.
+        var gpmValue = !Supplies(DailyReportMetrics.Gpm)
+            ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+            : Ratio(attributedGmvSum.Sum, attributedGmvSum.Status, attributedGmvSum.DaysCovered,
+                videoViewsAgg.Value, videoViewsAgg.Status, videoViewsAgg.DaysCovered,
+                1000m,
+                "GPM tidak dapat dihitung karena Video Views periode ini tidak tersedia atau 0.",
+                attributedGmvSum.Currency);
+
+        var videoProductViewersValue = !Supplies(DailyReportMetrics.VideoProductViewers)
+            ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+            : periodCommerceValue(videoProductViewersDaily, days.Count);
+
+        var adcCovered = avgDailyCustomersDaily.Count(v => v.HasValue);
+        var avgDailyCustomersValue = !Supplies(DailyReportMetrics.AvgDailyCustomers)
+            ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+            : adcCovered == 0
+                ? new PeriodValue(null, DailyMetricStatus.NoData, NoDataReason, 0, days.Count)
+                : new PeriodValue(
+                    avgDailyCustomersDaily.Where(v => v.HasValue).Sum(v => v!.Value) / adcCovered,
+                    adcCovered == days.Count ? DailyMetricStatus.Complete : DailyMetricStatus.Partial,
+                    null,
+                    adcCovered,
+                    days.Count);
+
         return new PeriodContext
         {
             Range = range,
@@ -387,9 +567,15 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             ProfileViews = Supplies(DailyReportMetrics.ProfileViews)
                 ? DailyReportCalculator.Sum(profileViews, days.Count)
                 : DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            Likes = DailyReportCalculator.Sum(likes, days.Count),
-            Comments = DailyReportCalculator.Sum(comments, days.Count),
-            Shares = DailyReportCalculator.Sum(shares, days.Count),
+            Likes = hasPeriodInteractions
+                ? new DailyMetricAggregate(periodInteractions!.Likes, days.Count, DailyMetricStatus.Complete)
+                : DailyReportCalculator.Sum(likes, days.Count),
+            Comments = hasPeriodInteractions
+                ? new DailyMetricAggregate(periodInteractions!.Comments, days.Count, DailyMetricStatus.Complete)
+                : DailyReportCalculator.Sum(comments, days.Count),
+            Shares = hasPeriodInteractions
+                ? new DailyMetricAggregate(periodInteractions!.Shares, days.Count, DailyMetricStatus.Complete)
+                : DailyReportCalculator.Sum(shares, days.Count),
             Interactions = interactionsAgg,
             NetFollower = Supplies(DailyReportMetrics.NetFollower)
                 ? DailyReportCalculator.Sum(netFollower, days.Count)
@@ -405,7 +591,21 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 : new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count),
             VideoAttributedSkuOrders = Supplies(DailyReportMetrics.VideoAttributedSkuOrders)
                 ? periodCommerceValue(videoAttributedSkuOrders, days.Count)
-                : new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+                : new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count),
+            VideoAttributedGmv = !Supplies(DailyReportMetrics.VideoAttributedGmv)
+                ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+                : MoneyPeriodValue(attributedGmvSum, limitedReason),
+            VideoGmv = !Supplies(DailyReportMetrics.VideoGmv)
+                ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+                : MoneyPeriodValue(videoGmvSum, limitedReason),
+            VideoIndirectGmv = !Supplies(DailyReportMetrics.VideoIndirectGmv)
+                ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason, 0, days.Count)
+                : MoneyPeriodValue(indirectGmvSum, limitedReason),
+            Gpm = gpmValue,
+            ProductCtr = productCtrValue,
+            CtorSkuOrder = ctorSkuOrderValue,
+            VideoProductViewers = videoProductViewersValue,
+            AvgDailyCustomers = avgDailyCustomersValue
         };
     }
 
@@ -433,6 +633,45 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             status == DailyMetricStatus.NoData ? NoDataReason : null,
             covered,
             daysInPeriod);
+    }
+
+    /// <summary>Result of summing monetary daily values for one period.</summary>
+    private sealed record MoneySum(
+        decimal? Sum,
+        string? Currency,
+        DailyMetricStatus Status,
+        int DaysCovered,
+        string? Reason);
+
+    /// <summary>
+    /// Sums monetary daily values (GMV subtypes, GPM numerator) for the period.
+    /// A period total is only produced when the covered days carry ONE consistent
+    /// currency; mixed or missing currencies yield NoData with an honest reason so
+    /// amounts in different currencies are never silently added together.
+    /// </summary>
+    private static MoneySum SumMoney(List<(decimal? Amount, string? Currency)> values, int daysInPeriod)
+    {
+        var coveredDays = values.Where(v => v.Amount.HasValue).ToList();
+        if (coveredDays.Count == 0)
+        {
+            return new MoneySum(null, null, DailyMetricStatus.NoData, 0, NoDataReason);
+        }
+
+        var currencies = coveredDays
+            .Select(v => v.Currency)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (currencies.Count != 1 || string.IsNullOrWhiteSpace(currencies[0]))
+        {
+            return new MoneySum(null, null, DailyMetricStatus.NoData, coveredDays.Count,
+                "Mata uang nilai tidak konsisten antar hari - total periode tidak dihitung.");
+        }
+
+        var sum = coveredDays.Sum(v => v.Amount!.Value);
+        var status = coveredDays.Count == daysInPeriod
+            ? DailyMetricStatus.Complete
+            : DailyMetricStatus.Partial;
+        return new MoneySum(sum, currencies[0], status, coveredDays.Count, null);
     }
 
     // ------------------------------------------------------------------
@@ -489,22 +728,43 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
     }
 
     /// <summary>
-    /// Shop-video commerce funnel (Product Impressions, Product Clicks,
-    /// Video-attributed SKU Orders). They get their OWN section and their own
-    /// comparison block: they are NOT Reach / Interactions / Engagement Rate /
-    /// follower metrics, so they never enter the account summary cards or the
-    /// account comparison rows.
+    /// Shop-video metrics (commerce funnel + verified analytics extras). They get their
+    /// OWN section and their own comparison block: they are NOT Reach / Interactions /
+    /// Engagement Rate / follower metrics, so they never enter the account summary cards
+    /// or the account comparison rows. Rate metrics use PercentagePoints deltas; monetary
+    /// metrics carry their currency so an amount is never rendered bare.
     /// </summary>
     private static IReadOnlyList<DailyReportMetric> BuildShopVideoMetrics(PeriodContext current, PeriodContext previous)
-        => new List<DailyReportMetric>
+    {
+        DailyReportMetric Shop(string key, string label, PeriodValue? cur, PeriodValue? prev, DailyMetricDeltaKind deltaKind)
+            => Build(key, label, cur!, prev!, deltaKind, currency: cur?.Currency ?? prev?.Currency);
+
+        return new List<DailyReportMetric>
         {
-            Build(DailyReportMetrics.ProductImpressions, "Product Impressions",
-                current.ProductImpressions!, previous.ProductImpressions!, DailyMetricDeltaKind.Absolute),
-            Build(DailyReportMetrics.ProductClicks, "Product Clicks",
-                current.ProductClicks!, previous.ProductClicks!, DailyMetricDeltaKind.Absolute),
-            Build(DailyReportMetrics.VideoAttributedSkuOrders, "Video-attributed SKU Orders",
-                current.VideoAttributedSkuOrders!, previous.VideoAttributedSkuOrders!, DailyMetricDeltaKind.Absolute)
+            Shop(DailyReportMetrics.ProductImpressions, "Product Impressions",
+                current.ProductImpressions, previous.ProductImpressions, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.ProductClicks, "Product Clicks",
+                current.ProductClicks, previous.ProductClicks, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.VideoAttributedSkuOrders, "Video-attributed SKU Orders",
+                current.VideoAttributedSkuOrders, previous.VideoAttributedSkuOrders, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.VideoAttributedGmv, "Video-attributed GMV",
+                current.VideoAttributedGmv, previous.VideoAttributedGmv, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.VideoGmv, "Video GMV",
+                current.VideoGmv, previous.VideoGmv, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.VideoIndirectGmv, "Video Indirect GMV",
+                current.VideoIndirectGmv, previous.VideoIndirectGmv, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.Gpm, "GPM",
+                current.Gpm, previous.Gpm, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.ProductCtr, "Product CTR",
+                current.ProductCtr, previous.ProductCtr, DailyMetricDeltaKind.PercentagePoints),
+            Shop(DailyReportMetrics.CtorSkuOrder, "CTOR SKU Order",
+                current.CtorSkuOrder, previous.CtorSkuOrder, DailyMetricDeltaKind.PercentagePoints),
+            Shop(DailyReportMetrics.VideoProductViewers, "Video Product Viewers",
+                current.VideoProductViewers, previous.VideoProductViewers, DailyMetricDeltaKind.Absolute),
+            Shop(DailyReportMetrics.AvgDailyCustomers, "Avg Daily Customers",
+                current.AvgDailyCustomers, previous.AvgDailyCustomers, DailyMetricDeltaKind.Absolute)
         };
+    }
 
     private static DailyReportMetric Build(
         string key,
@@ -512,7 +772,8 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         PeriodValue current,
         PeriodValue previous,
         DailyMetricDeltaKind deltaKind,
-        bool showInComparison = true)
+        bool showInComparison = true,
+        string? currency = null)
     {
         decimal? difference = null;
         decimal? growth = null;
@@ -544,7 +805,8 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             PreviousStatus = previous.Status,
             UnavailableReason = reason,
             CoverageNote = current.CoverageNote,
-            ShowInComparison = showInComparison
+            ShowInComparison = showInComparison,
+            Currency = currency
         };
     }
 
@@ -584,6 +846,25 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 ProductImpressions = context.Supplies(DailyReportMetrics.ProductImpressions) ? record?.ProductImpressions : null,
                 ProductClicks = context.Supplies(DailyReportMetrics.ProductClicks) ? record?.ProductClicks : null,
                 VideoAttributedSkuOrders = context.Supplies(DailyReportMetrics.VideoAttributedSkuOrders) ? record?.VideoAttributedSkuOrders : null,
+                // Shop-video analytics extras of the day. Rates are converted from the
+                // stored 0..1 fractions to PERCENT POINTS at this presentation boundary
+                // (same convention as EngagementRate); monetary values keep their currency.
+                ProductCtrPercent = context.Supplies(DailyReportMetrics.ProductCtr) && record?.Ctr is not null
+                    ? record.Ctr.Value * 100m
+                    : null,
+                CtorSkuOrderPercent = context.Supplies(DailyReportMetrics.CtorSkuOrder) && record?.CtorSkuOrder is not null
+                    ? record.CtorSkuOrder.Value * 100m
+                    : null,
+                VideoAttributedGmvAmount = context.Supplies(DailyReportMetrics.VideoAttributedGmv) ? record?.VideoAttributedGmvAmount : null,
+                VideoAttributedGmvCurrency = context.Supplies(DailyReportMetrics.VideoAttributedGmv) ? record?.VideoAttributedGmvCurrency : null,
+                VideoGmvAmount = context.Supplies(DailyReportMetrics.VideoGmv) ? record?.VideoGmvAmount : null,
+                VideoGmvCurrency = context.Supplies(DailyReportMetrics.VideoGmv) ? record?.VideoGmvCurrency : null,
+                VideoIndirectGmvAmount = context.Supplies(DailyReportMetrics.VideoIndirectGmv) ? record?.VideoIndirectGmvAmount : null,
+                VideoIndirectGmvCurrency = context.Supplies(DailyReportMetrics.VideoIndirectGmv) ? record?.VideoIndirectGmvCurrency : null,
+                GpmAmount = context.Supplies(DailyReportMetrics.Gpm) ? record?.GpmAmount : null,
+                GpmCurrency = context.Supplies(DailyReportMetrics.Gpm) ? record?.GpmCurrency : null,
+                VideoProductViewers = context.Supplies(DailyReportMetrics.VideoProductViewers) ? record?.VideoProductViewers : null,
+                AvgDailyCustomers = context.Supplies(DailyReportMetrics.AvgDailyCustomers) ? record?.AvgDailyCustomers : null,
                 HasRecord = record is not null
             });
         }
@@ -603,6 +884,15 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         if (!context.SourceAvailable)
         {
             return Unavailable(key, title, context.SourceUnavailableReason, InteractionSegments(context, total: null));
+        }
+
+        // A source that does not declare Interactions must never render "no data recorded"
+        // for the composition - it is UNAVAILABLE, and the honest limited-source reason says so.
+        if (!context.Supplies(DailyReportMetrics.Interactions))
+        {
+            return Unavailable(key, title,
+                context.LimitedSourceReason ?? context.SourceUnavailableReason,
+                InteractionSegments(context, total: null));
         }
 
         var total = context.Interactions.Value;
@@ -821,13 +1111,16 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             new()
             {
                 Metric = "Interactions",
-                Definition = "Likes + Comments + Shares, dihitung sistem (field gabungan tidak disediakan API).",
+                Definition = "Likes + Comments + Shares, dihitung sistem dari field terpisah video list API " +
+                    "(analytics/202605) untuk seluruh periode aktif - total periode tidak pernah didistribusikan " +
+                    "rata-rata ke tanggal; detail harian ditampilkan jika tersedia interval harian.",
                 Status = StatusFor(DailyReportMetrics.Interactions)
             },
             new()
             {
                 Metric = "Engagement Rate",
-                Definition = "Interactions / Reach x 100% - Reach sebagai pembagi (Winning Content tetap memakai Views).",
+                Definition = "Interactions / Reach x 100% - Reach sebagai pembagi (Winning Content tetap memakai Views). " +
+                    "Jika Reach belum tersedia, nilai tetap \"-\" dengan alasan tersebut.",
                 Status = "dihitung oleh dashboard"
             },
             new()
@@ -859,6 +1152,54 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
                 Metric = "Video-attributed SKU Orders",
                 Definition = "Jumlah pesanan SKU yang dikaitkan ke video (video_attributed_sku_orders) dari interval harian TikTok Shop Video Performance Overview - bukan metric engagement profile.",
                 Status = StatusFor(DailyReportMetrics.VideoAttributedSkuOrders)
+            },
+            new()
+            {
+                Metric = "Video-attributed GMV",
+                Definition = "GMV yang dikaitkan langsung ke video (video_attributed_gmv) per hari, diakumulasi per periode dengan mata uang yang sama - tidak pernah digabung dengan subtype GMV lain. Terverifikasi: video_attributed_gmv = video_gmv + video_indirect_gmv.",
+                Status = StatusFor(DailyReportMetrics.VideoAttributedGmv)
+            },
+            new()
+            {
+                Metric = "Video GMV",
+                Definition = "GMV langsung dari video (video_gmv, subtype dari video_attributed_gmv) per hari - dipisah dari atribusi tidak langsung.",
+                Status = StatusFor(DailyReportMetrics.VideoGmv)
+            },
+            new()
+            {
+                Metric = "Video Indirect GMV",
+                Definition = "GMV tidak langsung yang dikaitkan ke video (video_indirect_gmv) per hari - subtype terpisah, tidak dijumlahkan dengan Video GMV.",
+                Status = StatusFor(DailyReportMetrics.VideoIndirectGmv)
+            },
+            new()
+            {
+                Metric = "GPM",
+                Definition = "Video-attributed GMV / Video Views x 1000 (field gpm) - definisi terverifikasi terhadap response live, dengan mata uang yang sama seperti GMV.",
+                Status = StatusFor(DailyReportMetrics.Gpm)
+            },
+            new()
+            {
+                Metric = "Product CTR",
+                Definition = "Product Clicks / Product Impressions x 100% (field ctr overview - terverifikasi terhadap response live; dihitung ulang dari total periode, bukan rata-rata harian).",
+                Status = StatusFor(DailyReportMetrics.ProductCtr)
+            },
+            new()
+            {
+                Metric = "CTOR SKU Order",
+                Definition = "Video-attributed SKU Orders / Product Clicks x 100% (field ctor_sku_order) - dihitung ulang dari total periode, bukan rata-rata harian.",
+                Status = StatusFor(DailyReportMetrics.CtorSkuOrder)
+            },
+            new()
+            {
+                Metric = "Video Product Viewers",
+                Definition = "Jumlah pemirsa produk dari video (video_product_viewers) per hari - akumulasi nilai harian (pemirsa unik antar hari bisa tumpang tindih), bukan unique viewer periode.",
+                Status = StatusFor(DailyReportMetrics.VideoProductViewers)
+            },
+            new()
+            {
+                Metric = "Avg Daily Customers",
+                Definition = "Rata-rata pelanggan baru per hari dari video (avg_daily_customers) - periode memakai rata-rata hari yang memiliki record, bukan jumlah akumulasi.",
+                Status = StatusFor(DailyReportMetrics.AvgDailyCustomers)
             },
             new()
             {

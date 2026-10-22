@@ -176,7 +176,7 @@
             <thead>
                 <tr>
                     <th colspan="7" class="group-head">KONTEN</th>
-                    <th colspan="8" class="group-head metrics-head">METRICS</th>
+                    <th colspan="11" class="group-head metrics-head">METRICS</th>
                     <th colspan="11" class="group-head audience-head">DATA PENONTON (%)</th>
                     <th colspan="9" class="group-head audience-head">PENGIKUT BARU (%)</th>
                 </tr>
@@ -200,6 +200,9 @@
                         Average<br />Watch
                     </th>
 
+                    <th data-col="finishrate" title="Finish rate per video dari list API (video_finish_rate, 0..1) - window sync, bukan all-time">Finish Rate</th>
+                    <th data-col="vtlclicks" title="Klik video-to-live (v_to_l_clicks) pada window sync">V2L Clicks</th>
+                    <th data-col="vtlrate" title="Rasio klik video-to-live terhadap views (v_to_l_rate = v_to_l_clicks / views)">V2L Rate</th>
                     <th data-col="fullwatch">
                         % Full<br />Watch
                     </th>
@@ -260,6 +263,10 @@
                             Shares = row.Shares,
                             NewFollowers = row.NewFollowers,
                             CapturedAt = row.LatestMetricCapturedAt,
+                            // Per-video list quality/attribution fields (0..1 rates)
+                            VideoFinishRate = row.VideoFinishRate,
+                            VToLClicks = row.VToLClicks,
+                            VToLRate = row.VToLRate,
                             // placeholder metrics (nullable) provided by DTO — remain null until data available
                             Saves = row.Saves,
                             NonFollowers = row.NonFollowers,
@@ -402,6 +409,22 @@
 
                             <td data-col="avgwatch">
                                 @(metric?.AverageWatch?.ToString("0.##") ?? "—")s
+                            </td>
+
+                            <td data-col="finishrate">
+                                @(metric?.VideoFinishRate is null
+                                    ? "—"
+                                    : (metric.VideoFinishRate.Value * 100).ToString("0.0") + "%")
+                            </td>
+
+                            <td data-col="vtlclicks">
+                                @(metric?.VToLClicks?.ToString("N0") ?? "—")
+                            </td>
+
+                            <td data-col="vtlrate">
+                                @(metric?.VToLRate is null
+                                    ? "—"
+                                    : (metric.VToLRate.Value * 100).ToString("0.00") + "%")
                             </td>
 
                             <td data-col="fullwatch">

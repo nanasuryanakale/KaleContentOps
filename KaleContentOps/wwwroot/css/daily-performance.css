@@ -145,6 +145,14 @@
 .cpd-dot-product_impressions { background: var(--cpd-yellow); }
 .cpd-dot-product_clicks { background: var(--cpd-green); }
 .cpd-dot-video_attributed_sku_orders { background: var(--cpd-purple); }
+.cpd-dot-video_attributed_gmv { background: #b07ce8; }
+.cpd-dot-video_gmv { background: var(--cpd-purple); }
+.cpd-dot-video_indirect_gmv { background: #8f66d0; }
+.cpd-dot-gpm { background: #d7a9f2; }
+.cpd-dot-ctr { background: var(--cpd-blue); }
+.cpd-dot-ctor_sku_order { background: var(--cpd-indigo); }
+.cpd-dot-video_product_viewers { background: var(--cpd-green); }
+.cpd-dot-avg_daily_customers { background: var(--cpd-yellow); }
 
 /* ============ Shop-video commerce funnel (own section) ============ */
 .cpd-shop-video-metrics-grid {

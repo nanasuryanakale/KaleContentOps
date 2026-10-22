@@ -300,6 +300,17 @@ namespace KaleContentOps.Migrations
                     b.Property<long?>("SkuOrders")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("VToLClicks")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal?>("VToLRate")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<decimal?>("VideoFinishRate")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
                     b.Property<long?>("Views")
                         .HasColumnType("bigint");
 

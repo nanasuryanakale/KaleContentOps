@@ -217,6 +217,7 @@ public class ContentLogController : Controller
                                 || m.GmvAmount != null || m.GmvCurrency != null
                                 || m.ItemsSold != null || m.SkuOrders != null
                                 || m.AvgCustomers != null || m.ClickThroughRate != null
+                                || m.VideoFinishRate != null || m.VToLClicks != null || m.VToLRate != null
                                 || m.HashtagsJson != null || m.ProductsJson != null))
                 .OrderByDescending(m => m.CapturedAt)
                 .ThenByDescending(m => m.Id)
@@ -237,6 +238,9 @@ public class ContentLogController : Controller
                     SkuOrders = m.SkuOrders,
                     AvgCustomers = m.AvgCustomers,
                     ClickThroughRate = m.ClickThroughRate,
+                    VideoFinishRate = m.VideoFinishRate,
+                    VToLClicks = m.VToLClicks,
+                    VToLRate = m.VToLRate,
                     HashtagsJson = m.HashtagsJson,
                     ProductsJson = m.ProductsJson
                 })
@@ -277,6 +281,9 @@ public class ContentLogController : Controller
                     item.SkuOrders ??= snapshot.SkuOrders;
                     item.AvgCustomers ??= snapshot.AvgCustomers;
                     item.ClickThroughRate ??= snapshot.ClickThroughRate;
+                    item.VideoFinishRate ??= snapshot.VideoFinishRate;
+                    item.VToLClicks ??= snapshot.VToLClicks;
+                    item.VToLRate ??= snapshot.VToLRate;
                     item.HashtagsJson ??= snapshot.HashtagsJson;
                     item.ProductsJson ??= snapshot.ProductsJson;
                 }
@@ -490,6 +497,9 @@ public class ContentLogController : Controller
         public long? SkuOrders { get; set; }
         public decimal? AvgCustomers { get; set; }
         public decimal? ClickThroughRate { get; set; }
+        public decimal? VideoFinishRate { get; set; }
+        public long? VToLClicks { get; set; }
+        public decimal? VToLRate { get; set; }
         public string? HashtagsJson { get; set; }
         public string? ProductsJson { get; set; }
     }

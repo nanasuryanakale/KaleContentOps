@@ -31,6 +31,23 @@ public static class DailyReportMetrics
     public const string ProductImpressions = "product_impressions";
     public const string ProductClicks = "product_clicks";
     public const string VideoAttributedSkuOrders = "video_attributed_sku_orders";
+
+    // Shop-video analytics extras (same verified overview endpoint, daily intervals).
+    // Definitions verified field-by-field against the live response (2026-10-22):
+    //   ctr               = product_clicks / product_impressions (API field matches this ratio)
+    //   ctor_sku_order    = video_attributed_sku_orders / product_clicks
+    //   gpm               = video_attributed_gmv / video_views x 1000 (currency preserved)
+    //   *_gmv             = separate attribution subtypes, NEVER summed together
+    // String values intentionally equal the TikTok field names (same convention as the
+    // other shop-video keys above) so the provider's declared set matches by value.
+    public const string ProductCtr = "ctr";
+    public const string CtorSkuOrder = "ctor_sku_order";
+    public const string VideoAttributedGmv = "video_attributed_gmv";
+    public const string VideoGmv = "video_gmv";
+    public const string VideoIndirectGmv = "video_indirect_gmv";
+    public const string Gpm = "gpm";
+    public const string VideoProductViewers = "video_product_viewers";
+    public const string AvgDailyCustomers = "avg_daily_customers";
 }
 
 /// <summary>Requested period for the Daily Report (inclusive calendar dates, Asia/Jakarta).</summary>
@@ -114,6 +131,12 @@ public sealed class DailyReportMetric
 
     /// <summary>Total Follower is excluded from the comparison table (no delta by design).</summary>
     public bool ShowInComparison { get; init; } = true;
+
+    /// <summary>
+    /// ISO currency code for monetary metrics (GMV subtypes, GPM). Null for counts and
+    /// rates. Rendered next to the value so an amount is never shown without its currency.
+    /// </summary>
+    public string? Currency { get; init; }
 }
 
 /// <summary>
@@ -147,6 +170,37 @@ public sealed class DailyReportRow
     public long? ProductClicks { get; init; }
 
     public long? VideoAttributedSkuOrders { get; init; }
+
+    // ---- Shop-video analytics extras of the day (same verified overview interval). ----
+    // Percentages are stored in PERCENT POINTS (2.71 = 2.71%), same convention as
+    // EngagementRate. Monetary values keep their currency. Null = not recorded that day.
+
+    /// <summary>ctr of the day in percent points (product_clicks / product_impressions x 100).</summary>
+    public decimal? ProductCtrPercent { get; init; }
+
+    /// <summary>ctor_sku_order of the day in percent points (orders / product_clicks x 100).</summary>
+    public decimal? CtorSkuOrderPercent { get; init; }
+
+    public decimal? VideoAttributedGmvAmount { get; init; }
+
+    public string? VideoAttributedGmvCurrency { get; init; }
+
+    public decimal? VideoGmvAmount { get; init; }
+
+    public string? VideoGmvCurrency { get; init; }
+
+    public decimal? VideoIndirectGmvAmount { get; init; }
+
+    public string? VideoIndirectGmvCurrency { get; init; }
+
+    /// <summary>GPM of the day (video_attributed_gmv / video_views x 1000), with currency.</summary>
+    public decimal? GpmAmount { get; init; }
+
+    public string? GpmCurrency { get; init; }
+
+    public long? VideoProductViewers { get; init; }
+
+    public decimal? AvgDailyCustomers { get; init; }
 
     /// <summary>False when the day has no record at all (all metrics null) - charts must skip it, never plot zero.</summary>
     public bool HasRecord { get; init; }

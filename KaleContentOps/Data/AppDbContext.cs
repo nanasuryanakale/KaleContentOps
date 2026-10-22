@@ -124,6 +124,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             .Property(x => x.ClickThroughRate)
             .HasPrecision(18, 6);
 
+        // Per-video list quality/attribution rates: same 0..1 convention and precision.
+        modelBuilder.Entity<ContentMetric>()
+            .Property(x => x.VideoFinishRate)
+            .HasPrecision(18, 6);
+
+        modelBuilder.Entity<ContentMetric>()
+            .Property(x => x.VToLRate)
+            .HasPrecision(18, 6);
+
         // Seed ContentType
         modelBuilder.Entity<ContentType>().HasData(
             new ContentType

@@ -48,11 +48,32 @@ internal sealed class FakeTikTokApiHandler : HttpMessageHandler
             var seg = request.RequestUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
             var idx = Array.IndexOf(seg, "shop_videos");
             var videoId = idx >= 0 && idx + 1 < seg.Length ? seg[idx + 1] : "?";
+            // 202609 batch_performance carries the id(s) in the video_ids query
+            // parameter, not in the path - log the real id so assertions stay exact.
+            if (videoId == "batch_performance" && query.TryGetValue("video_ids", out var batchIds))
+            {
+                videoId = batchIds;
+            }
             RequestLog.Add("details:" + videoId);
             DetailsRequestQueries.Add(query);
         }
 
         return Task.FromResult(Responder(request));
+    }
+
+    /// <summary>
+    /// Whether this request is about the given video id - matches BOTH endpoint
+    /// shapes: legacy (id in the path) and 202609 batch_performance (id in the
+    /// video_ids query parameter).
+    /// </summary>
+    public static bool TargetsVideo(HttpRequestMessage request, string videoId)
+    {
+        var uri = request.RequestUri!;
+        if (uri.AbsolutePath.Contains(videoId, StringComparison.Ordinal)) return true;
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        return query.TryGetValue("video_ids", out var ids)
+            && ids.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Contains(videoId, StringComparer.Ordinal);
     }
 
     public static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK, string? retryAfter = null)

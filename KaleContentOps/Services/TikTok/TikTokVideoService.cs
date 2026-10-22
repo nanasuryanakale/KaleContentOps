@@ -541,7 +541,22 @@ public class TikTokVideoService : ITikTokVideoService
     {
         var client = _httpFactory.CreateClient("TikTokApi");
 
-        var path = $"/analytics/202509/shop_videos/{videoId}/performance"; // exact endpoint provided by user
+        // ---- Endpoint resolution (Analytics API changelog 6az7iwe9; verified live 2026-10-22) ----
+        // GET /analytics/202609/shop_videos/batch_performance replaces
+        // GET /analytics/202509/shop_videos/{video_id}/performance ("Replace the single video_id
+        // in the path with the video_ids query parameter list"); the older endpoint retires
+        // 2026-12-28. Batch response shape (verified, code=0): the SAME per-video payload
+        // (performance.intervals[].traffic + performance.viewer_profile) wrapped as
+        // data.videos[{video_id, video, performance}] - unwrapped below, parser untouched.
+        // The 202609 batch endpoint rejects windows outside its lookback (verified code
+        // 28001022); when the DEFAULT endpoint is in use, such a rejection is retried ONCE on
+        // the legacy 202509 endpoint so historical post-day sync keeps working until retirement.
+        // TikTok:DetailsPath still pins a custom endpoint (no automatic fallback in that case).
+        const int BatchLookbackErrorCode = 28001022;
+        var configuredPath = _options.DetailsPath;
+        var legacyPath = $"/analytics/202509/shop_videos/{videoId}/performance";
+        var allowLegacyFallback = configuredPath is null;
+        var path = configuredPath ?? "/analytics/202609/shop_videos/batch_performance";
 
         if (startDateInclusive.HasValue != endDateExclusive.HasValue)
             throw new ArgumentException("Details analytics period must provide both startDateInclusive and endDateExclusive.");
@@ -557,8 +572,28 @@ public class TikTokVideoService : ITikTokVideoService
         }
         else
         {
+            // Verified contract (pinned by Details_Window_Is_The_Video_Post_Day_*): with no
+            // explicit period the request asks for exactly the video's own post calendar day
+            // (start_date_ge = post day, end_date_lt = day after) - the date comes from the
+            // post time TikTok itself returned, never from the UTC clock. The shop-local
+            // last-30-days window is only the fallback when that post time is unknown.
             startDate = _shopTimeZone.TodayMidnight().AddDays(-30);
             endDate = _shopTimeZone.TodayMidnight().AddDays(1);
+            try
+            {
+                var existing = await _db.ContentLogs.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.VideoId == videoId, cancellationToken);
+                if (existing?.VideoPostTime != null)
+                {
+                    var post = existing.VideoPostTime.Value.Date;
+                    startDate = post;
+                    endDate = post.AddDays(1);
+                }
+            }
+            catch
+            {
+                // fallback to defaults above
+            }
         }
 
         var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
@@ -567,20 +602,47 @@ public class TikTokVideoService : ITikTokVideoService
         var accessToken = await _authService.GetValidAccessTokenAsync(credential.Id, cancellationToken);
         if (string.IsNullOrWhiteSpace(accessToken)) return (null, path, null, null, null);
 
+        // Base query (identity + timestamp are added PER ENDPOINT ATTEMPT so a lookback
+        // fallback retry is a fully valid, freshly signed request).
         var query = new Dictionary<string, string?>
         {
             { "app_key", _options.AppKey },
-            { "timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
             { "shop_cipher", shopCipher },
             { "start_date_ge", startDate.ToString("yyyy-MM-dd") },
             { "end_date_lt", endDate.ToString("yyyy-MM-dd") }
         };
 
-        var signInput = query.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
-        var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
-        signInput.Add("sign", sign);
+        string url;
+        for (var endpointAttempt = 0; ; endpointAttempt++)
+        {
+            // Identity parameter per endpoint shape (verified contract for each variant):
+            //  - batch_performance (default): video_ids query parameter (comma-separated list;
+            //    a single id is one element - verified live code=0, invalid id -> envelope 400),
+            //  - {video_id} template or literal legacy path: the id already lives in the PATH,
+            //  - other custom path without placeholder: legacy video_id query parameter.
+            var attemptQuery = new Dictionary<string, string?>(query)
+            {
+                { "timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() }
+            };
 
-        var url = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(path, signInput);
+            if (path.Contains("{video_id}", StringComparison.Ordinal))
+            {
+                path = path.Replace("{video_id}", videoId);
+            }
+            else if (path.EndsWith("/batch_performance", StringComparison.Ordinal))
+            {
+                attemptQuery["video_ids"] = videoId;
+            }
+            else if (!path.EndsWith($"/{videoId}/performance", StringComparison.Ordinal))
+            {
+                attemptQuery["video_id"] = videoId;
+            }
+
+            var signInput = attemptQuery.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+            var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
+            signInput.Add("sign", sign);
+
+            url = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(path, signInput);
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         // use decrypted raw access token per user instruction
@@ -652,17 +714,202 @@ public class TikTokVideoService : ITikTokVideoService
 
                 if (code != 0)
                 {
+                    // Lookback-window rejection of the DEFAULT batch endpoint (verified live:
+                    // code 28001022 for a window outside the 202609 lookback): retry the SAME
+                    // request ONCE on the legacy 202509 endpoint (alive until 2026-12-28) so
+                    // historical post-day windows are not broken by this migration. An explicitly
+                    // configured DetailsPath is never second-guessed.
+                    var businessMessage = root.GetPropertyOrDefault("message");
+                    if (endpointAttempt == 0
+                        && allowLegacyFallback
+                        && path != legacyPath
+                        && (code == BatchLookbackErrorCode
+                            || (businessMessage?.Contains("lookback window", StringComparison.OrdinalIgnoreCase) ?? false)))
+                    {
+                        _logger.LogWarning(
+                            "Details window rejected by {Endpoint} outside its lookback (code {Code}); " +
+                            "retrying on legacy {Legacy} - that endpoint retires 2026-12-28, so historical " +
+                            "content needs a lookback-compliant window strategy before then (video {VideoId})",
+                            path, code, legacyPath, videoId);
+                        path = legacyPath;
+                        continue;
+                    }
+
                     // Business error: do not return data as successful. Return root but Data = null so callers treat as non-successful details.
                     return (status, url, root, null, retryAfterSeconds);
                 }
 
                 var data = root.TryGetProperty("data", out var dataElem) ? dataElem.Clone() : root;
+
+                // batch_performance shape (verified live 2026-10-22): the per-video payload is
+                // wrapped as data.videos[{video_id, video, performance}]. Unwrap the MATCHED entry
+                // so ParseDetailsMetrics (data.performance -> intervals/traffic/viewer_profile)
+                // works unchanged for both endpoint shapes. An entry missing for this video is
+                // honest PER-VIDEO no-data (Data = null) - never another video's metrics.
+                if (data.ValueKind == JsonValueKind.Object
+                    && data.TryGetProperty("videos", out var batchVideos)
+                    && batchVideos.ValueKind == JsonValueKind.Array)
+                {
+                    JsonElement? matchedEntry = null;
+                    foreach (var entry in batchVideos.EnumerateArray())
+                    {
+                        if (entry.ValueKind != JsonValueKind.Object) continue;
+
+                        var entryId = entry.GetPropertyOrDefault("video_id");
+                        if (string.IsNullOrWhiteSpace(entryId)
+                            && entry.TryGetProperty("video", out var videoObj)
+                            && videoObj.ValueKind == JsonValueKind.Object)
+                        {
+                            entryId = videoObj.GetPropertyOrDefault("id");
+                        }
+
+                        if (string.Equals(entryId, videoId, StringComparison.Ordinal))
+                        {
+                            matchedEntry = entry.Clone();
+                            break;
+                        }
+                    }
+
+                    if (!matchedEntry.HasValue)
+                    {
+                        _logger.LogInformation(
+                            "batch_performance returned no entry for video {VideoId} (per-video no-data), request_id {RequestId}",
+                            videoId, root.GetPropertyOrDefault("request_id"));
+                        return (status, url, root, null, retryAfterSeconds);
+                    }
+
+                    data = matchedEntry.Value;
+                }
+
                 return (status, url, root, data, retryAfterSeconds);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to parse TikTok details response for video {VideoId}", videoId);
                 return (status, url, null, null, retryAfterSeconds);
+            }
+        }
+        finally
+        {
+            DetailsSemaphore.Release();
+        }
+        } // end of endpoint attempt loop (lookback fallback may retry once on legacy 202509)
+    }
+
+    /// <summary>Canonical batch endpoint (202609) - see ITikTokVideoService.FetchBatchPerformanceAsync.</summary>
+    public const string BatchPerformancePath = "/analytics/202609/shop_videos/batch_performance";
+
+    public async Task<TikTokBatchPerformanceResult> FetchBatchPerformanceAsync(
+        IReadOnlyList<string> videoIds,
+        string shopCipher,
+        DateTime startDateInclusive,
+        DateTime endDateExclusive,
+        string? granularity,
+        CancellationToken cancellationToken = default)
+    {
+        if (videoIds is null || videoIds.Count == 0)
+            throw new ArgumentException("At least one video id is required for batch_performance.", nameof(videoIds));
+        if (startDateInclusive.Date >= endDateExclusive.Date)
+            throw new ArgumentException("Batch performance window must have a start date before the exclusive end date.");
+
+        var empty = Array.Empty<JsonElement>();
+        var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
+        if (credential == null)
+            return new TikTokBatchPerformanceResult(0, null, "credential row missing for the configured AppKey", null, empty);
+
+        var accessToken = await _authService.GetValidAccessTokenAsync(credential.Id, cancellationToken);
+        if (string.IsNullOrWhiteSpace(accessToken))
+            return new TikTokBatchPerformanceResult(0, null, "access token unavailable", null, empty);
+
+        var attemptQuery = new Dictionary<string, string?>
+        {
+            { "app_key", _options.AppKey },
+            { "shop_cipher", shopCipher },
+            { "start_date_ge", startDateInclusive.Date.ToString("yyyy-MM-dd") },
+            { "end_date_lt", endDateExclusive.Date.ToString("yyyy-MM-dd") },
+            { "video_ids", string.Join(",", videoIds) },
+            { "timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() }
+        };
+        if (!string.IsNullOrWhiteSpace(granularity))
+        {
+            attemptQuery["granularity"] = granularity;
+        }
+
+        var signInput = attemptQuery.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        var sign = _signatureService.GenerateSignature("GET", BatchPerformancePath, signInput, null, null);
+        signInput.Add("sign", sign);
+        var url = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(BatchPerformancePath, signInput);
+
+        // Same concurrency bound + per-shop suspension as the details path: the Daily
+        // Report batch fan-out must never outpace the shared app-group rate limit.
+        await DetailsSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var (status, body, _) = await TikTokGetWithRetryAsync(client: _httpFactory.CreateClient("TikTokApi"),
+                pathWithQuery: url,
+                requestFactory: () =>
+                {
+                    var r = new HttpRequestMessage(HttpMethod.Get, url);
+                    r.Headers.Add("x-tts-access-token", accessToken);
+                    r.Headers.Add("Accept", "application/json");
+                    return r;
+                },
+                shopCipher: shopCipher,
+                cancellationToken: cancellationToken);
+
+            if (status != 200)
+            {
+                return new TikTokBatchPerformanceResult(status, null, null, null, empty);
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    return new TikTokBatchPerformanceResult(status, null, "response root is not a JSON object", null, empty);
+                }
+
+                int? code = 0;
+                if (root.TryGetProperty("code", out var codeElem))
+                {
+                    code = codeElem.ValueKind == JsonValueKind.Number && codeElem.TryGetInt32(out var codeNum)
+                        ? codeNum
+                        : codeElem.ValueKind == JsonValueKind.String && int.TryParse(codeElem.GetString(), out var codeStr)
+                            ? codeStr
+                            : (int?)null;
+                }
+
+                var message = root.GetPropertyOrDefault("message");
+                var requestId = root.GetPropertyOrDefault("request_id");
+                if (code is not null && code.Value != 0)
+                {
+                    return new TikTokBatchPerformanceResult(status, code, message, requestId, empty);
+                }
+
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+                    || !data.TryGetProperty("videos", out var videos) || videos.ValueKind != JsonValueKind.Array)
+                {
+                    // code=0 without the verified videos array is a schema mismatch the
+                    // CALLER must treat as unusable - never as "zero videos".
+                    return new TikTokBatchPerformanceResult(status, code, message ?? "data.videos missing on a success response", requestId, empty);
+                }
+
+                var entries = new List<JsonElement>(videos.GetArrayLength());
+                foreach (var entry in videos.EnumerateArray())
+                {
+                    if (entry.ValueKind == JsonValueKind.Object)
+                    {
+                        entries.Add(entry.Clone());
+                    }
+                }
+
+                return new TikTokBatchPerformanceResult(status, code, message, requestId, entries);
+            }
+            catch (JsonException)
+            {
+                return new TikTokBatchPerformanceResult(status, null, "malformed JSON payload", null, empty);
             }
         }
         finally
@@ -1426,6 +1673,14 @@ public class TikTokVideoService : ITikTokVideoService
                     // CTR source "0.0533" stored as 0..1 rate (same convention as FullWatchRate)
                     decimal? clickThroughRate = ReadDecimalElement(v, "click_through_rate");
 
+                    // Per-video quality/attribution fields (verified in the live list response,
+                    // 2026-10-22): video_finish_rate (0..1), v_to_l_clicks (count) and
+                    // v_to_l_rate (verified = v_to_l_clicks / views, 0..1). Stored windowed
+                    // with the sync window - never aggregated across videos here.
+                    decimal? videoFinishRate = ReadDecimalElement(v, "video_finish_rate");
+                    long? vToLClicks = v.GetPropertyOrDefaultInt("v_to_l_clicks");
+                    decimal? vToLRate = ReadDecimalElement(v, "v_to_l_rate");
+
                     string? hashtagsJson = null;
                     if (v.TryGetProperty("hash_tags", out var tagsElem) && tagsElem.ValueKind == JsonValueKind.Array)
                     {
@@ -1456,6 +1711,7 @@ public class TikTokVideoService : ITikTokVideoService
 
                     bool commercePresent = gmvAmount.HasValue || itemsSold.HasValue || skuOrders.HasValue
                         || avgCustomers.HasValue || clickThroughRate.HasValue
+                        || videoFinishRate.HasValue || vToLClicks.HasValue || vToLRate.HasValue
                         || hashtagsJson != null || productsJson != null;
 
                     if (targetLog != null)
@@ -1475,6 +1731,9 @@ public class TikTokVideoService : ITikTokVideoService
                                 SkuOrders = skuOrders,
                                 AvgCustomers = avgCustomers,
                                 ClickThroughRate = clickThroughRate,
+                                VideoFinishRate = videoFinishRate,
+                                VToLClicks = vToLClicks,
+                                VToLRate = vToLRate,
                                 HashtagsJson = hashtagsJson,
                                 ProductsJson = productsJson,
                                 MetricStartDate = effectiveStartDate,
