@@ -29,6 +29,10 @@ public class ContentLog
 
     public bool? HasCommerce { get; set; }
 
+    // Flag indicating content originates from live stream (e.g., TikTok Shop Live events)
+    // Used to automatically classify AUTO_GMV_LIVE content
+    public bool? IsLive { get; set; }
+
     // Creator metadata
     [MaxLength(200)]
     public string? CreatorOpenId { get; set; }

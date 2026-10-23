@@ -172,6 +172,9 @@ namespace KaleContentOps.Migrations
                     b.Property<bool?>("IsArchived")
                         .HasColumnType("bit");
 
+                    b.Property<bool?>("IsLive")
+                        .HasColumnType("bit");
+
                     b.Property<int?>("PicId")
                         .HasColumnType("int");
 
@@ -279,6 +282,9 @@ namespace KaleContentOps.Migrations
                     b.Property<DateTime?>("MetricStartDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("NewFollowerDemographicsJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<long?>("NewFollowers")
                         .HasColumnType("bigint");
 
@@ -293,6 +299,17 @@ namespace KaleContentOps.Migrations
 
                     b.Property<long?>("SkuOrders")
                         .HasColumnType("bigint");
+
+                    b.Property<long?>("VToLClicks")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal?>("VToLRate")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<decimal?>("VideoFinishRate")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
 
                     b.Property<long?>("Views")
                         .HasColumnType("bigint");
@@ -507,6 +524,119 @@ namespace KaleContentOps.Migrations
 
                             t.HasCheckConstraint("CK_Targets_TargetViews_NonNegative", "[TargetViews] >= 0");
                         });
+                });
+
+            modelBuilder.Entity("KaleContentOps.Models.TikTokBatchSyncJob", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CollectionCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CurrentPageToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FailedItemsCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PendingItemsCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProcessingItemsCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.Property<int>("SucceededItemsCount")
+                        .HasColumnType("int");
+
+                    b.Property<long>("TikTokShopId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("TotalPagesCollected")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalVideoIdsFound")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TikTokShopId");
+
+                    b.ToTable("TikTokBatchSyncJobs");
+                });
+
+            modelBuilder.Entity("KaleContentOps.Models.TikTokBatchSyncJobItem", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.Property<long>("TikTokBatchSyncJobId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("VideoId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TikTokBatchSyncJobId", "VideoId")
+                        .IsUnique();
+
+                    b.ToTable("TikTokBatchSyncJobItems");
                 });
 
             modelBuilder.Entity("KaleContentOps.Models.TikTokCredential", b =>
@@ -770,6 +900,28 @@ namespace KaleContentOps.Migrations
                     b.Navigation("ContentType");
                 });
 
+            modelBuilder.Entity("KaleContentOps.Models.TikTokBatchSyncJob", b =>
+                {
+                    b.HasOne("KaleContentOps.Models.TikTokShop", "TikTokShop")
+                        .WithMany()
+                        .HasForeignKey("TikTokShopId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TikTokShop");
+                });
+
+            modelBuilder.Entity("KaleContentOps.Models.TikTokBatchSyncJobItem", b =>
+                {
+                    b.HasOne("KaleContentOps.Models.TikTokBatchSyncJob", "TikTokBatchSyncJob")
+                        .WithMany("Items")
+                        .HasForeignKey("TikTokBatchSyncJobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TikTokBatchSyncJob");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("KaleContentOps.Models.ApplicationRole", null)
@@ -839,6 +991,11 @@ namespace KaleContentOps.Migrations
             modelBuilder.Entity("KaleContentOps.Models.ProductionMethod", b =>
                 {
                     b.Navigation("ContentLogs");
+                });
+
+            modelBuilder.Entity("KaleContentOps.Models.TikTokBatchSyncJob", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

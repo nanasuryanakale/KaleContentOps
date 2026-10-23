@@ -93,11 +93,13 @@ public class ContentLogUiCleanupTests
     {
         var html = await RenderPageAsync();
 
-        // Remaining group heads intact (7 + 8 + 11 = 26 visible columns).
+        // Remaining group heads intact (7 + 8 + 11 + 9 = 35 visible columns; the fourth
+        // group is the NEW_FOLLOWER demographics, added as strictly separate columns).
         Assert.Contains("KONTEN", html);
         Assert.Contains("METRICS", html);
         Assert.Contains("DATA PENONTON (%)", html);
-        Assert.Contains("colspan=\"26\"", html);
+        Assert.Contains("PENGIKUT BARU (%)", html);
+        Assert.Contains("colspan=\"35\"", html);
 
         // Sample preserved columns across the three groups.
         Assert.Contains("data-col=\"production\"", html);

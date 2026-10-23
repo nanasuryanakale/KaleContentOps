@@ -139,7 +139,13 @@ public class TikTokVideoService : ITikTokVideoService
                 }
             }
 
-            // Parse viewer_profile[type=="VIEWERS"] demographics from performance.viewer_profile if present
+            // Parse viewer_profile entries from performance.viewer_profile if present.
+            // Two profile populations are supported and kept strictly separate:
+            //   VIEWERS      -> existing Content Log audience fields (Male/Female/NoGender/ages/countries)
+            //   NEW_FOLLOWER -> a different population; captured into separate Nf* fields, never
+            //                   substituted into the VIEWERS fields (Profiles B rule).
+            // Array ordering must not matter: each matched profile writes only to its own scope,
+            // so one profile can never overwrite the other.
             try
             {
                 if (perf.TryGetProperty("viewer_profile", out var vp) && vp.ValueKind == JsonValueKind.Array)
@@ -149,9 +155,52 @@ public class TikTokVideoService : ITikTokVideoService
                         if (profile.ValueKind != JsonValueKind.Object) continue;
                         if (!profile.TryGetProperty("type", out var ptype) || ptype.ValueKind != JsonValueKind.String) continue;
                         var t = ptype.GetString();
-                        if (!string.Equals(t, "VIEWERS", System.StringComparison.OrdinalIgnoreCase)) continue;
 
-                        // gender_distribution[]
+                        bool isViewers = string.Equals(t, "VIEWERS", System.StringComparison.OrdinalIgnoreCase);
+                        bool isNewFollower = string.Equals(t, "NEW_FOLLOWER", System.StringComparison.OrdinalIgnoreCase);
+                        if (!isViewers && !isNewFollower) continue;
+
+                        // All writes below go through isViewers (or !isViewers for NEW_FOLLOWER), so the two
+                        // populations cannot mix: each matched profile only ever writes to its own scope.
+                        void SetGender(string? key, decimal? perc)
+                        {
+                            if (key == null) return;
+                            if (isViewers)
+                            {
+                                if (key == "male") { result.Male = perc; if (result.MalePath == null) result.MalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"male\"].percentage"; }
+                                else if (key == "female") { result.Female = perc; if (result.FemalePath == null) result.FemalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"female\"].percentage"; }
+                                else { result.NoGender = perc; if (result.NoGenderPath == null) result.NoGenderPath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"no_gender\"].percentage"; }
+                            }
+                            else
+                            {
+                                if (key == "male") { result.NfMale = perc; if (result.NfMalePath == null) result.NfMalePath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].gender_distribution[gender==\"male\"].percentage"; }
+                                else if (key == "female") { result.NfFemale = perc; if (result.NfFemalePath == null) result.NfFemalePath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].gender_distribution[gender==\"female\"].percentage"; }
+                                else { result.NfNoGender = perc; if (result.NfNoGenderPath == null) result.NfNoGenderPath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].gender_distribution[gender==\"no_gender\"].percentage"; }
+                            }
+                        }
+
+                        void SetAge(string? key, decimal? perc)
+                        {
+                            if (key == null) return;
+                            if (isViewers)
+                            {
+                                if (key == "18-24") { result.Age18 = perc; if (result.Age18Path == null) result.Age18Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"18-24\"].percentage"; }
+                                else if (key == "25-34") { result.Age25 = perc; if (result.Age25Path == null) result.Age25Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"25-34\"].percentage"; }
+                                else if (key == "35-44") { result.Age35 = perc; if (result.Age35Path == null) result.Age35Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"35-44\"].percentage"; }
+                                else if (key == "45-54") { result.Age45 = perc; if (result.Age45Path == null) result.Age45Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"45-54\"].percentage"; }
+                                else { result.Age55 = perc; if (result.Age55Path == null) result.Age55Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"55+\"].percentage"; }
+                            }
+                            else
+                            {
+                                if (key == "18-24") { result.NfAge18 = perc; if (result.NfAge18Path == null) result.NfAge18Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"18-24\"].percentage"; }
+                                else if (key == "25-34") { result.NfAge25 = perc; if (result.NfAge25Path == null) result.NfAge25Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"25-34\"].percentage"; }
+                                else if (key == "35-44") { result.NfAge35 = perc; if (result.NfAge35Path == null) result.NfAge35Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"35-44\"].percentage"; }
+                                else if (key == "45-54") { result.NfAge45 = perc; if (result.NfAge45Path == null) result.NfAge45Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"45-54\"].percentage"; }
+                                else { result.NfAge55 = perc; if (result.NfAge55Path == null) result.NfAge55Path = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].age_distribution[age==\"55+\"].percentage"; }
+                            }
+                        }
+
+                        // gender_distribution[] (aliases preserved: no_gender/unknown)
                         if (profile.TryGetProperty("gender_distribution", out var gdist) && gdist.ValueKind == JsonValueKind.Array)
                         {
                             foreach (var g in gdist.EnumerateArray())
@@ -165,9 +214,9 @@ public class TikTokVideoService : ITikTokVideoService
                                     else if (gperc.ValueKind == JsonValueKind.Number && gperc.TryGetDecimal(out var dnum)) perc = dnum;
                                 }
                                 if (gender == null) continue;
-                                if (string.Equals(gender, "male", System.StringComparison.OrdinalIgnoreCase)) { result.Male = perc; if (result.MalePath == null) result.MalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"male\"].percentage"; }
-                                else if (string.Equals(gender, "female", System.StringComparison.OrdinalIgnoreCase)) { result.Female = perc; if (result.FemalePath == null) result.FemalePath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"female\"].percentage"; }
-                                else if (string.Equals(gender, "no_gender", System.StringComparison.OrdinalIgnoreCase) || string.Equals(gender, "unknown", System.StringComparison.OrdinalIgnoreCase)) { result.NoGender = perc; if (result.NoGenderPath == null) result.NoGenderPath = "data.performance.viewer_profile[type==\"VIEWERS\"].gender_distribution[gender==\"no_gender\"].percentage"; }
+                                if (string.Equals(gender, "male", System.StringComparison.OrdinalIgnoreCase)) SetGender("male", perc);
+                                else if (string.Equals(gender, "female", System.StringComparison.OrdinalIgnoreCase)) SetGender("female", perc);
+                                else if (string.Equals(gender, "no_gender", System.StringComparison.OrdinalIgnoreCase) || string.Equals(gender, "unknown", System.StringComparison.OrdinalIgnoreCase)) SetGender("other", perc);
                             }
                         }
 
@@ -185,11 +234,11 @@ public class TikTokVideoService : ITikTokVideoService
                                     else if (aperc.ValueKind == JsonValueKind.Number && aperc.TryGetDecimal(out var dnum)) perc = dnum;
                                 }
                                 if (ageRange == null) continue;
-                                if (string.Equals(ageRange, "18-24", System.StringComparison.OrdinalIgnoreCase)) { result.Age18 = perc; if (result.Age18Path == null) result.Age18Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"18-24\"].percentage"; }
-                                else if (string.Equals(ageRange, "25-34", System.StringComparison.OrdinalIgnoreCase)) { result.Age25 = perc; if (result.Age25Path == null) result.Age25Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"25-34\"].percentage"; }
-                                else if (string.Equals(ageRange, "35-44", System.StringComparison.OrdinalIgnoreCase)) { result.Age35 = perc; if (result.Age35Path == null) result.Age35Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"35-44\"].percentage"; }
-                                else if (string.Equals(ageRange, "45-54", System.StringComparison.OrdinalIgnoreCase)) { result.Age45 = perc; if (result.Age45Path == null) result.Age45Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"45-54\"].percentage"; }
-                                else if (string.Equals(ageRange, "55+", System.StringComparison.OrdinalIgnoreCase) || string.Equals(ageRange, "55 and above", System.StringComparison.OrdinalIgnoreCase)) { result.Age55 = perc; if (result.Age55Path == null) result.Age55Path = "data.performance.viewer_profile[type==\"VIEWERS\"].age_distribution[age==\"55+\"].percentage"; }
+                                if (string.Equals(ageRange, "18-24", System.StringComparison.OrdinalIgnoreCase)) SetAge("18-24", perc);
+                                else if (string.Equals(ageRange, "25-34", System.StringComparison.OrdinalIgnoreCase)) SetAge("25-34", perc);
+                                else if (string.Equals(ageRange, "35-44", System.StringComparison.OrdinalIgnoreCase)) SetAge("35-44", perc);
+                                else if (string.Equals(ageRange, "45-54", System.StringComparison.OrdinalIgnoreCase)) SetAge("45-54", perc);
+                                else if (string.Equals(ageRange, "55+", System.StringComparison.OrdinalIgnoreCase) || string.Equals(ageRange, "55 and above", System.StringComparison.OrdinalIgnoreCase)) SetAge("55+", perc);
                             }
                         }
 
@@ -214,13 +263,18 @@ public class TikTokVideoService : ITikTokVideoService
                             }
                             if (countries.Count > 0)
                             {
-                                result.Countries = countries;
-                                if (result.CountriesPath == null) result.CountriesPath = "data.performance.viewer_profile[type==\"VIEWERS\"].country_distribution";
+                                if (isViewers)
+                                {
+                                    result.Countries = countries;
+                                    if (result.CountriesPath == null) result.CountriesPath = "data.performance.viewer_profile[type==\"VIEWERS\"].country_distribution";
+                                }
+                                else
+                                {
+                                    result.NfCountries = countries;
+                                    if (result.NfCountriesPath == null) result.NfCountriesPath = "data.performance.viewer_profile[type==\"NEW_FOLLOWER\"].country_distribution";
+                                }
                             }
                         }
-
-                        // stop after first VIEWERS profile
-                        break;
                     }
                 }
             }
@@ -293,6 +347,46 @@ public class TikTokVideoService : ITikTokVideoService
             catch
             {
                 metric.DemographicsJson = null;
+            }
+        }
+
+        // NEW_FOLLOWER demographics: separate population, persisted to its own nullable JSON
+        // column so it can never be mistaken for (or merged with) the VIEWERS audience profile.
+        var nfObj = new Dictionary<string, object?>();
+        bool anyNf = false;
+        if (dm.NfMale.HasValue) { nfObj["male"] = dm.NfMale.Value; anyNf = true; }
+        if (dm.NfFemale.HasValue) { nfObj["female"] = dm.NfFemale.Value; anyNf = true; }
+        if (dm.NfNoGender.HasValue) { nfObj["no_gender"] = dm.NfNoGender.Value; anyNf = true; }
+
+        var nfAges = new Dictionary<string, decimal?>();
+        if (dm.NfAge18.HasValue) { nfAges["18-24"] = dm.NfAge18.Value; anyNf = true; }
+        if (dm.NfAge25.HasValue) { nfAges["25-34"] = dm.NfAge25.Value; anyNf = true; }
+        if (dm.NfAge35.HasValue) { nfAges["35-44"] = dm.NfAge35.Value; anyNf = true; }
+        if (dm.NfAge45.HasValue) { nfAges["45-54"] = dm.NfAge45.Value; anyNf = true; }
+        if (dm.NfAge55.HasValue) { nfAges["55+"] = dm.NfAge55.Value; anyNf = true; }
+
+        if (nfAges.Count > 0) nfObj["ages"] = nfAges;
+
+        if (dm.NfCountries is { Count: > 0 })
+        {
+            var nfCountries = new Dictionary<string, decimal?>();
+            foreach (var kv in dm.NfCountries)
+            {
+                if (string.IsNullOrWhiteSpace(kv.Key) || !kv.Value.HasValue) continue;
+                nfCountries[kv.Key] = kv.Value.Value;
+            }
+            if (nfCountries.Count > 0) { nfObj["countries"] = nfCountries; anyNf = true; }
+        }
+
+        if (anyNf)
+        {
+            try
+            {
+                metric.NewFollowerDemographicsJson = System.Text.Json.JsonSerializer.Serialize(nfObj);
+            }
+            catch
+            {
+                metric.NewFollowerDemographicsJson = null;
             }
         }
 
@@ -435,53 +529,120 @@ public class TikTokVideoService : ITikTokVideoService
         return (500, string.Empty, System.Linq.Enumerable.Empty<System.Collections.Generic.KeyValuePair<string, System.Collections.Generic.IEnumerable<string>>>());
     }
 
-    // Development-only diagnostic: call the official v202509 per-video Details endpoint
-    public async Task<(int? StatusCode, string Endpoint, JsonElement? Root, JsonElement? Data)> RunDetailsDiagnosticAsync(string videoId, string shopCipher, CancellationToken cancellationToken = default)
+    // Development-only diagnostic: call the official v202509 per-video Details endpoint.
+    // RetryAfterSeconds carries a valid _Retry-After_ header (when TikTok sent one) so the
+    // persistent batch-sync job can honor it instead of guessing its own cooldown.
+    public async Task<(int? StatusCode, string Endpoint, JsonElement? Root, JsonElement? Data, int? RetryAfterSeconds)> RunDetailsDiagnosticAsync(
+        string videoId,
+        string shopCipher,
+        CancellationToken cancellationToken = default,
+        DateTime? startDateInclusive = null,
+        DateTime? endDateExclusive = null)
     {
         var client = _httpFactory.CreateClient("TikTokApi");
 
-        var path = $"/analytics/202509/shop_videos/{videoId}/performance"; // exact endpoint provided by user
+        // ---- Endpoint resolution (Analytics API changelog 6az7iwe9; verified live 2026-10-22) ----
+        // GET /analytics/202609/shop_videos/batch_performance replaces
+        // GET /analytics/202509/shop_videos/{video_id}/performance ("Replace the single video_id
+        // in the path with the video_ids query parameter list"); the older endpoint retires
+        // 2026-12-28. Batch response shape (verified, code=0): the SAME per-video payload
+        // (performance.intervals[].traffic + performance.viewer_profile) wrapped as
+        // data.videos[{video_id, video, performance}] - unwrapped below, parser untouched.
+        // The 202609 batch endpoint rejects windows outside its lookback (verified code
+        // 28001022); when the DEFAULT endpoint is in use, such a rejection is retried ONCE on
+        // the legacy 202509 endpoint so historical post-day sync keeps working until retirement.
+        // TikTok:DetailsPath still pins a custom endpoint (no automatic fallback in that case).
+        const int BatchLookbackErrorCode = 28001022;
+        var configuredPath = _options.DetailsPath;
+        var legacyPath = $"/analytics/202509/shop_videos/{videoId}/performance";
+        var allowLegacyFallback = configuredPath is null;
+        var path = configuredPath ?? "/analytics/202609/shop_videos/batch_performance";
 
-        // determine date range: prefer ContentLog.VideoPostTime if available, otherwise last 30 days
-        // Issue B: TikTok start_date_ge/end_date_lt are defined by TikTok as ISO dates in the
-        // shop registered timezone. Build the existing 30-day calendar window from the
-        // shop-local calendar date (Asia/Jakarta), not from DateTime.UtcNow.Date.
-        DateTime startDate = _shopTimeZone.TodayMidnight().AddDays(-30);
-        DateTime endDate = _shopTimeZone.TodayMidnight().AddDays(1);
-        try
+        if (startDateInclusive.HasValue != endDateExclusive.HasValue)
+            throw new ArgumentException("Details analytics period must provide both startDateInclusive and endDateExclusive.");
+
+        DateTime startDate;
+        DateTime endDate;
+        if (startDateInclusive.HasValue)
         {
-            var existing = await _db.ContentLogs.AsNoTracking().FirstOrDefaultAsync(x => x.VideoId == videoId, cancellationToken);
-            if (existing?.VideoPostTime != null)
-            {
-                var post = existing.VideoPostTime.Value.Date;
-                startDate = post;
-                endDate = post.AddDays(1);
-            }
+            startDate = startDateInclusive.Value.Date;
+            endDate = endDateExclusive!.Value.Date;
+            if (startDate >= endDate)
+                throw new ArgumentException("Details analytics period must have a start date before the exclusive end date.");
         }
-        catch
+        else
         {
+            // Verified contract (pinned by Details_Window_Is_The_Video_Post_Day_*): with no
+            // explicit period the request asks for exactly the video's own post calendar day
+            // (start_date_ge = post day, end_date_lt = day after) - the date comes from the
+            // post time TikTok itself returned, never from the UTC clock. The shop-local
+            // last-30-days window is only the fallback when that post time is unknown.
+            startDate = _shopTimeZone.TodayMidnight().AddDays(-30);
+            endDate = _shopTimeZone.TodayMidnight().AddDays(1);
+            try
+            {
+                var existing = await _db.ContentLogs.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.VideoId == videoId, cancellationToken);
+                if (existing?.VideoPostTime != null)
+                {
+                    var post = existing.VideoPostTime.Value.Date;
+                    startDate = post;
+                    endDate = post.AddDays(1);
+                }
+            }
+            catch
+            {
+                // fallback to defaults above
+            }
         }
 
         var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
-        if (credential == null) return (null, path, null, null);
+        if (credential == null) return (null, path, null, null, null);
 
         var accessToken = await _authService.GetValidAccessTokenAsync(credential.Id, cancellationToken);
-        if (string.IsNullOrWhiteSpace(accessToken)) return (null, path, null, null);
+        if (string.IsNullOrWhiteSpace(accessToken)) return (null, path, null, null, null);
 
+        // Base query (identity + timestamp are added PER ENDPOINT ATTEMPT so a lookback
+        // fallback retry is a fully valid, freshly signed request).
         var query = new Dictionary<string, string?>
         {
             { "app_key", _options.AppKey },
-            { "timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
             { "shop_cipher", shopCipher },
             { "start_date_ge", startDate.ToString("yyyy-MM-dd") },
             { "end_date_lt", endDate.ToString("yyyy-MM-dd") }
         };
 
-        var signInput = query.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
-        var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
-        signInput.Add("sign", sign);
+        string url;
+        for (var endpointAttempt = 0; ; endpointAttempt++)
+        {
+            // Identity parameter per endpoint shape (verified contract for each variant):
+            //  - batch_performance (default): video_ids query parameter (comma-separated list;
+            //    a single id is one element - verified live code=0, invalid id -> envelope 400),
+            //  - {video_id} template or literal legacy path: the id already lives in the PATH,
+            //  - other custom path without placeholder: legacy video_id query parameter.
+            var attemptQuery = new Dictionary<string, string?>(query)
+            {
+                { "timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() }
+            };
 
-        var url = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(path, signInput);
+            if (path.Contains("{video_id}", StringComparison.Ordinal))
+            {
+                path = path.Replace("{video_id}", videoId);
+            }
+            else if (path.EndsWith("/batch_performance", StringComparison.Ordinal))
+            {
+                attemptQuery["video_ids"] = videoId;
+            }
+            else if (!path.EndsWith($"/{videoId}/performance", StringComparison.Ordinal))
+            {
+                attemptQuery["video_id"] = videoId;
+            }
+
+            var signInput = attemptQuery.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+            var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
+            signInput.Add("sign", sign);
+
+            url = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(path, signInput);
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         // use decrypted raw access token per user instruction
@@ -516,9 +677,21 @@ public class TikTokVideoService : ITikTokVideoService
             {
             }
 
+            // Honor a valid Retry-After header when present (bounded later by the job).
+            int? retryAfterSeconds = null;
+            foreach (var header in headers)
+            {
+                if (!string.Equals(header.Key, "Retry-After", StringComparison.OrdinalIgnoreCase)) continue;
+                var raw = header.Value?.FirstOrDefault();
+                // Same parsing convention as TikTokGetWithRetryAsync above (no extra culture dependency).
+                if (double.TryParse(raw, out var parsed) && parsed > 0)
+                    retryAfterSeconds = (int)Math.Min(Math.Ceiling(parsed), int.MaxValue);
+                break;
+            }
+
             if (status != 200)
             {
-                return (status, url, null, null);
+                return (status, url, null, null, retryAfterSeconds);
             }
 
             try
@@ -541,17 +714,202 @@ public class TikTokVideoService : ITikTokVideoService
 
                 if (code != 0)
                 {
+                    // Lookback-window rejection of the DEFAULT batch endpoint (verified live:
+                    // code 28001022 for a window outside the 202609 lookback): retry the SAME
+                    // request ONCE on the legacy 202509 endpoint (alive until 2026-12-28) so
+                    // historical post-day windows are not broken by this migration. An explicitly
+                    // configured DetailsPath is never second-guessed.
+                    var businessMessage = root.GetPropertyOrDefault("message");
+                    if (endpointAttempt == 0
+                        && allowLegacyFallback
+                        && path != legacyPath
+                        && (code == BatchLookbackErrorCode
+                            || (businessMessage?.Contains("lookback window", StringComparison.OrdinalIgnoreCase) ?? false)))
+                    {
+                        _logger.LogWarning(
+                            "Details window rejected by {Endpoint} outside its lookback (code {Code}); " +
+                            "retrying on legacy {Legacy} - that endpoint retires 2026-12-28, so historical " +
+                            "content needs a lookback-compliant window strategy before then (video {VideoId})",
+                            path, code, legacyPath, videoId);
+                        path = legacyPath;
+                        continue;
+                    }
+
                     // Business error: do not return data as successful. Return root but Data = null so callers treat as non-successful details.
-                    return (status, url, root, null);
+                    return (status, url, root, null, retryAfterSeconds);
                 }
 
                 var data = root.TryGetProperty("data", out var dataElem) ? dataElem.Clone() : root;
-                return (status, url, root, data);
+
+                // batch_performance shape (verified live 2026-10-22): the per-video payload is
+                // wrapped as data.videos[{video_id, video, performance}]. Unwrap the MATCHED entry
+                // so ParseDetailsMetrics (data.performance -> intervals/traffic/viewer_profile)
+                // works unchanged for both endpoint shapes. An entry missing for this video is
+                // honest PER-VIDEO no-data (Data = null) - never another video's metrics.
+                if (data.ValueKind == JsonValueKind.Object
+                    && data.TryGetProperty("videos", out var batchVideos)
+                    && batchVideos.ValueKind == JsonValueKind.Array)
+                {
+                    JsonElement? matchedEntry = null;
+                    foreach (var entry in batchVideos.EnumerateArray())
+                    {
+                        if (entry.ValueKind != JsonValueKind.Object) continue;
+
+                        var entryId = entry.GetPropertyOrDefault("video_id");
+                        if (string.IsNullOrWhiteSpace(entryId)
+                            && entry.TryGetProperty("video", out var videoObj)
+                            && videoObj.ValueKind == JsonValueKind.Object)
+                        {
+                            entryId = videoObj.GetPropertyOrDefault("id");
+                        }
+
+                        if (string.Equals(entryId, videoId, StringComparison.Ordinal))
+                        {
+                            matchedEntry = entry.Clone();
+                            break;
+                        }
+                    }
+
+                    if (!matchedEntry.HasValue)
+                    {
+                        _logger.LogInformation(
+                            "batch_performance returned no entry for video {VideoId} (per-video no-data), request_id {RequestId}",
+                            videoId, root.GetPropertyOrDefault("request_id"));
+                        return (status, url, root, null, retryAfterSeconds);
+                    }
+
+                    data = matchedEntry.Value;
+                }
+
+                return (status, url, root, data, retryAfterSeconds);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to parse TikTok details response for video {VideoId}", videoId);
-                return (status, url, null, null);
+                return (status, url, null, null, retryAfterSeconds);
+            }
+        }
+        finally
+        {
+            DetailsSemaphore.Release();
+        }
+        } // end of endpoint attempt loop (lookback fallback may retry once on legacy 202509)
+    }
+
+    /// <summary>Canonical batch endpoint (202609) - see ITikTokVideoService.FetchBatchPerformanceAsync.</summary>
+    public const string BatchPerformancePath = "/analytics/202609/shop_videos/batch_performance";
+
+    public async Task<TikTokBatchPerformanceResult> FetchBatchPerformanceAsync(
+        IReadOnlyList<string> videoIds,
+        string shopCipher,
+        DateTime startDateInclusive,
+        DateTime endDateExclusive,
+        string? granularity,
+        CancellationToken cancellationToken = default)
+    {
+        if (videoIds is null || videoIds.Count == 0)
+            throw new ArgumentException("At least one video id is required for batch_performance.", nameof(videoIds));
+        if (startDateInclusive.Date >= endDateExclusive.Date)
+            throw new ArgumentException("Batch performance window must have a start date before the exclusive end date.");
+
+        var empty = Array.Empty<JsonElement>();
+        var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
+        if (credential == null)
+            return new TikTokBatchPerformanceResult(0, null, "credential row missing for the configured AppKey", null, empty);
+
+        var accessToken = await _authService.GetValidAccessTokenAsync(credential.Id, cancellationToken);
+        if (string.IsNullOrWhiteSpace(accessToken))
+            return new TikTokBatchPerformanceResult(0, null, "access token unavailable", null, empty);
+
+        var attemptQuery = new Dictionary<string, string?>
+        {
+            { "app_key", _options.AppKey },
+            { "shop_cipher", shopCipher },
+            { "start_date_ge", startDateInclusive.Date.ToString("yyyy-MM-dd") },
+            { "end_date_lt", endDateExclusive.Date.ToString("yyyy-MM-dd") },
+            { "video_ids", string.Join(",", videoIds) },
+            { "timestamp", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() }
+        };
+        if (!string.IsNullOrWhiteSpace(granularity))
+        {
+            attemptQuery["granularity"] = granularity;
+        }
+
+        var signInput = attemptQuery.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        var sign = _signatureService.GenerateSignature("GET", BatchPerformancePath, signInput, null, null);
+        signInput.Add("sign", sign);
+        var url = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(BatchPerformancePath, signInput);
+
+        // Same concurrency bound + per-shop suspension as the details path: the Daily
+        // Report batch fan-out must never outpace the shared app-group rate limit.
+        await DetailsSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var (status, body, _) = await TikTokGetWithRetryAsync(client: _httpFactory.CreateClient("TikTokApi"),
+                pathWithQuery: url,
+                requestFactory: () =>
+                {
+                    var r = new HttpRequestMessage(HttpMethod.Get, url);
+                    r.Headers.Add("x-tts-access-token", accessToken);
+                    r.Headers.Add("Accept", "application/json");
+                    return r;
+                },
+                shopCipher: shopCipher,
+                cancellationToken: cancellationToken);
+
+            if (status != 200)
+            {
+                return new TikTokBatchPerformanceResult(status, null, null, null, empty);
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    return new TikTokBatchPerformanceResult(status, null, "response root is not a JSON object", null, empty);
+                }
+
+                int? code = 0;
+                if (root.TryGetProperty("code", out var codeElem))
+                {
+                    code = codeElem.ValueKind == JsonValueKind.Number && codeElem.TryGetInt32(out var codeNum)
+                        ? codeNum
+                        : codeElem.ValueKind == JsonValueKind.String && int.TryParse(codeElem.GetString(), out var codeStr)
+                            ? codeStr
+                            : (int?)null;
+                }
+
+                var message = root.GetPropertyOrDefault("message");
+                var requestId = root.GetPropertyOrDefault("request_id");
+                if (code is not null && code.Value != 0)
+                {
+                    return new TikTokBatchPerformanceResult(status, code, message, requestId, empty);
+                }
+
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+                    || !data.TryGetProperty("videos", out var videos) || videos.ValueKind != JsonValueKind.Array)
+                {
+                    // code=0 without the verified videos array is a schema mismatch the
+                    // CALLER must treat as unusable - never as "zero videos".
+                    return new TikTokBatchPerformanceResult(status, code, message ?? "data.videos missing on a success response", requestId, empty);
+                }
+
+                var entries = new List<JsonElement>(videos.GetArrayLength());
+                foreach (var entry in videos.EnumerateArray())
+                {
+                    if (entry.ValueKind == JsonValueKind.Object)
+                    {
+                        entries.Add(entry.Clone());
+                    }
+                }
+
+                return new TikTokBatchPerformanceResult(status, code, message, requestId, entries);
+            }
+            catch (JsonException)
+            {
+                return new TikTokBatchPerformanceResult(status, null, "malformed JSON payload", null, empty);
             }
         }
         finally
@@ -947,6 +1305,29 @@ public class TikTokVideoService : ITikTokVideoService
 
     public async Task<int> FetchAndSaveVideoListAsync(string shopCipher, string? startDateIso = null, string? endDateIso = null, CancellationToken cancellationToken = default)
     {
+        // Orchestration only: fetch page -> persist page -> follow page_token. Semantics
+        // (signing, parsing, upsert, classification, error behavior) are unchanged and are
+        // implemented once in FetchVideoListPageAsync / ApplyVideoListPageAsync below.
+        var state = new ListPageState();
+        var processed = 0;
+        string? pageToken = null;
+
+        do
+        {
+            var page = await FetchVideoListPageAsync(shopCipher, startDateIso, endDateIso, pageToken, cancellationToken);
+            processed += await ApplyVideoListPageAsync(shopCipher, page, state, cancellationToken);
+            pageToken = page.NextPageToken;
+        } while (!string.IsNullOrWhiteSpace(pageToken));
+
+        return processed;
+    }
+
+    /// <summary>
+    /// Fetches exactly one page of GET /analytics/202605/shop_videos/performance.
+    /// Shared by the classic full-list sync and the persistent batch-sync collector.
+    /// </summary>
+    public async Task<TikTokVideoListPage> FetchVideoListPageAsync(string shopCipher, string? startDateIso, string? endDateIso, string? pageToken, CancellationToken cancellationToken = default)
+    {
         // Validate credential
         var credential = await _db.TikTokCredentials.FirstOrDefaultAsync(x => x.AppKey == _options.AppKey, cancellationToken);
         if (credential == null)
@@ -960,93 +1341,151 @@ public class TikTokVideoService : ITikTokVideoService
 
         var path = "/analytics/202605/shop_videos/performance";
 
-        var processed = 0;
-        var processedVideoIds = new HashSet<string>();
-        var metricsToSave = new List<ContentMetric>();
-        // Development-only diagnostics counters
-        var totalVideosReceived = 0;
-        var totalVideosMatched = 0;
-        var totalVideosWithViews = 0;
-        string? pageToken = null;
-
-        do
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        var query = new Dictionary<string, string?>
         {
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-            var query = new Dictionary<string, string?>
-            {
-                { "app_key", _options.AppKey },
-                { "timestamp", timestamp },
-                { "shop_cipher", shopCipher },
-                { "page_size", "100" }
-            };
+            { "app_key", _options.AppKey },
+            { "timestamp", timestamp },
+            { "shop_cipher", shopCipher },
+            { "page_size", "100" }
+        };
 
-            if (!string.IsNullOrWhiteSpace(pageToken)) query["page_token"] = pageToken;
-            var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? _shopTimeZone.TodayMidnight().AddDays(-30) : DateTime.Parse(startDateIso).Date;
+        if (!string.IsNullOrWhiteSpace(pageToken)) query["page_token"] = pageToken;
+        var effectiveStartDate = string.IsNullOrWhiteSpace(startDateIso) ? _shopTimeZone.TodayMidnight().AddDays(-30) : DateTime.Parse(startDateIso).Date;
 
-            var effectiveEndDate = string.IsNullOrWhiteSpace(endDateIso)
-                ? _shopTimeZone.TodayMidnight().AddDays(1)
-                : DateTime.Parse(endDateIso).Date;
+        var effectiveEndDate = string.IsNullOrWhiteSpace(endDateIso)
+            ? _shopTimeZone.TodayMidnight().AddDays(1)
+            : DateTime.Parse(endDateIso).Date;
 
-            query["start_date_ge"] = effectiveStartDate.ToString("yyyy-MM-dd");
-            query["end_date_lt"] = effectiveEndDate.ToString("yyyy-MM-dd");
+        query["start_date_ge"] = effectiveStartDate.ToString("yyyy-MM-dd");
+        query["end_date_lt"] = effectiveEndDate.ToString("yyyy-MM-dd");
 
-            // Remove nulls for signing
-            var signInput = query.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        // Remove nulls for signing
+        var signInput = query.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-            var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
-            signInput.Add("sign", sign);
+        var sign = _signatureService.GenerateSignature("GET", path, signInput, null, null);
+        signInput.Add("sign", sign);
 
-            var url = QueryHelpers.AddQueryString(path, signInput);
+        var url = QueryHelpers.AddQueryString(path, signInput);
 
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Add("x-tts-access-token", accessToken);
-            req.Headers.Add("Accept", "application/json");
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("x-tts-access-token", accessToken);
+        req.Headers.Add("Accept", "application/json");
 
-            using var res = await client.SendAsync(req, cancellationToken);
-            var status = res.StatusCode;
-            var content = await res.Content.ReadAsStringAsync(cancellationToken); // BREAKPOINT DI SINI
+        using var res = await client.SendAsync(req, cancellationToken);
+        var status = res.StatusCode;
+        var content = await res.Content.ReadAsStringAsync(cancellationToken);
 
-            _logger.LogInformation(
-                "TikTok video API response for shop {ShopCipher}: {Response}",
+        _logger.LogInformation(
+            "TikTok video API response for shop {ShopCipher}: {Response}",
+            shopCipher,
+            content);
+        if (!res.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "TikTok video list HTTP {Status} for shop {ShopCipher}. Response: {Response}",
+                status,
                 shopCipher,
                 content);
-            if (!res.IsSuccessStatusCode)
+
+            // Same message as before; StatusCode lets callers distinguish 429 (rate limit)
+            // from other transient HTTP failures without parsing the message.
+            throw new HttpRequestException(
+                $"TikTok video list HTTP {res.StatusCode}. Response: {content}", null, res.StatusCode);
+        }
+
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+        var code = root.TryGetProperty("code", out var codeElem) && codeElem.TryGetInt32(out var codeVal) ? codeVal : 0;
+        var requestId = root.GetPropertyOrDefault("request_id");
+        var message = root.GetPropertyOrDefault("message");
+        if (code != 0)
+        {
+            _logger.LogWarning("TikTok API returned code {Code} message {Message} request_id {RequestId} for shop {ShopCipher}", code, message, requestId, shopCipher);
+            throw new TikTokVideoListException($"TikTok video list error: {message ?? "(no message)"} (request_id={requestId})", code);
+        }
+
+        var data = root.TryGetProperty("data", out var dataElem) ? dataElem : root;
+
+        // Clone videos out of the document (JsonDocument is disposed at the end of this method).
+        var videos = new List<JsonElement>();
+        var videoIds = new List<string>();
+        if (data.ValueKind == JsonValueKind.Object && data.TryGetProperty("videos", out var videosElem) && videosElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var v in videosElem.EnumerateArray())
             {
-                _logger.LogWarning(
-                    "TikTok video list HTTP {Status} for shop {ShopCipher}. Response: {Response}",
-                    status,
-                    shopCipher,
-                    content);
-
-                throw new HttpRequestException(
-                    $"TikTok video list HTTP {res.StatusCode}. Response: {content}");
-            }
-
-            using var doc = JsonDocument.Parse(content);
-            var root = doc.RootElement;
-            var code = root.TryGetProperty("code", out var codeElem) && codeElem.TryGetInt32(out var codeVal) ? codeVal : 0;
-            var requestId = root.GetPropertyOrDefault("request_id");
-            var message = root.GetPropertyOrDefault("message");
-            if (code != 0)
-            {
-                _logger.LogWarning("TikTok API returned code {Code} message {Message} request_id {RequestId} for shop {ShopCipher}", code, message, requestId, shopCipher);
-                throw new InvalidOperationException($"TikTok video list error: {message ?? "(no message)"} (request_id={requestId})");
-            }
-
-            var data = root.TryGetProperty("data", out var dataElem) ? dataElem : root;
-            // process videos if present
-            if (data.ValueKind == JsonValueKind.Object && data.TryGetProperty("videos", out var videosElem) && videosElem.ValueKind == JsonValueKind.Array)
-            {
-                _logger.LogDebug("TikTok returned {Count} videos for shop {ShopCipher}", videosElem.GetArrayLength(), shopCipher);
-                // resolve shop id once per page
-                var shop = await _db.TikTokShops.FirstOrDefaultAsync(x => x.ShopCipher == shopCipher, cancellationToken);
-                long? shopId = shop?.Id;
-
-                var toSave = new List<ContentLog>();
-                var toUpdate = new List<ContentLog>();
-
-                foreach (var v in videosElem.EnumerateArray())
+                videos.Add(v.Clone());
+                var vid = v.GetPropertyOrDefault("id") ?? v.GetPropertyOrDefault("video_id");
+                if (!string.IsNullOrWhiteSpace(vid))
                 {
+                    videoIds.Add(vid!);
+                }
+            }
+        }
+
+        // determine next page token - support common variants
+        string? nextPage = null;
+        if (data.ValueKind == JsonValueKind.Object)
+        {
+            nextPage = data.GetPropertyOrDefault("page_token") ?? data.GetPropertyOrDefault("next_page_token");
+            // also support a nested page_info object
+            if (nextPage == null && data.TryGetProperty("page_info", out var pageInfo) && pageInfo.ValueKind == JsonValueKind.Object)
+            {
+                nextPage = pageInfo.GetPropertyOrDefault("page_token") ?? pageInfo.GetPropertyOrDefault("next_page_token");
+            }
+        }
+
+        return new TikTokVideoListPage
+        {
+            ShopCipher = shopCipher,
+            StartDate = effectiveStartDate,
+            EndDate = effectiveEndDate,
+            Videos = videos,
+            VideoIds = videoIds,
+            NextPageToken = string.IsNullOrWhiteSpace(nextPage) ? null : nextPage
+        };
+    }
+
+    /// <summary>Public entry point: persists a fetched page with its own per-page state.</summary>
+    public async Task<int> ApplyVideoListPageAsync(string shopCipher, TikTokVideoListPage page, CancellationToken cancellationToken = default)
+    {
+        return await ApplyVideoListPageAsync(shopCipher, page, new ListPageState(), cancellationToken);
+    }
+
+    // Shared cross-page state (one metric per video per run + cumulative diagnostics).
+    private sealed class ListPageState
+    {
+        public HashSet<string> ProcessedVideoIds { get; } = new();
+        public List<ContentMetric> MetricsToSave { get; } = new();
+        public int TotalVideosReceived { get; set; }
+        public int TotalVideosMatched { get; set; }
+        public int TotalVideosWithViews { get; set; }
+    }
+
+    private async Task<int> ApplyVideoListPageAsync(string shopCipher, TikTokVideoListPage page, ListPageState state, CancellationToken cancellationToken)
+    {
+        var effectiveStartDate = page.StartDate;
+        var effectiveEndDate = page.EndDate;
+        var processed = 0;
+        var processedVideoIds = state.ProcessedVideoIds;
+        var metricsToSave = state.MetricsToSave;
+        var totalVideosReceived = state.TotalVideosReceived;
+        var totalVideosMatched = state.TotalVideosMatched;
+        var totalVideosWithViews = state.TotalVideosWithViews;
+
+        // process videos if present
+        if (page.Videos.Count > 0)
+        {
+            _logger.LogDebug("TikTok returned {Count} videos for shop {ShopCipher}", page.Videos.Count, shopCipher);
+            // resolve shop id once per page
+            var shop = await _db.TikTokShops.FirstOrDefaultAsync(x => x.ShopCipher == shopCipher, cancellationToken);
+            long? shopId = shop?.Id;
+
+            var toSave = new List<ContentLog>();
+            var toUpdate = new List<ContentLog>();
+
+            foreach (var v in page.Videos)
+            {
                     totalVideosReceived++;
                     var videoId = v.GetPropertyOrDefault("id") ?? v.GetPropertyOrDefault("video_id");
 
@@ -1135,6 +1574,19 @@ public class TikTokVideoService : ITikTokVideoService
                             var low2 = hasCommerceStr.Trim().ToLowerInvariant();
                             cl.HasCommerce = low2 == "true" || low2 == "1" || !string.IsNullOrEmpty(hasCommerceStr);
                         }
+
+                        // Parse IsLive flag from TikTok response (indicates Shop Live stream origin)
+                        var isLiveStr = v.GetPropertyOrDefault("is_live") ?? v.GetPropertyOrDefault("live_status") ?? v.GetPropertyOrDefault("video_type");
+                        if (!string.IsNullOrWhiteSpace(isLiveStr))
+                        {
+                            var low3 = isLiveStr.Trim().ToLowerInvariant();
+                            cl.IsLive = low3 == "true" || low3 == "1" || low3 == "live";
+                        }
+
+                        // Initial content type classification based on available signals
+                        // This will be refined once ProductsJson is available from ContentMetric
+                        cl.ContentTypeId = ContentTypeClassifier.ClassifyContentType(cl.IsLive, cl.HasCommerce, null);
+
                         toSave.Add(cl);
                         createdCl = cl;
                     }
@@ -1165,6 +1617,23 @@ public class TikTokVideoService : ITikTokVideoService
                             var low2 = hasCommerceStr.Trim().ToLowerInvariant();
                             existing.HasCommerce = low2 == "true" || low2 == "1" || !string.IsNullOrEmpty(hasCommerceStr);
                         }
+
+                        // Update IsLive flag from TikTok response
+                        var isLiveStr = v.GetPropertyOrDefault("is_live") ?? v.GetPropertyOrDefault("live_status") ?? v.GetPropertyOrDefault("video_type");
+                        if (!string.IsNullOrWhiteSpace(isLiveStr))
+                        {
+                            var low3 = isLiveStr.Trim().ToLowerInvariant();
+                            existing.IsLive = low3 == "true" || low3 == "1" || low3 == "live";
+                        }
+
+                        // Re-classify content type with updated signals 
+                        // Will be further refined once ProductsJson from latest ContentMetric is available
+                        var classifiedTypeId = ContentTypeClassifier.ClassifyContentType(existing.IsLive, existing.HasCommerce, null);
+                        if (classifiedTypeId.HasValue && !existing.ContentTypeId.HasValue)
+                        {
+                            existing.ContentTypeId = classifiedTypeId;
+                        }
+
                         toUpdate.Add(existing);
                     }
 
@@ -1204,6 +1673,14 @@ public class TikTokVideoService : ITikTokVideoService
                     // CTR source "0.0533" stored as 0..1 rate (same convention as FullWatchRate)
                     decimal? clickThroughRate = ReadDecimalElement(v, "click_through_rate");
 
+                    // Per-video quality/attribution fields (verified in the live list response,
+                    // 2026-10-22): video_finish_rate (0..1), v_to_l_clicks (count) and
+                    // v_to_l_rate (verified = v_to_l_clicks / views, 0..1). Stored windowed
+                    // with the sync window - never aggregated across videos here.
+                    decimal? videoFinishRate = ReadDecimalElement(v, "video_finish_rate");
+                    long? vToLClicks = v.GetPropertyOrDefaultInt("v_to_l_clicks");
+                    decimal? vToLRate = ReadDecimalElement(v, "v_to_l_rate");
+
                     string? hashtagsJson = null;
                     if (v.TryGetProperty("hash_tags", out var tagsElem) && tagsElem.ValueKind == JsonValueKind.Array)
                     {
@@ -1234,6 +1711,7 @@ public class TikTokVideoService : ITikTokVideoService
 
                     bool commercePresent = gmvAmount.HasValue || itemsSold.HasValue || skuOrders.HasValue
                         || avgCustomers.HasValue || clickThroughRate.HasValue
+                        || videoFinishRate.HasValue || vToLClicks.HasValue || vToLRate.HasValue
                         || hashtagsJson != null || productsJson != null;
 
                     if (targetLog != null)
@@ -1253,6 +1731,9 @@ public class TikTokVideoService : ITikTokVideoService
                                 SkuOrders = skuOrders,
                                 AvgCustomers = avgCustomers,
                                 ClickThroughRate = clickThroughRate,
+                                VideoFinishRate = videoFinishRate,
+                                VToLClicks = vToLClicks,
+                                VToLRate = vToLRate,
                                 HashtagsJson = hashtagsJson,
                                 ProductsJson = productsJson,
                                 MetricStartDate = effectiveStartDate,
@@ -1338,22 +1819,11 @@ public class TikTokVideoService : ITikTokVideoService
                 }
             }
 
-            // determine next page token - support common variants
-            string? nextPage = null;
-            if (data.ValueKind == JsonValueKind.Object)
-            {
-                nextPage = data.GetPropertyOrDefault("page_token") ?? data.GetPropertyOrDefault("next_page_token");
-                // also support a nested page_info object
-                if (nextPage == null && data.TryGetProperty("page_info", out var pageInfo) && pageInfo.ValueKind == JsonValueKind.Object)
-                {
-                    nextPage = pageInfo.GetPropertyOrDefault("page_token") ?? pageInfo.GetPropertyOrDefault("next_page_token");
-                }
-            }
+            // persist cumulative diagnostics for the next page (shared state across pages).
+            state.TotalVideosReceived = totalVideosReceived;
+            state.TotalVideosMatched = totalVideosMatched;
+            state.TotalVideosWithViews = totalVideosWithViews;
 
-            pageToken = string.IsNullOrWhiteSpace(nextPage) ? null : nextPage;
-
-        } while (!string.IsNullOrWhiteSpace(pageToken));
-
-        return processed;
+            return processed;
     }
 }

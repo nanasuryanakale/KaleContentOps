@@ -1,0 +1,166 @@
+/*
+ * Admin TikTok page styles.
+ *
+ * The shared range calendar (wwwroot/js/calendar-popup.js) deliberately ships only the
+ * month-grid styles. The surrounding panel chrome - positioning, preset list, action
+ * buttons - is scoped per host page, exactly like DailySummary / TeamPerformance /
+ * DailyPerformance / WinningContent do in their own page CSS.
+ *
+ * The Admin TikTok page previously loaded none of that chrome (only calendar-popup.css),
+ * so the date picker rendered as an unstyled stack of buttons. These rules mirror the
+ * shared Daily Summary visual language and are scoped to .admin-tiktok-page, so no other
+ * page that uses the shared component is affected.
+ */
+
+/* ============ Date range (shared Daily Summary parity) ============ */
+.admin-tiktok-page .batch-date-anchor { position: relative; flex: 0 0 auto; }
+
+.admin-tiktok-page .date-range-button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    color: #e7edf5;
+    background: #111a27;
+    border: 1px solid #263346;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.admin-tiktok-page .date-range-button:hover { border-color: #52657e; background: #151f2e; }
+.admin-tiktok-page .date-range-button strong { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-tiktok-page .date-range-button small { color: #8996a8; font-size: 10.5px; white-space: nowrap; }
+.admin-tiktok-page .calendar-icon { display: inline-flex; color: #4d9fff; }
+
+.admin-tiktok-page .date-picker-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: auto;
+    z-index: 30;
+    width: min(680px, calc(100vw - 48px));
+    padding: 16px;
+    background: #172232;
+    border: 1px solid #34445a;
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .5);
+}
+.admin-tiktok-page .date-picker-topline { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
+.admin-tiktok-page .date-picker-topline strong { display: block; color: #f0f5fa; font-size: 14px; }
+.admin-tiktok-page .date-picker-topline small { display: block; margin-top: 3px; color: #8996a8; font-size: 11px; }
+.admin-tiktok-page .close-button { color: #aab7c7; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; }
+.admin-tiktok-page .close-button:hover { color: white; }
+
+.admin-tiktok-page .date-picker-body { display: flex; gap: 18px; align-items: stretch; }
+.admin-tiktok-page .preset-list { flex: 0 0 170px; display: flex; flex-direction: column; gap: 6px; padding-right: 16px; border-right: 1px solid #1e2a3d; }
+.admin-tiktok-page .preset-title { margin-bottom: 4px; color: #8795a9; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.admin-tiktok-page .preset-list button { padding: 8px 11px; color: #cbd6e5; text-align: left; font-size: 12px; background: transparent; border: 1px solid #263346; border-radius: 6px; cursor: pointer; }
+.admin-tiktok-page .preset-list button:hover { color: white; border-color: #4d9fff; background: rgba(77, 159, 255, .08); }
+
+.admin-tiktok-page .calendar-area { flex: 1 1 auto; min-width: 0; }
+
+.admin-tiktok-page .date-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #1e2a3d; }
+.admin-tiktok-page .date-picker-selected { color: #cbd6e5; font-size: 12px; }
+.admin-tiktok-page .button-secondary,
+.admin-tiktok-page .button-primary { padding: 7px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; }
+.admin-tiktok-page .button-secondary { color: #cbd6e5; background: transparent; border: 1px solid #263346; }
+.admin-tiktok-page .button-secondary:hover { color: white; border-color: #52657e; }
+.admin-tiktok-page .button-primary { color: white; font-weight: 600; background: #356fc0; border: 1px solid #356fc0; }
+.admin-tiktok-page .button-primary:hover { background: #3f7fd4; border-color: #3f7fd4; }
+
+/* ============ Batch sync card: form + history (Bootstrap 5.3) ============
+ * This app loads Bootstrap 5, which no longer defines the Bootstrap-4 helper classes
+ * the form previously used (form-row / form-group / form-inline). Without them the
+ * controls collapsed into unaligned blocks. The layout is therefore owned by this
+ * page-scoped sheet: a flex row for shop + date range + submit, and a scroll wrapper
+ * for the history table.
+ */
+.admin-tiktok-page .batch-sync-card .batch-sync-title { margin-bottom: 10px; }
+.admin-tiktok-page .batch-sync-note {
+    margin: 0 0 14px;
+    color: var(--calp-muted);
+    font-size: .85rem;
+    line-height: 1.5;
+}
+
+.admin-tiktok-page .batch-sync-form { margin-top: 4px; }
+.admin-tiktok-page .batch-form-grid {
+    /* One control height for select + date trigger + submit button. The date trigger used to
+     * render 39px against Bootstrap's 31px form-control-sm / btn-sm, which (with
+     * align-items: flex-end) lifted "Periode analytics" 7-8px above "Authorized shop" and left
+     * the three controls on visibly different baselines. Equal heights align both the labels
+     * and the controls without any markup change. */
+    --att-control-h: 32px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px 16px;
+}
+.admin-tiktok-page .batch-field-shop select,
+.admin-tiktok-page .batch-field-submit button { height: var(--att-control-h); }
+.admin-tiktok-page .batch-field-submit button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.admin-tiktok-page .date-range-button {
+    height: var(--att-control-h);
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.admin-tiktok-page .batch-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* Proportion follows content length: the shop select takes the flexible column,
+ * while the date range button and the submit button stay at their natural width. */
+.admin-tiktok-page .batch-field-shop { flex: 1 1 320px; }
+.admin-tiktok-page .batch-field-shop select { width: 100%; }
+.admin-tiktok-page .batch-field-range { flex: 0 0 auto; }
+.admin-tiktok-page .batch-field-submit { flex: 0 0 auto; }
+.admin-tiktok-page .batch-field-label {
+    color: #9fb0c6;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    white-space: nowrap;
+}
+
+/* Small single-video / bulk cards: Bootstrap 4's .form-inline no longer exists in BS5. */
+.admin-tiktok-page .batch-inline-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+.admin-tiktok-page .batch-inline-input { width: 140px; flex: 0 0 auto; }
+.admin-tiktok-page .batch-inline-fixed { display: inline-flex; align-items: center; width: 120px; margin: 0; }
+.admin-tiktok-page .batch-inline-note { flex: 1 1 100%; margin-top: 2px; }
+
+/* ============ Batch sync history table ============ */
+.admin-tiktok-page .batch-history-scroll { overflow-x: auto; }
+.admin-tiktok-page .batch-history-table { margin-bottom: 0; white-space: nowrap; }
+.admin-tiktok-page .batch-history-table th,
+.admin-tiktok-page .batch-history-table td { vertical-align: middle; }
+
+/* ============ Responsive (mirrors the shared panel breakpoints) ============ */
+@media (max-width: 900px) {
+    .admin-tiktok-page .batch-form-grid { flex-direction: column; align-items: stretch; }
+    .admin-tiktok-page .batch-field-shop,
+    .admin-tiktok-page .batch-field-range,
+    .admin-tiktok-page .batch-field-submit { flex: 1 1 auto; }
+    .admin-tiktok-page .batch-field-submit button { width: 100%; }
+}
+@media (max-width: 900px) {
+    .admin-tiktok-page .date-picker-body { flex-direction: column; }
+    .admin-tiktok-page .preset-list {
+        flex: 0 0 auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding-right: 0;
+        border-right: 0;
+        border-bottom: 1px solid #1e2a3d;
+        padding-bottom: 12px;
+    }
+    .admin-tiktok-page .preset-title { width: 100%; }
+}
+@media (max-width: 700px) {
+    .admin-tiktok-page .date-picker-panel { left: 0; right: auto; }
+}

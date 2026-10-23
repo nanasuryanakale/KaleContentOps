@@ -24,6 +24,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Target> Targets => Set<Target>();
     public DbSet<TikTokShop> TikTokShops => Set<TikTokShop>();
     public DbSet<TikTokCredential> TikTokCredentials => Set<TikTokCredential>();
+    public DbSet<TikTokBatchSyncJob> TikTokBatchSyncJobs => Set<TikTokBatchSyncJob>();
+    public DbSet<TikTokBatchSyncJobItem> TikTokBatchSyncJobItems => Set<TikTokBatchSyncJobItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,6 +66,29 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             })
             .HasDatabaseName("IX_ContentLogs_VideoPostTime_Id");
 
+        // ---- TikTok batch sync (persistent background job queue) ----
+        // Status is the optimistic-concurrency token for both tables: every claim is a
+        // compare-and-swap on status (Queued -> CollectingIds, Pending -> Processing, ...),
+        // so two workers can never win the same job or the same item. Works on both the
+        // SQL Server provider (WHERE Status = <original>) and EF InMemory (tests).
+        modelBuilder.Entity<TikTokBatchSyncJob>(entity =>
+        {
+            entity.Property(x => x.Status).IsConcurrencyToken();
+        });
+
+        modelBuilder.Entity<TikTokBatchSyncJobItem>(entity =>
+        {
+            entity.Property(x => x.Status).IsConcurrencyToken();
+
+            // VideoId length matches ContentLog.VideoId ([MaxLength(100)]) so the
+            // unique index below can be created on SQL Server (no nvarchar(max) keys).
+            entity.Property(x => x.VideoId).HasMaxLength(100);
+
+            // DB-enforced deduplication: the same video can only be queued once per job,
+            // even if the API returns it on multiple pages or a page is retried.
+            entity.HasIndex(x => new { x.TikTokBatchSyncJobId, x.VideoId }).IsUnique();
+        });
+
         // ContentMetric
         modelBuilder.Entity<ContentMetric>()
             .HasOne(x => x.ContentLog)
@@ -97,6 +122,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         // 0..1 rate with 4+ source decimals (e.g. "0.0533") -> 6 to preserve source precision
         modelBuilder.Entity<ContentMetric>()
             .Property(x => x.ClickThroughRate)
+            .HasPrecision(18, 6);
+
+        // Per-video list quality/attribution rates: same 0..1 convention and precision.
+        modelBuilder.Entity<ContentMetric>()
+            .Property(x => x.VideoFinishRate)
+            .HasPrecision(18, 6);
+
+        modelBuilder.Entity<ContentMetric>()
+            .Property(x => x.VToLRate)
             .HasPrecision(18, 6);
 
         // Seed ContentType

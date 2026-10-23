@@ -65,6 +65,12 @@ public sealed class DailySummaryService : IDailySummaryService
                 })
                 .ToListAsync(cancellationToken);
 
+        // Views come from the newest snapshot that CARRIES Views, not simply from the newest
+        // snapshot: the per-video details sync only writes Views when the response reports them
+        // (TikTokVideoService: "if (viewsFound)") and never writes commerce, so the newest row can
+        // legitimately hold NULL Views while an older list row still holds the observed value.
+        // Falling back to that value (instead of coalescing the newest row to 0) keeps a details
+        // re-sync from erasing views from the daily summary.
         var latestViewsByContentId = metricRows
             .GroupBy(x => x.ContentLogId)
             .ToDictionary(
@@ -72,8 +78,8 @@ public sealed class DailySummaryService : IDailySummaryService
                 group => group
                     .OrderByDescending(x => x.CapturedAt)
                     .ThenByDescending(x => x.Id)
-                    .First()
-                    .Views ?? 0L);
+                    .Select(x => x.Views)
+                    .FirstOrDefault(views => views.HasValue) ?? 0L);
 
         var grouped = contentRows
             .Select(log => new

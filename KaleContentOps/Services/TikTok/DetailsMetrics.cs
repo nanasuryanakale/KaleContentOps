@@ -64,5 +64,40 @@ public class DetailsMetrics
 
     public string? CountriesPath { get; set; }
 
+    // --------------------------------------------------------------
+    // NEW_FOLLOWER profile (separate population - NEVER substitutes VIEWERS fields).
+    // Real payloads contain viewer_profile[type=="NEW_FOLLOWER"] with the same
+    // gender/age/country distribution shapes. These are kept apart so both profiles
+    // can coexist in one response without overwriting each other.
+    // Missing data stays null; absent distributions are never fabricated as zero.
+    // --------------------------------------------------------------
+    public decimal? NfMale { get; set; }
+    public string? NfMalePath { get; set; }
+
+    public decimal? NfFemale { get; set; }
+    public string? NfFemalePath { get; set; }
+
+    public decimal? NfNoGender { get; set; }
+    public string? NfNoGenderPath { get; set; }
+
+    public decimal? NfAge18 { get; set; }
+    public string? NfAge18Path { get; set; }
+
+    public decimal? NfAge25 { get; set; }
+    public string? NfAge25Path { get; set; }
+
+    public decimal? NfAge35 { get; set; }
+    public string? NfAge35Path { get; set; }
+
+    public decimal? NfAge45 { get; set; }
+    public string? NfAge45Path { get; set; }
+
+    public decimal? NfAge55 { get; set; }
+    public string? NfAge55Path { get; set; }
+
+    public Dictionary<string, decimal?>? NfCountries { get; set; }
+
+    public string? NfCountriesPath { get; set; }
+
     // Fields not present will have null value and null path
 }

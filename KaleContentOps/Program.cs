@@ -8,6 +8,7 @@ using KaleContentOps.Services.DailySummary;
 using KaleContentOps.Services.WinningContent;
 using KaleContentOps.Services.Targets;
 using KaleContentOps.Services.TeamPerformance;
+using KaleContentOps.Services.CreativePerformance;
 using KaleContentOps.Security;
 using System.IO;
 using Microsoft.AspNetCore.Authentication;
@@ -128,6 +129,32 @@ builder.Services.AddScoped<IWinningContentService, WinningContentService>();
 builder.Services.AddScoped<ITargetService, TargetService>();
 // Team Performance: operational workload / historical contribution per PIC
 builder.Services.AddScoped<ITeamPerformanceService, TeamPerformanceService>();
+// Creative Performance - Daily Report (account-level analytics).
+// Registered provider: TikTokShopVideoOverviewMetricSource - maps the verified
+// daily video_views of GET /analytics/202609/shop_videos/overview_performance
+// (granularity=1D) plus the verified PERIOD interaction totals (likes/comments/shares)
+// from the paginated GET /analytics/202605/shop_videos/performance list. Metric
+// families without a verified account-level source (Reach, Profile Views, followers,
+// viewer composition) are rendered as Unavailable ("-") via
+// AccountDailyMetricDataset.AvailableMetricKeys.
+// On any credential/network/API failure the provider degrades to Unavailable with
+// an honest reason - never fabricated zeros. UnavailableAccountDailyMetricSource
+// remains in code as the documented all-blocked fallback.
+builder.Services.AddScoped<IDailyPerformanceService, DailyPerformanceService>();
+// The list endpoint returns the whole catalog per window (~28 requests per period),
+// so a short-lived singleton cache bounds the TikTok request cost per report render
+// (see TikTokPeriodInteractionsCache).
+builder.Services.AddSingleton<TikTokPeriodInteractionsCache>();
+builder.Services.AddScoped<IAccountDailyMetricSource, TikTokShopVideoOverviewMetricSource>();
+
+// NOTE: TikTokShopVideoOverviewMetricSource also maps and stores the verified
+// TikTok shop video extra record fields (product_impressions, product_clicks,
+// video_attributed_sku_orders, the GMV subtypes, ctr, ctor_sku_order, gpm.amount +
+// currency, avg_daily_customers, video_product_viewers) as per-day fields on
+// AccountDailyMetricRecord. Impressions/clicks/orders feed the "Metrik Shop Video"
+// funnel cards inside DailyPerformanceService (still card-gated by their own keys in
+// AvailableMetricKeys); the remaining subtypes stay read-only metadata. No extra DI
+// registration is needed for this extension.
 
 // Register named HttpClients for TikTok API and Auth endpoints. Concrete services will be registered later.
 builder.Services.AddHttpClient("TikTokApi", client =>
@@ -161,6 +188,17 @@ builder.Services.AddScoped<ITikTokShopService, TikTokShopService>();
 builder.Services.AddScoped<ITikTokVideoService, TikTokVideoService>();
 // Details sync service (used by CLI and background worker)
 builder.Services.AddScoped<TikTokDetailsSyncService>();
+// Backfill service for content type classification (used for data migration)
+builder.Services.AddScoped<BackfillContentTypeService>();
+// Persistent batch video sync (Admin TikTok: date-range Sync Video Details job queue).
+// The queue lives in SQL Server; the worker resumes pending/stale jobs after restart.
+builder.Services.AddScoped<TikTokBatchSyncService>();
+// Enabled by default so queued jobs recover after restart. The integration test host
+// disables it (TikTok:EnableBatchSyncWorker=false) so no test can ever hit the real API.
+if (builder.Configuration.GetValue<bool>("TikTok:EnableBatchSyncWorker", true))
+{
+    builder.Services.AddHostedService<TikTokBatchSyncWorker>();
+}
 
 // Daily sync worker - register only when explicitly enabled via configuration (TikTok:EnableDailySync = true)
 if (builder.Configuration.GetValue<bool>("TikTok:EnableDailySync", false))
@@ -544,6 +582,74 @@ static bool IsApiRequest(HttpRequest request)
             Console.WriteLine($"=== TIKTOK DETAILS SYNC === shop={shop} limit={limit} skip={skip}");
             var processed = svc.RunDetailsSyncAsync(shop, limit, skip).GetAwaiter().GetResult();
             Console.WriteLine($"Details sync processed {processed} videos");
+        }
+
+        return;
+    }
+
+    // Backfill ContentType classification for historical data
+    // Usage: dotnet run --backfill-content-type [--shop=SHOP_CIPHER] [--dry-run]
+    if (args.Any(a => a != null && a.StartsWith("--backfill-content-type", StringComparison.OrdinalIgnoreCase)))
+    {
+        string? shop = null;
+        bool dryRun = false;
+
+        foreach (var a in args)
+        {
+            if (a != null && a.StartsWith("--shop=", StringComparison.OrdinalIgnoreCase))
+                shop = a.Substring("--shop=".Length);
+            if (a != null && a.Equals("--dry-run", StringComparison.OrdinalIgnoreCase))
+                dryRun = true;
+        }
+
+        using (var scope = app.Services.CreateScope())
+        {
+            var backfillSvc = scope.ServiceProvider.GetRequiredService<BackfillContentTypeService>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("KaleContentOps.BackfillContentType");
+
+            if (dryRun)
+            {
+                logger.LogInformation("=== BACKFILL CONTENT TYPE (DRY RUN) ===");
+            }
+            else
+            {
+                logger.LogInformation("=== BACKFILL CONTENT TYPE ===");
+            }
+
+            if (!string.IsNullOrWhiteSpace(shop))
+            {
+                logger.LogInformation("Backfilling ContentType for shop: {Shop}", shop);
+                if (dryRun)
+                {
+                    var (classifiable, notClassifiable) = await backfillSvc.CountClassifiableAsync();
+                    logger.LogInformation("DRY RUN - Would process shop {Shop}. Classifiable: {Classifiable}, Not classifiable: {NotClassifiable}", 
+                        shop, classifiable, notClassifiable);
+                }
+                else
+                {
+                    var (totalProcessed, updated, couldNotClassify) = await backfillSvc.BackfillShopAsync(shop);
+                    logger.LogInformation("Backfill completed for shop {Shop}: Total={Total} Updated={Updated} CouldNotClassify={CouldNotClassify}",
+                        shop, totalProcessed, updated, couldNotClassify);
+                }
+            }
+            else
+            {
+                logger.LogInformation("Backfilling ContentType for all ContentLogs");
+                if (dryRun)
+                {
+                    var (classifiable, notClassifiable) = await backfillSvc.CountClassifiableAsync();
+                    logger.LogInformation("DRY RUN - Would process all shops. Classifiable: {Classifiable}, Not classifiable: {NotClassifiable}",
+                        classifiable, notClassifiable);
+                }
+                else
+                {
+                    var (totalProcessed, updated, couldNotClassify) = await backfillSvc.BackfillAllAsync();
+                    logger.LogInformation("Backfill completed for all: Total={Total} Updated={Updated} CouldNotClassify={CouldNotClassify}",
+                        totalProcessed, updated, couldNotClassify);
+                }
+            }
         }
 
         return;
