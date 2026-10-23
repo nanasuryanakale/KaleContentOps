@@ -691,6 +691,23 @@ public class TikTokVideoService : ITikTokVideoService
 
             if (status != 200)
             {
+                // If the 202609 batch endpoint returned an error and legacy fallback is allowed,
+                // retry the SAME request ONCE on the legacy 202509 endpoint.
+                // The 202609 batch endpoint enforces a lookback window; when the request falls
+                // outside that window, the API returns 400. The legacy 202509 endpoint (retiring
+                // 2026-12-28) can provide data for historical content, though it has a
+                // different response shape that the parser handles unchanged.
+                // We only fallback on the first attempt; subsequent attempts will use the legacy
+                // endpoint exclusively if DetailsPath is explicitly configured.
+                if (allowLegacyFallback && endpointAttempt == 0 && path != legacyPath)
+                {
+                    _logger.LogWarning(
+                        "Details endpoint {Endpoint} returned status {Status}; " +
+                        "falling back to legacy {Legacy} for video {VideoId}",
+                        path, status, legacyPath, videoId);
+                    path = legacyPath;
+                    continue;
+                }
                 return (status, url, null, null, retryAfterSeconds);
             }
 
