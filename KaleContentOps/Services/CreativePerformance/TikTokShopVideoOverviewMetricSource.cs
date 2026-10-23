@@ -578,16 +578,41 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
             // Attach the per-day breakdown to the overview records so the daily table and
             // charts can show REAL daily Interactions. A period aggregate (list fallback)
             // is NEVER spread across days - those rows stay null (honest "-").
+            //
+            // DETAIL HARIAN completeness (2026-10-23): a date that carries batch daily
+            // values but has NO overview interval gets its own interactions-only record
+            // (every other field stays null), so daily Interactions are never silently
+            // dropped. A day whose batch values are all null creates nothing (an all-null
+            // record would be a phantom "HasRecord" day).
             if (dailyInteractions.IsSuccess && dailyInteractions.Daily is not null)
             {
-                foreach (var record in records)
+                var recordsByDate = records.ToDictionary(r => r.Date);
+                foreach (var (date, dayTotals) in dailyInteractions.Daily)
                 {
-                    if (dailyInteractions.Daily.TryGetValue(record.Date, out var dayTotals))
+                    if (recordsByDate.TryGetValue(date, out var record))
                     {
                         record.Likes = dayTotals.Likes;
                         record.Comments = dayTotals.Comments;
                         record.Shares = dayTotals.Shares;
+                        continue;
                     }
+
+                    if (dayTotals.Likes is null && dayTotals.Comments is null && dayTotals.Shares is null)
+                    {
+                        continue; // nothing verifiable for that day - never a fabricated record
+                    }
+
+                    var interactionsOnly = new AccountDailyMetricRecord
+                    {
+                        Date = date,
+                        Likes = dayTotals.Likes,
+                        Comments = dayTotals.Comments,
+                        Shares = dayTotals.Shares
+                        // Reach / VideoViews / ProfileViews / commerce fields stay null:
+                        // this endpoint carries ONLY the interactions of that day.
+                    };
+                    records.Add(interactionsOnly);
+                    recordsByDate[date] = interactionsOnly;
                 }
             }
 
@@ -864,25 +889,52 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
             .Take(BatchMaxVideos)
             .ToListAsync(cancellationToken);
 
+        // WHOLE local catalog size (NO post-time filter). This - and only this - is the
+        // population comparable with the list API's whole-catalog total_count (verified:
+        // the list endpoint returns the whole catalog for ANY window). ROOT-CAUSE FIX
+        // (2026-10-23) for the "previous period shows -" defect: the previous check
+        // compared seenVideoIds (videos posted BEFORE the window end - a SUBSET for any
+        // past window) against the whole-catalog total, so it could never pass for a
+        // previous period once the shop posted anything newer. That always forced the
+        // ~28-request list fallback for the previous window (fragile against the shared
+        // rate limit) while the current window stayed on the cheap batch path - exactly
+        // the observed asymmetry (current Interactions present, previous "-").
+        var localCatalogTotal = await _db.ContentLogs.AsNoTracking()
+            .Where(x => x.VideoId != null && x.VideoId != "")
+            .Select(x => x.VideoId!)
+            .Distinct()
+            .CountAsync(cancellationToken);
+
+        // Completeness cross-check (catalog coverage), populations aligned: the local
+        // catalog is a SUBSET of the API catalog by construction (we sync FROM the API),
+        // so localTotal < apiTotal means our sync is genuinely behind and the batch sums
+        // would UNDERSTATE the window - fall back to the authoritative list path. When
+        // localTotal >= apiTotal the sets are identical and every API video posted before
+        // the window end was queried. When the API exposes no total, the check is skipped
+        // and logged (documented limitation).
+        var catalogTotal = await FetchListCatalogTotalAsync(shopCipher, accessToken, query, cancellationToken);
+        if (catalogTotal is not null && localCatalogTotal < catalogTotal.Value)
+        {
+            _logger.LogWarning(
+                "TikTok batch daily interactions: local catalog knows {Local} video ids but the list API reports {Total} - local sync is behind, falling back to list totals for window {Start}..{End}",
+                localCatalogTotal, catalogTotal.Value, startIso, endIso);
+            return new DailyInteractionsOutcome(false, null, null, null, null, null,
+                $"Interactions harian tidak tersedia: katalog lokal ({localCatalogTotal} video) lebih kecil dari total katalog API ({catalogTotal.Value}).");
+        }
+
+        if (catalogTotal is null)
+        {
+            _logger.LogInformation(
+                "TikTok batch daily interactions: list API did not expose a catalog total for window {Start}..{End} - catalog-coverage cross-check skipped (local catalog {Local} ids)",
+                startIso, endIso, localCatalogTotal);
+        }
+
         if (videoIds.Count == 0)
         {
-            // An EMPTY local catalog is only trusted when the API agrees it is empty:
-            // a catalog the API knows about (total > 0) means our local sync is behind,
-            // and reporting 0 interactions for a shop with thousands of videos would be
-            // a fabricated total. Fall back to the list path whenever a total is exposed.
-            var emptyCatalogTotal = await FetchListCatalogTotalAsync(shopCipher, accessToken, query, cancellationToken);
-            if (emptyCatalogTotal is > 0)
-            {
-                _logger.LogWarning(
-                    "TikTok batch daily interactions: local catalog is empty but the list API reports {Total} videos for window {Start}..{End} - falling back to list totals",
-                    emptyCatalogTotal.Value, startIso, endIso);
-                return new DailyInteractionsOutcome(false, null, null, null, null, null,
-                    "Interactions harian tidak tersedia: katalog lokal kosong padahal API melaporkan " +
-                    $"{emptyCatalogTotal.Value} video - sinkronisasi katalog tertinggal.");
-            }
-
-            // Verified empty catalog (API total 0 or not exposed): every day of the
-            // window truly had 0 interactions.
+            // Every locally-known video was posted AFTER this window end (typical for a
+            // previous period that predates the whole catalog) and the coverage check
+            // above already proved the local catalog is not behind: each day of the
+            // window truly had 0 interactions - a verified zero, never a fabricated one.
             var zeroDaily = new Dictionary<DateTime, (long? Likes, long? Comments, long? Shares)>();
             for (var day = query.Start; day < query.EndExclusive; day = day.AddDays(1))
             {
@@ -890,8 +942,8 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
             }
 
             _logger.LogInformation(
-                "TikTok batch daily interactions: empty local catalog for window {Start}..{End} - totals 0 from 0 videos",
-                startIso, endIso);
+                "TikTok batch daily interactions: no catalog video was posted before window {Start}..{End} (local catalog {Local} videos, all newer) - totals 0 from 0 videos",
+                startIso, endIso, localCatalogTotal);
             return new DailyInteractionsOutcome(true, 0, 0, 0, 0, zeroDaily, null);
         }
 
@@ -901,6 +953,7 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
         var likesSeen = false;
         var commentsSeen = false;
         var sharesSeen = false;
+        var perVideoErrors = 0;
 
         var chunks = videoIds.Chunk(BatchChunkSize).ToList();
 
@@ -994,6 +1047,23 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
                         videoId = videoObj.GetPropertyOrDefault("id");
                     }
 
+                    // PER-VIDEO ERROR (verified contract field data.videos[].error): a
+                    // code=0 envelope does NOT mean every video succeeded. A failed video
+                    // has UNKNOWN interactions, so the whole window would be a partial
+                    // sum dressed up as a complete one - the ALL-OR-NOTHING rule then
+                    // falls back to the authoritative list totals. Counted (not ignored)
+                    // so the operator sees how many videos failed.
+                    if (TryReadPerVideoError(entry, out var perVideoErrorCode))
+                    {
+                        perVideoErrors++;
+                        _logger.LogWarning(
+                            "TikTok batch daily interactions: video {VideoId} returned a per-video error (code {ErrorCode}) in sub-window {SubStart}..{SubEnd} for window {Start}..{End} - daily breakdown unavailable, falling back to list totals",
+                            videoId ?? "(unknown)", perVideoErrorCode, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"), startIso, endIso);
+                        return new DailyInteractionsOutcome(false, null, null, null, null, null,
+                            $"Interactions harian tidak tersedia: {perVideoErrors} video mengembalikan error per-video " +
+                            $"(code {perVideoErrorCode}) - cakupan tidak lengkap, total parsial tidak ditampilkan.");
+                    }
+
                     if (string.IsNullOrWhiteSpace(videoId))
                     {
                         continue; // no identity -> cannot guarantee "counted once"; skipped, never guessed
@@ -1071,27 +1141,16 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
                 "Interactions harian tidak tersedia: respons batch tidak memuat field traffic likes/comments/shares.");
         }
 
-        // Completeness cross-check (catalog coverage): the batch path can only sum the
-        // videos the LOCAL catalog knows. When the list API reports its catalog total on
-        // page 1 and fewer ids came back than that total, the local catalog is behind and
-        // the totals would UNDERSTATE the window - fall back to the authoritative list
-        // path instead of presenting a partial sum as the period total. When the API does
-        // not expose a total, the check is skipped and logged (documented limitation).
-        var catalogTotal = await FetchListCatalogTotalAsync(shopCipher, accessToken, query, cancellationToken);
-        if (catalogTotal is not null && seenVideoIds.Count < catalogTotal.Value)
+        // Round-trip DIAGNOSTIC (not a failure trigger): the verified contract returns
+        // one data.videos[] entry per requested id, so a shortfall means some entries
+        // carried no identity and were skipped (they cannot be counted twice, but they
+        // also cannot be attributed). Logged for audit; the decisive catalog-coverage
+        // check already ran BEFORE the batch above.
+        if (seenVideoIds.Count < videoIds.Count)
         {
             _logger.LogWarning(
-                "TikTok batch daily interactions: local catalog returned {Seen} video ids but the list API reports {Total} - daily breakdown unusable, falling back to list totals",
-                seenVideoIds.Count, catalogTotal.Value);
-            return new DailyInteractionsOutcome(false, null, null, null, null, null,
-                $"Interactions harian tidak tersedia: katalog lokal ({seenVideoIds.Count} video) lebih kecil dari total katalog API ({catalogTotal.Value}).");
-        }
-
-        if (catalogTotal is null)
-        {
-            _logger.LogInformation(
-                "TikTok batch daily interactions: list API did not expose a catalog total for window {Start}..{End} - completeness cross-check skipped ({Seen} ids summed)",
-                startIso, endIso, seenVideoIds.Count);
+                "TikTok batch daily interactions: batch returned {Seen} identified video entries for {Sent} requested ids on window {Start}..{End} - unidentified entries were skipped, never counted",
+                seenVideoIds.Count, videoIds.Count, startIso, endIso);
         }
 
         _logger.LogInformation(
@@ -1537,6 +1596,78 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
            && DateTime.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
             ? date.Date
             : null;
+
+    /// <summary>
+    /// Reads the VERIFIED per-video error field (data.videos[].error) of one batch
+    /// entry. The envelope code=0 only means the REQUEST succeeded - individual videos
+    /// can still fail, and a failed video's interactions are UNKNOWN (not zero).
+    /// Returns true when the entry carries a meaningful error; <paramref name="errorCode"/>
+    /// carries its code when one is exposed (for logs and the fallback reason).
+    /// Accepted shapes: an object with a non-zero/absent numeric or string "code", a
+    /// non-empty object without a code, a non-empty string, or a non-zero number.
+    /// A JSON null, an empty object, an empty string or code 0 are NOT errors.
+    /// </summary>
+    private static bool TryReadPerVideoError(JsonElement entry, out string? errorCode)
+    {
+        errorCode = null;
+        if (entry.ValueKind != JsonValueKind.Object || !entry.TryGetProperty("error", out var error))
+        {
+            return false;
+        }
+
+        switch (error.ValueKind)
+        {
+            case JsonValueKind.Null:
+            case JsonValueKind.Undefined:
+                return false;
+
+            case JsonValueKind.Object:
+            {
+                if (!error.EnumerateObject().Any())
+                {
+                    return false; // "error": {} carries no failure information
+                }
+
+                var code = GetChild(error, "code");
+                if (code is "0" or "" )
+                {
+                    return false; // explicit zero/empty code = no failure
+                }
+
+                errorCode = code;
+                return true;
+            }
+
+            case JsonValueKind.String:
+            {
+                var text = error.GetString();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    return false;
+                }
+
+                errorCode = text;
+                return true;
+            }
+
+            case JsonValueKind.Number:
+                if (error.TryGetInt64(out var numeric))
+                {
+                    if (numeric == 0)
+                    {
+                        return false;
+                    }
+
+                    errorCode = numeric.ToString(CultureInfo.InvariantCulture);
+                    return true;
+                }
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
 
     /// <summary>
     /// Treats a currency string as present only when it looks like a real currency

@@ -392,7 +392,8 @@ public class TikTokShopVideoOverviewDailyInteractionsTests
         Assert.Equal(2, totals.VideoCount);
         Assert.All(result.Dataset.Records, r => Assert.Null(r.Likes)); // no daily breakdown from list totals
         Assert.Single(videoService2.Calls);
-        Assert.Equal(2, handler2.ListRequestCount);
+        // 1 catalog-coverage probe (runs BEFORE the batch fan-out) + 2 pagination pages.
+        Assert.Equal(3, handler2.ListRequestCount);
     }
 
     [Fact]
@@ -586,5 +587,233 @@ public class TikTokShopVideoOverviewDailyInteractionsTests
         Assert.Equal(callsAfterFirst, videoService.Calls.Count); // no new batch requests
         Assert.Equal(listAfterFirst, handler.ListRequestCount);  // no new completeness probes
         Assert.Equal(9, second.Dataset.Records.Single(r => r.Date == d19).Likes);
+    }
+
+    // ------------------------------------------------------------------
+    // ROOT-CAUSE FIX (2026-10-23): previous-period window must stay on the batch path
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task BatchDaily_PreviousWindow_SkipsNewerVideos_WithoutFallingBackToList()
+    {
+        // ROOT-CAUSE regression test for "Interactions PERIODE SEBELUMNYA tetap -":
+        // the old catalog-coverage check compared the ids RETURNED by the batch
+        // (videos posted before the window end - a subset for any past window) with
+        // the list API's WHOLE-catalog total_count, so a previous period could never
+        // pass once the shop posted anything newer. It then degraded to the ~28-page
+        // list fallback (fragile against the shared rate limit) and, when that failed,
+        // rendered "-". The aligned check compares WHOLE local catalog vs WHOLE API
+        // catalog, so a past window now stays on the cheap batch path.
+        var previousWindow = Window(10, 12, 10, 15); // a PAST window
+        var (provider, handler, videoService, db) = CreateProvider(
+            OverviewAndList(() => Ok(ListPage(null, "3", // API holds exactly the 3 videos we know
+                ListVideo("V-1", 0, 0, 0), ListVideo("V-2", 0, 0, 0), ListVideo("V-3", 0, 0, 0)))));
+
+        // V-3 was posted AFTER the previous window end: legitimately excluded from the
+        // batch ids, but part of the whole-catalog total.
+        await SeedVideosAsync(db,
+            ("V-1", new DateTime(2026, 10, 1)),
+            ("V-2", new DateTime(2026, 10, 5)),
+            ("V-3", new DateTime(2026, 10, 20)));
+
+        var d13 = new DateTime(2026, 10, 13);
+        videoService.Responder = (ids, start, _) =>
+        {
+            Assert.Equal(2, ids.Count); // V-3 (newer than the window) is never queried
+            Assert.DoesNotContain("V-3", ids);
+            return BatchOk(
+                BatchEntry("V-1", DailyInterval(d13, likes: 4, comments: 1, shares: 1)),
+                BatchEntry("V-2", DailyInterval(d13, likes: 2)));
+        };
+
+        var result = await provider.GetAsync(previousWindow);
+
+        Assert.True(result.IsAvailable);
+        var totals = result.Dataset!.PeriodInteractions!;
+        Assert.Equal(6, totals.Likes);   // batch values, NOT the list totals
+        Assert.Equal(1, totals.Comments);
+        Assert.Equal(1, totals.Shares);
+        Assert.Equal(2, totals.VideoCount);
+
+        // Daily breakdown lands on the record of that past day (DETAIL HARIAN):
+        // the day's record aggregates BOTH videos (4 + 2 likes).
+        var record = result.Dataset.Records.Single(r => r.Date == d13);
+        Assert.Equal(6, record.Likes);
+        Assert.Equal(1, record.Comments);
+        Assert.Equal(1, record.Shares);
+
+        // NO pagination fallback: the only list request is the one coverage probe.
+        Assert.Equal(1, handler.ListRequestCount);
+        Assert.Single(videoService.Calls);
+    }
+
+    [Fact]
+    public async Task BatchDaily_CacheCurrentAndPreviousWindows_NeverShareEntries()
+    {
+        // Cache keys must separate (shop, start, end-exclusive): the current and the
+        // previous window of one report carry DIFFERENT values and must never collide.
+        var cache = new TikTokPeriodInteractionsCache();
+        var (provider, _, videoService, db) = CreateProvider(OverviewAndList(), cache);
+        await SeedVideosAsync(db, ("V-1", new DateTime(2026, 10, 1)));
+
+        var previousWindow = Window(10, 12, 10, 15);
+        var currentWindow = Window(10, 19, 10, 22);
+
+        videoService.Responder = (_, start, _) =>
+        {
+            var isPrevious = start < new DateTime(2026, 10, 19);
+            return BatchOk(BatchEntry("V-1",
+                DailyInterval(isPrevious ? new DateTime(2026, 10, 13) : new DateTime(2026, 10, 19),
+                    likes: isPrevious ? 3 : 30)));
+        };
+
+        var previous = await provider.GetAsync(previousWindow);
+        var current = await provider.GetAsync(currentWindow);
+
+        Assert.Equal(3, previous.Dataset!.PeriodInteractions!.Likes);
+        Assert.Equal(30, current.Dataset!.PeriodInteractions!.Likes);
+
+        // Both outcomes live in the SAME cache instance under distinct keys: re-asking
+        // each window returns its OWN values (no cross-window contamination) and makes
+        // no new batch request.
+        var previousAgain = await provider.GetAsync(previousWindow);
+        var currentAgain = await provider.GetAsync(currentWindow);
+        Assert.Equal(3, previousAgain.Dataset!.PeriodInteractions!.Likes);
+        Assert.Equal(30, currentAgain.Dataset!.PeriodInteractions!.Likes);
+        Assert.Single(videoService.Calls.Where(c => c.Start == previousWindow.Start));
+        Assert.Single(videoService.Calls.Where(c => c.Start == currentWindow.Start));
+    }
+
+    // ------------------------------------------------------------------
+    // Per-video errors (verified contract field data.videos[].error)
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task BatchDaily_PerVideoError_FallsBackToListTotals_NeverPartialSum()
+    {
+        // The envelope code=0 does NOT mean every video succeeded: an entry carrying
+        // data.videos[].error has UNKNOWN interactions, so the whole daily outcome
+        // must fall back to the authoritative list totals instead of surfacing a
+        // partial sum that silently omits the failed video.
+        var window = Window(10, 19, 10, 22);
+        var (provider, _, videoService, db) = CreateProvider(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == OverviewPath)
+            {
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri.Query);
+                return Ok(OverviewJson(DateTime.Parse(query["start_date_ge"]!), DateTime.Parse(query["end_date_lt"]!)));
+            }
+
+            return Ok(ListPage(null, null, ListVideo("L-1", 10, 1, 2)));
+        });
+        await SeedVideosAsync(db, ("V-1", new DateTime(2026, 10, 10)), ("V-2", new DateTime(2026, 10, 10)));
+
+        var d19 = new DateTime(2026, 10, 19);
+        videoService.Responder = (_, _, _) => BatchOk(
+            BatchEntry("V-1", DailyInterval(d19, likes: 100)),
+            "{\"video_id\":\"V-2\",\"error\":{\"code\":\"28002001\",\"message\":\"video not found\"}}");
+
+        var result = await provider.GetAsync(window);
+
+        Assert.True(result.IsAvailable);
+        var totals = result.Dataset!.PeriodInteractions!;
+        // The list totals (10) win; the partial batch sum (100) must never surface.
+        Assert.Equal(10, totals.Likes);
+        Assert.All(result.Dataset.Records, r => Assert.Null(r.Likes));
+    }
+
+    // ------------------------------------------------------------------
+    // DETAIL HARIAN completeness: batch-only days become interactions-only records
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task BatchDaily_DayWithoutOverviewInterval_BecomesInteractionsOnlyRecord()
+    {
+        // The overview endpoint omits 21 Oct (no interval), but the batch endpoint
+        // reports real interactions for that date. That day must still appear in the
+        // dataset (daily table) with its interactions - every other field stays null.
+        var window = Window(10, 19, 10, 22);
+        var (provider, _, videoService, db) = CreateProvider(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == OverviewPath)
+            {
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri.Query);
+                var start = DateTime.Parse(query["start_date_ge"]!);
+                var end = DateTime.Parse(query["end_date_lt"]!);
+                // Overview intervals for 19 and 20 Oct ONLY (21 Oct missing).
+                var intervals = new List<string>
+                {
+                    "{\"start_date\":\"2026-10-19\",\"end_date\":\"2026-10-20\",\"video_views\":1000}",
+                    "{\"start_date\":\"2026-10-20\",\"end_date\":\"2026-10-21\",\"video_views\":1000}"
+                };
+                return Ok("{\"code\":0,\"message\":\"Success\",\"data\":{\"latest_available_date\":\""
+                    + Today.AddDays(-1).ToString("yyyy-MM-dd")
+                    + "\",\"performance\":{\"intervals\":[" + string.Join(",", intervals) + "]}}}");
+            }
+
+            return Ok("{\"code\":0,\"data\":{\"videos\":[]}}"); // no catalog total exposed
+        });
+        await SeedVideosAsync(db, ("V-1", new DateTime(2026, 10, 10)));
+
+        videoService.Responder = (_, _, _) => BatchOk(
+            BatchEntry("V-1",
+                DailyInterval(new DateTime(2026, 10, 19), likes: 5, comments: 1, shares: 1),
+                DailyInterval(new DateTime(2026, 10, 21), likes: 7, comments: 2, shares: 1)));
+
+        var result = await provider.GetAsync(window);
+
+        Assert.True(result.IsAvailable);
+        var records = result.Dataset!.Records.ToDictionary(r => r.Date);
+
+        // Overview day: normal record carrying BOTH shop metrics and interactions.
+        Assert.Equal(1000L, records[new DateTime(2026, 10, 19)].VideoViews);
+        Assert.Equal(5, records[new DateTime(2026, 10, 19)].Likes);
+
+        // Batch-only day: interactions-only record, other fields stay null (honest "-").
+        var batchOnly = records[new DateTime(2026, 10, 21)];
+        Assert.Equal(7, batchOnly.Likes);
+        Assert.Equal(2, batchOnly.Comments);
+        Assert.Equal(1, batchOnly.Shares);
+        Assert.Null(batchOnly.VideoViews);
+        Assert.Null(batchOnly.ProductImpressions);
+
+        // Period totals cover BOTH days.
+        Assert.Equal(12, result.Dataset.PeriodInteractions!.Likes);
+    }
+
+    [Fact]
+    public async Task BatchDaily_BatchOnlyDayWithNoTrafficAtAll_CreatesNoPhantomRecord()
+    {
+        var window = Window(10, 19, 10, 22);
+        var (provider, _, videoService, db) = CreateProvider(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == OverviewPath)
+            {
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.RequestUri.Query);
+                return Ok("{\"code\":0,\"message\":\"Success\",\"data\":{\"latest_available_date\":\""
+                    + Today.AddDays(-1).ToString("yyyy-MM-dd")
+                    + "\",\"performance\":{\"intervals\":["
+                    + "{\"start_date\":\"2026-10-19\",\"end_date\":\"2026-10-20\",\"video_views\":1000}]}}}");
+            }
+
+            return Ok("{\"code\":0,\"data\":{\"videos\":[]}}");
+        });
+        await SeedVideosAsync(db, ("V-1", new DateTime(2026, 10, 10)));
+
+        // The batch returns a 20 Oct interval whose traffic carries NO likes/comments/shares
+        // fields: an all-null day must never become a fabricated record.
+        videoService.Responder = (_, _, _) => BatchOk(
+            BatchEntry("V-1",
+                DailyInterval(new DateTime(2026, 10, 19), likes: 5),
+                "{\"start_date\":\"2026-10-20\",\"end_date\":\"2026-10-21\",\"traffic\":{\"views\":10}}"));
+
+        var result = await provider.GetAsync(window);
+
+        Assert.True(result.IsAvailable);
+        Assert.DoesNotContain(result.Dataset!.Records, r => r.Date == new DateTime(2026, 10, 20));
+        Assert.Equal(5, result.Dataset.PeriodInteractions!.Likes);
     }
 }

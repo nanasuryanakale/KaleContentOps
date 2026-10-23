@@ -805,6 +805,93 @@ public class DailyPerformanceServiceTests
     }
 
     [Fact]
+    public async Task PeriodInteractions_PreviousZeroBaseline_ShowsDifference_ButNoGrowth()
+    {
+        // Previous period is a VALID 0/0/0 (real zeros from its own window): the
+        // difference must still be computed (current - 0) while the growth percentage
+        // stays null - division by a zero baseline is never fabricated (dashboard rule).
+        var source = InteractionsSource(
+            new AccountPeriodInteractions { Likes = 100, Comments = 50, Shares = 50, VideoCount = 12 },
+            new AccountPeriodInteractions { Likes = 0, Comments = 0, Shares = 0, VideoCount = 0 },
+            new[] { DailyReportMetrics.VideoViews, DailyReportMetrics.Interactions });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Equal(200m, interactions.CurrentValue);
+        Assert.Equal(0m, interactions.PreviousValue); // a real zero - never "-" and never the current value
+        Assert.Equal(200m, interactions.Difference);
+        Assert.Null(interactions.GrowthPercentage); // zero baseline: growth is not computable
+    }
+
+    [Fact]
+    public async Task PeriodInteractions_PreviousFetchFailed_PreviousStaysNull_NotZero_NotCurrent()
+    {
+        // The overview answers for the CURRENT window but the comparison window fetch
+        // FAILS (transport/HTTP/business error): the previous interactions value stays
+        // null ("-"), the delta stays null, and the page notice carries the actual
+        // provider reason - a failed previous period is NEVER presented as zero and
+        // the current value is NEVER copied into the previous column.
+        var source = new FakeSource(query =>
+        {
+            var isPrevious = query.Start < new DateTime(2026, 8, 23);
+            if (isPrevious)
+            {
+                return AccountDailyMetricResult.Unavailable(
+                    "TikTok Shop Analytics merespons HTTP 429 (rate limit) pada periode pembanding.");
+            }
+
+            var records = new List<AccountDailyMetricRecord>();
+            for (var day = query.Start; day < query.EndExclusive; day = day.AddDays(1))
+            {
+                records.Add(new AccountDailyMetricRecord { Date = day, VideoViews = 100 });
+            }
+
+            return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
+            {
+                Records = records,
+                SourceName = "tiktok-shop-video-overview",
+                PeriodInteractions = new AccountPeriodInteractions { Likes = 100, Comments = 50, Shares = 50, VideoCount = 9 },
+                AvailableMetricKeys = new HashSet<string> { DailyReportMetrics.VideoViews, DailyReportMetrics.Interactions }
+            });
+        });
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Equal(200m, interactions.CurrentValue);
+        Assert.Null(interactions.PreviousValue); // "-" - never 0, never the current value
+        Assert.Null(interactions.Difference);
+        Assert.Null(interactions.GrowthPercentage);
+
+        // The operator sees WHY the comparison columns are "-".
+        Assert.Contains(data.Notices, n => n.Contains("429") && n.Contains("periode pembanding"));
+    }
+
+    [Fact]
+    public async Task PeriodInteractions_PreviousWindowMissingInteractions_PreviousNull_WithReasonNotice()
+    {
+        // Both windows answer, but only the CURRENT one carries interaction totals
+        // (previous window's interactions fetch failed and the metric is not declared
+        // for that window). The previous value must stay null ("-"), the delta must
+        // stay null, and a notice must explain the suppressed delta honestly.
+        var source = InteractionsSource(
+            new AccountPeriodInteractions { Likes = 100, Comments = 50, Shares = 25, VideoCount = 12 },
+            previous: null,
+            availableKeys: null); // null keys = complete dataset for both windows
+
+        var data = await CreateService(source).BuildAsync(Filter(8, 23, 8, 24));
+
+        var interactions = Card(data, DailyReportMetrics.Interactions);
+        Assert.Equal(175m, interactions.CurrentValue);
+        Assert.Null(interactions.PreviousValue); // no period totals AND no daily rows for the previous window
+        Assert.Null(interactions.Difference);
+        Assert.Null(interactions.GrowthPercentage);
+
+        Assert.Contains(data.Notices, n => n.Contains("Interactions periode sebelumnya tidak tersedia"));
+    }
+
+    [Fact]
     public async Task EngagementRate_UsesPeriodInteractionsOverPeriodReach()
     {
         // Full provider: records carry Reach AND daily interactions that DIFFER from

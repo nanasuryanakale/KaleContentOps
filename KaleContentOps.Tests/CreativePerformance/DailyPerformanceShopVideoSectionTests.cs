@@ -13,12 +13,15 @@ using Xunit;
 namespace KaleContentOps.Tests.CreativePerformance;
 
 /// <summary>
-/// Page-level render test for the "Metrik Shop Video" section through the REAL MVC
-/// pipeline (AuthTestFactory + cookie auth). The registered IAccountDailyMetricSource
-/// is swapped for a scripted fake that supplies the verified shop-video funnel fields
-/// (product_impressions, product_clicks) plus video_views, so the assertions run
-/// against the actual Razor output the operator sees - not against a fabricated model.
-/// Numeric correctness of the aggregation is covered by DailyPerformanceServiceTests.
+/// Page-level REMOVAL regression test (mockup alignment, 2026-10-23) through the REAL
+/// MVC pipeline (AuthTestFactory + cookie auth). The "Metrik Shop Video", "Detail Shop
+/// Video Harian" and "Definisi metrik &amp; sumber data" sections were removed from the
+/// Daily Report view; these tests prove they are really gone (no heading, no card, no
+/// empty container) while the sections that STAY (summary cards, PERBANDINGAN PERIODE,
+/// DETAIL HARIAN) keep rendering their values from the same registered source.
+/// The registered IAccountDailyMetricSource is a scripted fake supplying the verified
+/// shop-video funnel fields plus video_views, so assertions run against the actual
+/// Razor output the operator sees.
 /// </summary>
 public class DailyPerformanceShopVideoSectionTests
 {
@@ -111,51 +114,55 @@ public class DailyPerformanceShopVideoSectionTests
     }
 
     [Fact]
-    public async Task Page_RendersShopVideoSection_WithRealImpressionsAndClicks()
+    public async Task Page_HasNoShopVideoSections_AndNoEmptyLeftovers()
     {
         var html = await GetPageHtmlAsync();
 
-        // The new section exists with its own heading.
-        Assert.Contains("METRIK SHOP VIDEO", html);
-        var shop = Section(html, "aria-label=\"Metrik Shop Video\"");
+        // Headings and containers of both removed sections are gone...
+        Assert.DoesNotContain("METRIK SHOP VIDEO", html);
+        Assert.DoesNotContain("DETAIL SHOP VIDEO HARIAN", html);
+        Assert.DoesNotContain("cpd-shop-video", html);
+        Assert.DoesNotContain("cpd-shop-daily", html);
 
-        // Product Impressions: 14 days x 1.000 = 14.000 (id-ID grouping), own card.
-        Assert.Contains("data-metric=\"product_impressions\"", shop);
-        Assert.Contains("14.000", shop);
+        // ...including every card and table cell that belonged to them.
+        Assert.DoesNotContain("data-metric=\"product_impressions\"", html);
+        Assert.DoesNotContain("data-metric=\"product_clicks\"", html);
+        Assert.DoesNotContain("VIDEO-ATTR GMV", html);
+        Assert.DoesNotContain("IMPRESSIONS", html);
 
-        // Product Clicks: 14 days x 50 = 700, own card.
-        Assert.Contains("data-metric=\"product_clicks\"", shop);
-        Assert.Contains(">700<", shop);
+        // The metric-definitions footer is removed as well - no title, no notes list.
+        Assert.DoesNotContain("Definisi metrik", html);
+        Assert.DoesNotContain("cpd-footer", html);
 
-        // Period delta of the current vs previous window (14.000 vs 11.200 = +25.0%).
-        // Razor HTML-encodes "+" as &#x2B; in the rendered badge.
-        Assert.Contains("cpd-card-delta up", shop);
-        Assert.Contains("&#x2B;25.0% vs periode sebelumnya", shop);
-
-        // The section explicitly states these are shop-funnel metrics, not engagement.
-        Assert.Contains("product_impressions", shop);
+        // And no other page section was lost with them.
+        Assert.Contains("PERBANDINGAN PERIODE", html);
+        Assert.Contains("DETAIL HARIAN", html);
     }
 
     [Fact]
-    public async Task Page_KeepsShopFunnelOutOfSummaryCards_AndComparisonTable()
+    public async Task Page_KeepsSummaryCardsAndComparison_WithRealValues()
     {
         var html = await GetPageHtmlAsync();
 
-        // Summary cards still carry Video Views with its real value (14 x 2.000 = 28.000)
-        // and never the shop-funnel metrics.
+        // Summary cards still render with real values (14 days x 2.000 = 28.000).
         var cards = Section(html, "aria-label=\"Ringkasan metrik\"");
         Assert.Contains("VIDEO VIEWS", cards);
         Assert.Contains("28.000", cards);
+        Assert.Contains("INTERACTIONS", cards);
         Assert.DoesNotContain("data-metric=\"product_impressions\"", cards);
         Assert.DoesNotContain("data-metric=\"product_clicks\"", cards);
 
-        // The period comparison table stays account-engagement only.
+        // The period comparison table stays account-engagement only and keeps its delta.
+        // (Comparison rows render the metric label in title case.)
         var comparison = Section(html, "PERBANDINGAN PERIODE");
+        Assert.Contains("Interactions", comparison);
         Assert.DoesNotContain("data-metric=\"product_impressions\"", comparison);
         Assert.DoesNotContain("data-metric=\"product_clicks\"", comparison);
 
-        // The footer keeps documenting both metrics with their verified source.
-        Assert.Contains("Jumlah tampilan produk (product_impressions)", html);
-        Assert.Contains("Jumlah klik produk (product_clicks)", html);
+        // DETAIL HARIAN keeps its per-day account columns (incl. daily interactions).
+        // (Table headers are uppercase.)
+        var daily = Section(html, "DETAIL HARIAN");
+        Assert.Contains("INTERACTIONS", daily);
+        Assert.Contains("ENGAGEMENT RATE", daily);
     }
 }

@@ -97,6 +97,41 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
         var interactionComposition = BuildInteractionComposition(currentContext);
         var viewerComposition = BuildViewerComposition(currentContext);
 
+        var notices = BuildNotices(currentResult, previousResult, cards.Concat(shopVideoMetrics).ToList());
+
+        // Honest delta-suppression explanation (fix 2026-10-23): when the CURRENT period
+        // carries Interactions but the PREVIOUS one does not (comparison fetch failed,
+        // metric not declared for that window, or genuinely no data), the comparison
+        // columns render "-" - the operator is told WHY instead of seeing a silent dash.
+        // A current value is NEVER copied into the previous column and a missing
+        // previous is NEVER treated as zero.
+        var interactionsCard = cards.Single(c => c.Key == DailyReportMetrics.Interactions);
+        if (interactionsCard.CurrentValue.HasValue && !interactionsCard.PreviousValue.HasValue)
+        {
+            string? previousReason;
+            if (!previousContext.SourceAvailable)
+            {
+                previousReason = previousContext.SourceUnavailableReason;
+            }
+            else
+            {
+                previousReason = previousContext.Interactions.Status switch
+                {
+                    DailyMetricStatus.Unavailable => previousContext.LimitedSourceReason ?? previousContext.SourceUnavailableReason,
+                    DailyMetricStatus.NoData => "belum ada data tercatat pada periode pembanding",
+                    _ => null
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(previousReason))
+            {
+                notices = notices.Append(
+                    "Interactions periode sebelumnya tidak tersedia (" + previousReason + ") sehingga kolom " +
+                    "Periode Sebelumnya, Selisih, dan pertumbuhan Interactions ditampilkan \"-\" - nilai periode " +
+                    "aktif tidak pernah dipakai sebagai pengganti dan nilai yang hilang tidak dianggap nol.").ToList();
+            }
+        }
+
         return new DailyReportData
         {
             CurrentStart = current.Start,
@@ -119,7 +154,7 @@ public sealed class DailyPerformanceService : IDailyPerformanceService
             DailyRows = rows.AsEnumerable().Reverse().ToList(),
             InteractionComposition = interactionComposition,
             ViewerComposition = viewerComposition,
-            Notices = BuildNotices(currentResult, previousResult, cards.Concat(shopVideoMetrics).ToList()),
+            Notices = notices,
             SourceNotes = BuildSourceNotes(currentResult),
             HasAnyMetricData = cards.Concat(shopVideoMetrics).Any(c => c.CurrentValue.HasValue)
         };

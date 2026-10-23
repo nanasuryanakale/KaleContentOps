@@ -29,26 +29,6 @@
     string Percent0(decimal? value) => value is null
         ? Dash()
         : Math.Round(value.Value, 0, MidpointRounding.AwayFromZero).ToString("0", Inv) + "%";
-    // Shop-video metric formatting: rates render as percentages (percent points),
-    // monetary values always carry their currency - an amount is never shown bare.
-    string Money(decimal? value, string? currency) => value is null
-        ? Dash()
-        : NumDec(value) + (string.IsNullOrWhiteSpace(currency) ? string.Empty : " " + currency.ToUpperInvariant());
-    string Money2(decimal? value, string? currency) => value is null
-        ? Dash()
-        : value.Value.ToString("0.##", IdCulture) + (string.IsNullOrWhiteSpace(currency) ? string.Empty : " " + currency.ToUpperInvariant());
-    string NumDec2(decimal? value) => value is null ? Dash() : value.Value.ToString("0.##", IdCulture);
-    string ShopValue(DailyReportMetric metric) => !metric.IsAvailable || metric.CurrentValue is null
-        ? Dash()
-        : metric.DeltaKind == DailyMetricDeltaKind.PercentagePoints
-            ? Rate(metric.CurrentValue)
-            : metric.Currency is null ? NumDec(metric.CurrentValue) : Money(metric.CurrentValue, metric.Currency);
-    string ShopPrevious(DailyReportMetric metric) => metric.PreviousValue is null
-        ? Dash()
-        : metric.DeltaKind == DailyMetricDeltaKind.PercentagePoints
-            ? Rate(metric.PreviousValue)
-            : metric.Currency is null ? NumDec(metric.PreviousValue) : Money(metric.PreviousValue, metric.Currency);
-
     string DateShort(DateTime date) => date.ToString("dd/MM", Inv);
     string DateLong(DateTime date) => date.ToString("d MMMM yyyy", IdCulture);
     string DayMonth(DateTime date) => date.ToString("d MMM", IdCulture);
@@ -293,99 +273,6 @@
         }
     </section>
 
-    <!-- ============ Shop-video commerce funnel (own section: NOT account engagement) ============ -->
-    <section class="cpd-panel cpd-shop-video" aria-label="Metrik Shop Video">
-        <div class="cpd-panel-head">
-            <h2 class="cpd-panel-title">METRIK SHOP VIDEO &middot; @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd)</h2>
-            <span class="cpd-panel-hint">funnel video &times; produk (TikTok Shop Video Performance Overview)</span>
-        </div>
-        <div class="cpd-shop-video-metrics-grid">
-            @foreach (var metric in Model.ShopVideoMetrics)
-            {
-                var badge = DeltaBadge(metric);
-                <div class="cpd-card @(metric.IsAvailable ? string.Empty : "cpd-card-unavailable")" data-metric="@metric.Key">
-                    <div class="cpd-card-label"><span class="cpd-dot cpd-dot-@metric.Key" aria-hidden="true"></span>@metric.Label.ToUpperInvariant()</div>
-                    <div class="cpd-card-value" title="@(metric.IsAvailable ? metric.CoverageNote : metric.UnavailableReason)">@ShopValue(metric)</div>
-                    @if (badge is not null)
-                    {
-                        <p class="cpd-card-delta @badge.Value.Class" title="@(metric.IsPartial ? metric.CoverageNote : null)">
-                            <span class="cpd-card-arrow" aria-hidden="true">@badge.Value.Arrow</span> @badge.Value.Text
-                        </p>
-                    }
-                    else
-                    {
-                        <p class="cpd-card-delta flat" title="@metric.UnavailableReason">@Dash() vs periode sebelumnya</p>
-                    }
-                    <p class="cpd-card-caption">periode sebelumnya: @ShopPrevious(metric)</p>
-                </div>
-            }
-        </div>
-        <p class="cpd-table-note">
-            Nilai berasal dari interval harian TikTok Shop Video Performance Overview dan hanya menjelaskan
-            funnel video &times; produk &mdash; bukan Reach, Interactions, Engagement Rate, maupun pertumbuhan
-            follower akun. Rate periode (CTR, CTOR, GPM) dihitung ulang dari total periode, bukan rata-rata
-            harian; subtotal GMV tidak pernah digabung antar subtype. Tanggal tanpa rekaman ditampilkan
-            &ldquo;-&rdquo;, bukan 0.
-        </p>
-    </section>
-
-    <!-- ============ Daily shop-video detail table (descending) ============ -->
-    <section class="cpd-panel cpd-shop-daily" aria-label="Detail Shop Video Harian">
-        <div class="cpd-panel-head">
-            <h2 class="cpd-panel-title">DETAIL SHOP VIDEO HARIAN &middot; @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd)</h2>
-            <span class="cpd-panel-hint">urut dari tanggal terbaru</span>
-        </div>
-        <div class="table-scroll">
-            <table class="cpd-table cpd-shop-daily-table">
-                <thead>
-                    <tr>
-                        <th>TANGGAL</th>
-                        <th class="cpd-num">IMPRESSIONS</th>
-                        <th class="cpd-num">CLICKS</th>
-                        <th class="cpd-num">SKU ORDERS</th>
-                        <th class="cpd-num">VIDEO-ATTR GMV</th>
-                        <th class="cpd-num">VIDEO GMV</th>
-                        <th class="cpd-num">INDIRECT GMV</th>
-                        <th class="cpd-num">GPM</th>
-                        <th class="cpd-num">CTR</th>
-                        <th class="cpd-num">CTOR</th>
-                        <th class="cpd-num">PRODUCT VIEWERS</th>
-                        <th class="cpd-num">AVG CUSTOMERS</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in Model.DailyRows)
-                    {
-                        <tr>
-                            <td title="@DateLong(row.Date)">@DateShort(row.Date)</td>
-                            <td class="cpd-num">@Num(row.ProductImpressions)</td>
-                            <td class="cpd-num">@Num(row.ProductClicks)</td>
-                            <td class="cpd-num">@Num(row.VideoAttributedSkuOrders)</td>
-                            <td class="cpd-num">@Money2(row.VideoAttributedGmvAmount, row.VideoAttributedGmvCurrency)</td>
-                            <td class="cpd-num">@Money2(row.VideoGmvAmount, row.VideoGmvCurrency)</td>
-                            <td class="cpd-num">@Money2(row.VideoIndirectGmvAmount, row.VideoIndirectGmvCurrency)</td>
-                            <td class="cpd-num">@Money2(row.GpmAmount, row.GpmCurrency)</td>
-                            <td class="cpd-num">@Rate(row.ProductCtrPercent)</td>
-                            <td class="cpd-num">@Rate(row.CtorSkuOrderPercent)</td>
-                            <td class="cpd-num">@Num(row.VideoProductViewers)</td>
-                            <td class="cpd-num">@NumDec2(row.AvgDailyCustomers)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-        @if (Model.DailyRows.Count == 0)
-        {
-            <p class="cpd-empty">Tidak ada data shop video untuk periode ini.</p>
-        }
-        <p class="cpd-table-note">
-            CTR = Product Clicks / Product Impressions (field <code>ctr</code> TikTok, terverifikasi);
-            CTOR = SKU Orders / Product Clicks; GPM = Video-attributed GMV / Video Views &times; 1000.
-            Kolom interaksi akun (Likes/Comments/Shares) tidak ada di endpoint ini &mdash; lihat tabel
-            Interactions di atas untuk total periode.
-        </p>
-    </section>
-
     <!-- ============ Period comparison table ============ -->
     <section class="cpd-panel cpd-comparison">
         <h2 class="cpd-panel-title">PERBANDINGAN PERIODE &middot; @RangeLabelUpper(Model.CurrentStart, Model.CurrentEnd)</h2>
@@ -587,24 +474,6 @@
         }
     </section>
 
-    <!-- ============ Footer: definitions + source status ============ -->
-    <footer class="cpd-footer">
-        <p class="cpd-footer-title">Definisi metrik &amp; sumber data</p>
-        <ul class="cpd-footer-notes">
-            @foreach (var note in Model.SourceNotes)
-            {
-                <li>
-                    <strong>@note.Metric</strong> &mdash; @note.Definition
-                    <span class="cpd-footer-status">@note.Status</span>
-                </li>
-            }
-        </ul>
-        <p class="cpd-footer-disclaimer">
-            Metrik per-video yang tersedia di sistem (ContentMetric) tidak dipakai sebagai pengganti data account-level:
-            menjumlahkan Reach/Views per-video tidak setara dengan analytics akun, sehingga nilai yang belum punya sumber
-            account-level yang terverifikasi tetap ditampilkan &ldquo;-&rdquo;.
-        </p>
-    </footer>
 </div>
 
 <script type="application/json" id="cpdChartPayload">@Html.Raw(chartPayload)</script>

@@ -68,14 +68,23 @@ public class DailyPerformancePageIntegrationTests
                 Assert.Contains(label, html);
             }
 
-            // Period comparison table + both charts + both donuts + daily table + footer.
+            // Period comparison table + both charts + both donuts + daily table.
             Assert.Contains("PERBANDINGAN PERIODE", html);
             Assert.Contains("TREN REACH", html);
             Assert.Contains("PERGERAKAN NET FOLLOWER", html);
             Assert.Contains("KOMPOSISI INTERACTIONS", html);
             Assert.Contains("VIEWER BARU VS LAMA", html);
             Assert.Contains("DETAIL HARIAN", html);
-            Assert.Contains("Definisi metrik", html);
+
+            // Removed per mockup (2026-10-23): the shop-video commerce sections and the
+            // metric-definitions footer no longer exist on this page - and no empty
+            // container of them may linger either.
+            Assert.DoesNotContain("METRIK SHOP VIDEO", html);
+            Assert.DoesNotContain("DETAIL SHOP VIDEO HARIAN", html);
+            Assert.DoesNotContain("Definisi metrik", html);
+            Assert.DoesNotContain("cpd-shop-video", html);
+            Assert.DoesNotContain("cpd-shop-daily", html);
+            Assert.DoesNotContain("cpd-footer", html);
 
             // Chart payload travels as embedded JSON for the client renderer.
             Assert.Contains("cpdChartPayload", html);
