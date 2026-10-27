@@ -78,7 +78,9 @@ public class WeeklyPerformanceServiceTests
 
     /// <summary>
     /// Every calendar day of the half-open window gets a record with deterministic
-    /// Video Views; optional daily interaction components per day.
+    /// Video Views (also mirrored into Reach, the account-level denominator, so a
+    /// dataset that DECLARES Reach actually carries a value); optional daily
+    /// interaction components per day.
     /// </summary>
     private static AccountDailyMetricResult ViewsDataset(
         AccountDailyMetricQuery query,
@@ -96,6 +98,7 @@ public class WeeklyPerformanceServiceTests
             records.Add(new AccountDailyMetricRecord
             {
                 Date = day,
+                Reach = viewsOn(day),
                 VideoViews = viewsOn(day),
                 Likes = likes,
                 Comments = comments,
@@ -427,7 +430,7 @@ public class WeeklyPerformanceServiceTests
     public async Task Build_EngagementRate_ComputedFromPeriodTotals_WhenReachDeclared()
     {
         var source = new FakeSource(query => ViewsDataset(query, _ => 1000, availableKeys: null,
-            windowedInteractions: new AccountPeriodInteractions { Likes = 100, Comments = 20, Shares = 30 }));
+            windowedInteractions: new AccountPeriodInteractions { Likes = 50, Comments = 20, Shares = 30 }));
 
         var data = await CreateService(source).BuildAsync(Filter(8, 24, 8, 30));
 
