@@ -404,7 +404,7 @@ public class WeeklyPerformancePageIntegrationTests
     }
 
     [Fact]
-    public async Task Sidebar_HighlightsWeekly_OnlyOnWeeklyRoute_MonthlyStaysPlaceholder()
+    public async Task Sidebar_HighlightsWeekly_OnlyOnWeeklyRoute_MonthlyLinksToItsRoute()
     {
         var (factory, client) = await CreateSignedInAsync();
         using (factory)
@@ -417,8 +417,11 @@ public class WeeklyPerformancePageIntegrationTests
             Assert.Contains("active", anchorArea);
             Assert.Contains("menu-chart", anchorArea);
 
-            // Monthly remains a non-route placeholder (module not built yet).
-            Assert.Contains("href=\"#\">Monthly</a>", html);
+            // Monthly is now a real route (Monthly Report module built on this
+            // branch): the sidebar links to it, and it is NOT active on the
+            // Weekly route - only Weekly carries the active marker above.
+            Assert.Contains("href=\"/MonthlyPerformance\"", html);
+            Assert.DoesNotContain("menu-chart active\" href=\"/MonthlyPerformance\"", html);
         }
     }
 }

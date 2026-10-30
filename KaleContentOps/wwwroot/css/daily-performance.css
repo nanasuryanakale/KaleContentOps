@@ -1,16 +1,17 @@
 /* ==========================================================================
-   Creative Performance - Daily & Weekly Reports (one module, one visual language)
-   Everything is scoped under :is(.creative-performance-daily-page,
-   .creative-performance-weekly-page) so no other menu (Daily Summary, Winning
-   Content, Team Performance, ...) can be affected. The Weekly page loads this
-   same file so BOTH reports share the exact date-range component, tokens, cards,
-   tables and chart styles - never a Weekly-only restyle.
+   Creative Performance - Daily, Weekly & Monthly Reports (one module, one
+   visual language). Everything is scoped under :is(.creative-performance-daily-page,
+   .creative-performance-weekly-page, .creative-performance-monthly-page) so no
+   other menu (Daily Summary, Winning Content, Team Performance, ...) can be
+   affected. The Weekly and Monthly pages load this same file so ALL reports
+   share the exact date-range component, tokens, cards, tables and chart styles -
+   never a page-only restyle.
    Dark theme follows the app tokens from layout.css (#0b1220 background,
    #dce6f2 text, #9aa4b2 muted) with the same palette used by Daily Summary /
    Winning Content so the module looks native.
    ========================================================================== */
 
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) {
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) {
     --cpd-bg: #0b111b;
     --cpd-card: #111a27;
     --cpd-card-2: #151f2e;
@@ -49,7 +50,7 @@
 .cpd-range-note { margin: 8px 0 0; max-width: 320px; color: var(--cpd-muted); font-size: 11px; line-height: 1.5; }
 
 /* Date range button + picker (same pattern as Daily Summary / Winning Content) */
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-range-button {
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-range-button {
     display: inline-flex;
     align-items: center;
     gap: 9px;
@@ -60,11 +61,11 @@
     border-radius: 8px;
     cursor: pointer;
 }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-range-button:hover { border-color: #52657e; background: var(--cpd-card-2); }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-range-button strong { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .calendar-icon { display: inline-flex; color: var(--cpd-blue); }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-range-button:hover { border-color: #52657e; background: var(--cpd-card-2); }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-range-button strong { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .calendar-icon { display: inline-flex; color: var(--cpd-blue); }
 
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .popover-panel {
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .popover-panel {
     position: absolute;
     z-index: 30;
     background: #172232;
@@ -74,29 +75,29 @@
     text-align: left;
 }
 
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-panel { top: calc(100% + 8px); right: 0; width: min(680px, calc(100vw - 48px)); padding: 16px; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-topline { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-topline strong { display: block; color: #f0f5fa; font-size: 14px; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-topline small { display: block; margin-top: 3px; color: var(--cpd-muted); font-size: 11px; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .close-button { color: #aab7c7; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .close-button:hover { color: white; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-panel { top: calc(100% + 8px); right: 0; width: min(680px, calc(100vw - 48px)); padding: 16px; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-topline { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-topline strong { display: block; color: #f0f5fa; font-size: 14px; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-topline small { display: block; margin-top: 3px; color: var(--cpd-muted); font-size: 11px; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .close-button { color: #aab7c7; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .close-button:hover { color: white; }
 
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-body { display: flex; gap: 18px; align-items: stretch; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .preset-list { flex: 0 0 190px; display: flex; flex-direction: column; gap: 6px; padding-right: 16px; border-right: 1px solid var(--cpd-line-soft); }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .preset-title { margin-bottom: 4px; color: #8795a9; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .preset-list button { padding: 8px 11px; color: #cbd6e5; text-align: left; font-size: 12px; background: transparent; border: 1px solid var(--cpd-line); border-radius: 6px; cursor: pointer; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .preset-list button:hover { color: white; border-color: var(--cpd-blue); background: rgba(77, 159, 255, .08); }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-body { display: flex; gap: 18px; align-items: stretch; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .preset-list { flex: 0 0 190px; display: flex; flex-direction: column; gap: 6px; padding-right: 16px; border-right: 1px solid var(--cpd-line-soft); }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .preset-title { margin-bottom: 4px; color: #8795a9; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .preset-list button { padding: 8px 11px; color: #cbd6e5; text-align: left; font-size: 12px; background: transparent; border: 1px solid var(--cpd-line); border-radius: 6px; cursor: pointer; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .preset-list button:hover { color: white; border-color: var(--cpd-blue); background: rgba(77, 159, 255, .08); }
 
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .calendar-area { flex: 1 1 auto; min-width: 0; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .calendar-area { flex: 1 1 auto; min-width: 0; }
 
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cpd-line-soft); }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-selected { color: #cbd6e5; font-size: 12px; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .button-secondary,
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .button-primary { padding: 7px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .button-secondary { color: #cbd6e5; background: transparent; border: 1px solid var(--cpd-line); }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .button-secondary:hover { color: white; border-color: #52657e; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .button-primary { color: white; font-weight: 600; background: #356fc0; border: 1px solid #356fc0; }
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .button-primary:hover { background: #3f7fd4; border-color: #3f7fd4; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cpd-line-soft); }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-selected { color: #cbd6e5; font-size: 12px; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .button-secondary,
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .button-primary { padding: 7px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .button-secondary { color: #cbd6e5; background: transparent; border: 1px solid var(--cpd-line); }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .button-secondary:hover { color: white; border-color: #52657e; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .button-primary { color: white; font-weight: 600; background: #356fc0; border: 1px solid #356fc0; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .button-primary:hover { background: #3f7fd4; border-color: #3f7fd4; }
 
 /* ============ Notices ============ */
 .cpd-notices {
@@ -181,7 +182,7 @@
 .cpd-empty { margin: 6px 0; color: var(--cpd-muted); font-size: 12px; line-height: 1.55; }
 
 /* ============ Tables ============ */
-:is(.creative-performance-daily-page, .creative-performance-weekly-page) .table-scroll { overflow-x: auto; }
+:is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .table-scroll { overflow-x: auto; }
 
 .cpd-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .cpd-table th, .cpd-table td { padding: 10px 12px; border-bottom: 1px solid var(--cpd-line-soft); white-space: nowrap; }
@@ -215,6 +216,11 @@
 .cpd-chart-line.views { stroke: var(--cpd-indigo); }
 .cpd-chart-point.reach { fill: var(--cpd-blue); }
 .cpd-chart-point.views { fill: var(--cpd-indigo); }
+/* Single-point dataset (one-month period): a soft halo so an isolated marker is
+   still clearly visible without inventing a line or extra points. */
+.cpd-chart-point-halo { opacity: .2; }
+.cpd-chart-point-halo.reach { fill: var(--cpd-blue); }
+.cpd-chart-point-halo.views { fill: var(--cpd-indigo); }
 .cpd-chart-bar.pos { fill: var(--cpd-green); }
 .cpd-chart-bar.neg { fill: var(--cpd-red); }
 .cpd-chart-baseline { stroke: rgba(255, 255, 255, .28); stroke-width: 1; }
@@ -289,7 +295,7 @@
     .cpd-header { flex-direction: column; align-items: stretch; }
     .cpd-header-anchor { text-align: left; }
     .cpd-range-note { max-width: none; }
-    :is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-panel { right: auto; left: 0; }
+    :is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-panel { right: auto; left: 0; }
 }
 
 @media (max-width: 767px) {
@@ -298,8 +304,8 @@
     .cpd-card-value { font-size: 22px; }
     .cpd-donut-body { flex-direction: column; align-items: flex-start; gap: 14px; }
     .cpd-title h1 { font-size: 20px; }
-    :is(.creative-performance-daily-page, .creative-performance-weekly-page) .date-picker-body { flex-direction: column; }
-    :is(.creative-performance-daily-page, .creative-performance-weekly-page) .preset-list { flex: 1 1 auto; flex-direction: row; flex-wrap: wrap; padding-right: 0; padding-bottom: 12px; border-right: 0; border-bottom: 1px solid var(--cpd-line-soft); }
+    :is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .date-picker-body { flex-direction: column; }
+    :is(.creative-performance-daily-page, .creative-performance-weekly-page, .creative-performance-monthly-page) .preset-list { flex: 1 1 auto; flex-direction: row; flex-wrap: wrap; padding-right: 0; padding-bottom: 12px; border-right: 0; border-bottom: 1px solid var(--cpd-line-soft); }
 }
 
 @media (max-width: 480px) {
@@ -332,8 +338,8 @@
     border-radius: 8px;
 }
 
-/* Partial-week pill in the DETAIL MINGGU table. */
-.cpd-weekly-partial {
+/* Partial-bucket pill in the DETAIL MINGGU / DETAIL BULAN tables. */
+.cpd-weekly-partial, .cpd-monthly-partial {
     display: inline-block;
     margin-left: 8px;
     padding: 2px 8px;

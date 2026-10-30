@@ -19,10 +19,7 @@ public static class MonthlyReportBucketing
     /// <summary>Derives the monthly buckets for the given inclusive range.</summary>
     /// <exception cref="ArgumentException">Thrown when start > end.</exception>
     public static IReadOnlyList<MonthlyBucket> Months(DateTime start, DateTime end)
-    {
-        // Method body commented out for debugging
-        throw new NotImplementedException();
-    }
+        => MonthlyReportDateRange.Create(start, end).Months().ToList();
 
     /// <summary>Same as Months(DateTime, DateTime) but works on a validated MonthlyReportDateRange.</summary>
     public static IReadOnlyList<MonthlyBucket> Months(MonthlyReportDateRange range)

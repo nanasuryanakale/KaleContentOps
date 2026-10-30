@@ -61,7 +61,24 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
             ? await BuildPeriodAsync(previousMonths, cancellationToken).ConfigureAwait(false)
             : BuildPreviousPeriodContext(previousMonths, currentPeriod);
 
+        // PERIOD INDEPENDENCE: current and previous are two separate provider queries
+        // with their own windows and their own availability - a failure on the previous
+        // period must never clear a valid current value (and vice versa).
+        _logger.LogInformation(
+            "Monthly period independence: current {CurrentStart}..{CurrentEnd} available {CurrentAvailable}; previous {PreviousStart}..{PreviousEnd} available {PreviousAvailable} (previous reason {PreviousReason})",
+            current.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            current.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            currentPeriod.SourceAvailable,
+            previous.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            previous.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            previousPeriod.SourceAvailable,
+            string.IsNullOrWhiteSpace(previousPeriod.SourceUnavailableReason) ? "-" : previousPeriod.SourceUnavailableReason);
+
         var cards = BuildCards(currentPeriod, previousPeriod, currentPeriod.LimitedSourceReason);
+
+        // CARD DIAGNOSTIC: value, status and honest reason for every KPI card, so a "-"
+        // on screen can be traced to the exact status that produced it.
+        _logger.LogInformation("Monthly cards: {Cards}", string.Join(" | ", cards.Select(DescribeCard)));
         var trendRows = BuildTrendRows(currentPeriod);
         var monthlyRows = trendRows.AsEnumerable().Reverse().ToList();
 
@@ -130,6 +147,26 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
                 new AccountDailyMetricQuery { Start = month.Start, EndExclusive = month.End.AddDays(1) },
                 cancellationToken).ConfigureAwait(false);
 
+            // PER-QUERY DIAGNOSTIC (numbers/codes only - never a credential): every month
+            // bucket is asked INDEPENDENTLY, so one bucket's failure can never be read as
+            // another bucket's result. Proves Start/EndExclusive, whether the provider
+            // answered, which metric keys it declares and whether PeriodInteractions
+            // (likes/comments/shares) was actually formed for THIS window.
+            _logger.LogInformation(
+                "Monthly provider query {Bucket}: {Start}..{EndExclusive} available {Available}, availableKeys [{Keys}], periodInteractions formed {Formed} (likes {Likes} comments {Comments} shares {Shares}), reason {Reason}",
+                month.Start.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+                month.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                month.End.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                result.IsAvailable && result.Dataset is not null,
+                result.Dataset?.AvailableMetricKeys is null
+                    ? "provider declares no key set"
+                    : string.Join(", ", result.Dataset.AvailableMetricKeys),
+                result.Dataset?.PeriodInteractions is not null,
+                result.Dataset?.PeriodInteractions?.Likes is not null,
+                result.Dataset?.PeriodInteractions?.Comments is not null,
+                result.Dataset?.PeriodInteractions?.Shares is not null,
+                string.IsNullOrWhiteSpace(result.UnavailableReason) ? "-" : result.UnavailableReason!);
+
             if (!result.IsAvailable || result.Dataset is null)
             {
                 var reason = string.IsNullOrWhiteSpace(result.UnavailableReason)
@@ -142,10 +179,27 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
             monthContexts.Add(BuildMonthContext(month, result.Dataset));
         }
 
-        return BuildPeriodContext(monthContexts);
+        var context = BuildPeriodContext(monthContexts);
+
+        // PERIOD ROLL-UP: the period is only as available as its buckets - the keys and
+        // statuses below are exactly what BuildCards and the composition read.
+        _logger.LogInformation(
+            "Monthly period context: {BucketCount} bucket(s) {FirstStart}..{LastEnd} sourceAvailable {SourceAvailable}, availableKeys [{Keys}], interactions {Interactions} [{InteractionsStatus}], videoViews {VideoViews} [{VideoViewsStatus}], limitedReason {LimitedReason}, sourceReason {SourceReason}",
+            monthContexts.Count,
+            monthContexts.Count == 0 ? "-" : monthContexts[0].Month.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            monthContexts.Count == 0 ? "-" : monthContexts[^1].Month.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            context.SourceAvailable,
+            context.AvailableMetricKeys is null ? "provider declares no key set" : string.Join(", ", context.AvailableMetricKeys),
+            context.Interactions.Value.HasValue ? context.Interactions.Value.Value.ToString(CultureInfo.InvariantCulture) : "-",
+            context.Interactions.Status,
+            context.VideoViews.Value.HasValue ? context.VideoViews.Value.Value.ToString(CultureInfo.InvariantCulture) : "-",
+            context.VideoViews.Status,
+            string.IsNullOrWhiteSpace(context.LimitedSourceReason) ? "-" : context.LimitedSourceReason,
+            string.IsNullOrWhiteSpace(context.SourceUnavailableReason) ? "-" : context.SourceUnavailableReason);
+        return context;
     }
 
-    private static MonthContext BuildMonthContext(MonthlyBucket month, AccountDailyMetricDataset dataset)
+    private MonthContext BuildMonthContext(MonthlyBucket month, AccountDailyMetricDataset dataset)
     {
         var daysInMonth = month.DayCount;
         var availableKeys = dataset.AvailableMetricKeys;
@@ -211,11 +265,13 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         }
         else if (hasWindowedInteractions)
         {
-            likesAgg = new DailyMetricAggregate(windowed!.Likes.Value, daysInMonth, DailyMetricStatus.Complete);
-            commentsAgg = new DailyMetricAggregate(windowed.Comments.Value, daysInMonth, DailyMetricStatus.Complete);
-            sharesAgg = new DailyMetricAggregate(windowed.Shares.Value, daysInMonth, DailyMetricStatus.Complete);
+            // hasWindowedInteractions guarantees all three components are present,
+            // so the month total is complete (no fabricated zeros, no partial sum).
+            likesAgg = new DailyMetricAggregate(windowed!.Likes!.Value, daysInMonth, DailyMetricStatus.Complete);
+            commentsAgg = new DailyMetricAggregate(windowed.Comments!.Value, daysInMonth, DailyMetricStatus.Complete);
+            sharesAgg = new DailyMetricAggregate(windowed.Shares!.Value, daysInMonth, DailyMetricStatus.Complete);
             interactionsAgg = new DailyMetricAggregate(
-                windowed.Likes.Value + windowed.Comments.Value + windowed.Shares.Value,
+                windowed.Likes!.Value + windowed.Comments!.Value + windowed.Shares!.Value,
                 daysInMonth, DailyMetricStatus.Complete);
         }
         else
@@ -233,6 +289,25 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
                 dataset.FollowerSnapshots.Where(s => s.AsOfDate.Date >= month.Start).ToList(),
                 month.End)
             : null;
+
+        // PER-MONTH DIAGNOSTIC: shows WHICH source of truth fed the Interactions total
+        // (windowed PeriodInteractions vs daily records vs unavailable) and the exact
+        // availability keys the dashboard reads for THIS bucket.
+        _logger.LogInformation(
+            "Monthly month context {Month}: availableKeys [{Keys}], windowed interactions {Windowed} (likes {Likes} comments {Comments} shares {Shares}), interactions {Interactions} [{InteractionsStatus}], like [{LikeStatus}] comment [{CommentStatus}] share [{ShareStatus}], videoViews {VideoViews} [{VideoViewsStatus}]",
+            month.Start.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+            availableKeys is null ? "provider declares no key set" : string.Join(", ", availableKeys),
+            hasWindowedInteractions,
+            windowed?.Likes is not null,
+            windowed?.Comments is not null,
+            windowed?.Shares is not null,
+            interactionsAgg.Value.HasValue ? interactionsAgg.Value.Value.ToString(CultureInfo.InvariantCulture) : "-",
+            interactionsAgg.Status,
+            likesAgg.Status,
+            commentsAgg.Status,
+            sharesAgg.Status,
+            videoViewsAgg.Value.HasValue ? videoViewsAgg.Value.Value.ToString(CultureInfo.InvariantCulture) : "-",
+            videoViewsAgg.Status);
 
         return new MonthContext
         {
@@ -319,6 +394,8 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
                 SourceName = firstAvailable?.SourceName ?? string.Empty,
                 AvailableMetricKeys = availableKeys,
                 LimitedSourceReason = limitedReason,
+                Months = monthContexts,
+                MonthsInPeriod = monthsInPeriod,
                 Reach = reachAgg, VideoViews = videoViewsAgg, ProfileViews = profileViewsAgg,
                 Likes = likesAgg, Comments = commentsAgg, Shares = sharesAgg,
                 Interactions = interactionsAgg, NetFollower = netFollowerAgg,
@@ -329,7 +406,11 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
 
         // Period ER = Total Interactions / Total Reach x 100 (never the average of monthly ERs).
         PeriodValue engagementRate;
-        if (interactionsAgg.Value is null || reachAgg.Value is null)
+        if (!monthContexts[0].Supplies(DailyReportMetrics.Reach))
+        {
+            engagementRate = new PeriodValue(null, DailyMetricStatus.Unavailable, ERRequiresReachReason);
+        }
+        else if (interactionsAgg.Value is null || reachAgg.Value is null)
         {
             var status = DailyReportCalculator.Worst(interactionsAgg.Status, reachAgg.Status);
             var erReason = reachAgg.Status == DailyMetricStatus.Unavailable
@@ -353,12 +434,12 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         var snapshot = monthContexts.Select(m => m.FollowerSnapshot)
             .Where(s => s is not null).OrderByDescending(s => s!.AsOfDate).ThenByDescending(s => s!.CapturedAt).FirstOrDefault();
 
-        var totalFollower = monthContexts[0].Supplies(DailyReportMetrics.TotalFollower)
-            ? snapshot is null
+        var totalFollower = !monthContexts[0].Supplies(DailyReportMetrics.TotalFollower)
+            ? new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason)
+            : snapshot is null
                 ? new PeriodValue(null, DailyMetricStatus.NoData,
                     "Tidak ada snapshot follower yang valid pada periode ini.")
-                : new PeriodValue(snapshot!.FollowerCount, DailyMetricStatus.Complete, null)
-            : new PeriodValue(null, DailyMetricStatus.Unavailable, limitedReason);
+                : new PeriodValue(snapshot!.FollowerCount, DailyMetricStatus.Complete, null);
 
     return new PeriodContext
     {
@@ -367,6 +448,7 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         AvailableMetricKeys = availableKeys,
         LimitedSourceReason = limitedReason,
         Months = monthContexts,
+        MonthsInPeriod = monthsInPeriod,
         Reach = reachAgg, VideoViews = videoViewsAgg,
         ProfileViews = profileViewsAgg, Likes = likesAgg, Comments = commentsAgg,
         Shares = sharesAgg, Interactions = interactionsAgg, NetFollower = netFollowerAgg,
@@ -400,31 +482,36 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
     {
         if (!currentPeriod.SourceAvailable)
         {
-        return new PeriodContext
-        {
-            SourceAvailable = false,
-            SourceUnavailableReason = currentPeriod.SourceUnavailableReason,
-            SourceName = currentPeriod.SourceName,
-            AvailableMetricKeys = currentPeriod.AvailableMetricKeys,
-            LimitedSourceReason = currentPeriod.LimitedSourceReason,
-            Months = currentPeriod.Months,
-            Reach = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            VideoViews = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            ProfileViews = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            Likes = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            Comments = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            Shares = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            Interactions = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            NetFollower = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
-            EngagementRate = new PeriodValue(null, DailyMetricStatus.Unavailable, currentPeriod.SourceUnavailableReason),
-            TotalFollower = new PeriodValue(null, DailyMetricStatus.Unavailable, currentPeriod.SourceUnavailableReason)
-        };
-    } // Simplified previous period
+            // The provider could not answer the current period at all, so the
+            // comparison period is reported with the same honest reason instead
+            // of asking again (Daily/Weekly convention).
+            return new PeriodContext
+            {
+                SourceAvailable = false,
+                SourceUnavailableReason = currentPeriod.SourceUnavailableReason,
+                SourceName = currentPeriod.SourceName,
+                AvailableMetricKeys = currentPeriod.AvailableMetricKeys,
+                LimitedSourceReason = currentPeriod.LimitedSourceReason,
+                Months = currentPeriod.Months,
+                MonthsInPeriod = currentPeriod.MonthsInPeriod,
+                Reach = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                VideoViews = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                ProfileViews = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                Likes = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                Comments = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                Shares = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                Interactions = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                NetFollower = DailyMetricAggregate.None(DailyMetricStatus.Unavailable),
+                EngagementRate = new PeriodValue(null, DailyMetricStatus.Unavailable, currentPeriod.SourceUnavailableReason),
+                TotalFollower = new PeriodValue(null, DailyMetricStatus.Unavailable, currentPeriod.SourceUnavailableReason)
+            };
+        }
+
         return new PeriodContext
         {
             SourceAvailable = false,
             Months = new List<MonthContext>(),
-
+            MonthsInPeriod = months.Count,
             SourceUnavailableReason = "Periode pembanding tidak tersedia sehingga kolom Periode Sebelumnya dan Selisih ditampilkan \"-\".",
             SourceName = string.Empty,
             AvailableMetricKeys = null,
@@ -442,10 +529,18 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         };
     }
 
+    private static string DescribeCard(DailyReportMetric card)
+        => card.Key
+            + " current=" + (card.CurrentValue.HasValue ? card.CurrentValue.Value.ToString(CultureInfo.InvariantCulture) : "-")
+            + " [" + card.CurrentStatus + "]"
+            + " previous=" + (card.PreviousValue.HasValue ? card.PreviousValue.Value.ToString(CultureInfo.InvariantCulture) : "-")
+            + " [" + card.PreviousStatus + "]"
+            + (card.UnavailableReason is null ? string.Empty : " reason=" + card.UnavailableReason);
+
     private static IReadOnlyList<DailyReportMetric> BuildCards(PeriodContext current, PeriodContext previous, string? limitedReason)
     {
         PeriodValue Cur(DailyMetricAggregate agg) => ToValue(agg, current.MonthsInPeriod, limitedReason);
-        PeriodValue Prev(DailyMetricAggregate agg) => ToValue(agg, previous.MonthsInPeriod, limitedReason);
+        PeriodValue Prev(DailyMetricAggregate agg) => ToValue(agg, previous.MonthsInPeriod, limitedReason ?? previous.LimitedSourceReason);
 
         var cards = new List<DailyReportMetric>
         {
@@ -457,8 +552,8 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         };
         cards.Insert(4, Build(
             DailyReportMetrics.EngagementRate, "Engagement Rate",
-            new PeriodValue(current.EngagementRate!.Value, DailyReportCalculator.Worst(current.EngagementRate!.Status, previous.EngagementRate!.Status), null),
-            new PeriodValue(previous.EngagementRate!.Value, DailyReportCalculator.Worst(current.EngagementRate!.Status, previous.EngagementRate!.Status), null),
+            new PeriodValue(current.EngagementRate!.Value, current.EngagementRate!.Status, null, current.EngagementRate!.MonthsCovered, current.MonthsInPeriod),
+            new PeriodValue(previous.EngagementRate!.Value, previous.EngagementRate!.Status, null, previous.EngagementRate!.MonthsCovered, previous.MonthsInPeriod),
             DailyMetricDeltaKind.PercentagePoints));
         cards.Add(Build(
             DailyReportMetrics.TotalFollower, "Total Follower",
@@ -581,7 +676,23 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         return rows;
     }
 
-    private static DailyReportComposition BuildInteractionComposition(PeriodContext context)
+    private DailyReportComposition BuildInteractionComposition(PeriodContext context)
+    {
+        var composition = BuildInteractionCompositionCore(context);
+
+        // COMPOSITION DIAGNOSTIC: a donut is rendered ONLY when every component is
+        // present - the reason line proves which rule blocked it (source unavailable,
+        // key not declared, or incomplete components) instead of an unexplained "-".
+        _logger.LogInformation(
+            "Monthly interaction composition: available {Available}, total {Total}, segments {Segments}, reason {Reason}",
+            composition.IsAvailable,
+            composition.Total.HasValue ? composition.Total.Value.ToString(CultureInfo.InvariantCulture) : "-",
+            composition.Segments.Count,
+            composition.IsAvailable ? "-" : (composition.UnavailableReason ?? "-"));
+        return composition;
+    }
+
+    private static DailyReportComposition BuildInteractionCompositionCore(PeriodContext context)
     {
         if (!context.SourceAvailable) return UnavailableComp("interaction_composition", "Komposisi Interactions", context.SourceUnavailableReason);
         if (!context.Supplies(DailyReportMetrics.Interactions))
@@ -612,30 +723,31 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
 
     private static DailyReportComposition BuildViewerComposition(PeriodContext context)
     {
-        if (!context.SourceAvailable) return UnavailableComp("viewer_composition", "Komposisi Reach · Viewer Baru vs Lama", context.SourceUnavailableReason);
+        const string key = "viewer_composition";
+        const string title = "Komposisi Reach · Viewer Baru vs Lama";
 
-        // Get ViewerComposition from the months in the period
-        AccountViewerComposition? viewers = null;
-        if (context.Months.Count > 0)
-        {
-            // Try to find a month with ViewerComposition available
-            var monthWithViewer = context.Months.FirstOrDefault(m => m.ViewerComposition is not null);
-            if (monthWithViewer.ViewerComposition is not null)
-            {
-                viewers = monthWithViewer.ViewerComposition;
-            }
-        }
+        if (!context.SourceAvailable) return UnavailableComp(key, title, context.SourceUnavailableReason);
+
+        // Unique-viewer splits are PERIOD-level counts supplied by the source for
+        // exactly one queried window. They may only be shown when the whole period
+        // is ONE queried month - a multi-month period would need summing monthly
+        // unique viewers, which double counts. Same locked rule as the Weekly
+        // Report (one bucket window only), and the same reason string the
+        // unavailable state has always advertised.
+        var singleMonth = context.Months.Count == 1 ? context.Months[0] : null;
+        var viewers = singleMonth?.ViewerComposition;
 
         if (viewers is null || viewers.NewViewers is null || viewers.ReturningViewers is null)
         {
-            return UnavailableComp("viewer_composition", "Komposisi Reach · Viewer Baru vs Lama",
+            return UnavailableComp(key, title,
                 context.Months.Count > 1
                     ? "Komposisi viewer baru/lama hanya dapat ditampilkan untuk rentang yang dicakup satu bulan."
                     : "Komposisi viewer baru/lama level akun belum tersedia dari sumber yang terverifikasi.");
         }
-        var total = viewers!.NewViewers.Value + viewers!.ReturningViewers.Value;
-        if (total <= 0) return UnavailableComp("viewer_composition", "Komposisi Reach · Viewer Baru vs Lama", "Total viewer periode ini 0 atau tidak tersedia.");
-        return new DailyReportComposition { Key = "viewer_composition", Title = "Komposisi Reach · Viewer Baru vs Lama", IsAvailable = true, Total = total, Segments = ViewerSegments(viewers!.NewViewers.Value, viewers!.ReturningViewers.Value) };
+
+        var total = viewers.NewViewers.Value + viewers.ReturningViewers.Value;
+        if (total <= 0) return UnavailableComp(key, title, "Total viewer periode ini 0 atau tidak tersedia.");
+        return new DailyReportComposition { Key = key, Title = title, IsAvailable = true, Total = total, Segments = ViewerSegments(viewers.NewViewers.Value, viewers.ReturningViewers.Value) };
     }
 
     private static IReadOnlyList<DailyReportCompositionSegment> ViewerSegments(long? newViewers, long? returningViewers)
@@ -648,7 +760,7 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         => new() { Key = key, Label = label, Color = color, Value = value, Percentage = DailyReportCalculator.CompositionPercentage(value, total) };
 
     private static DailyReportComposition UnavailableComp(string key, string title, string reason)
-        => new() { Key = key, Title = title, IsAvailable = false, UnavailableReason = reason, Segments = null };
+        => new() { Key = key, Title = title, IsAvailable = false, UnavailableReason = reason, Segments = Array.Empty<DailyReportCompositionSegment>() };
 
     private static IReadOnlyList<string> BuildNotices(PeriodContext current, PeriodContext previous, IReadOnlyList<DailyReportMetric> cards)
     {
@@ -674,14 +786,80 @@ public sealed class MonthlyPerformanceService : IMonthlyPerformanceService
         }
         else
         {
-            if (currentPeriod.AvailableMetricKeys is not null)
+            var sourceName = string.IsNullOrWhiteSpace(currentPeriod.SourceName)
+                ? "sumber account-level"
+                : currentPeriod.SourceName;
+            var availableKeys = currentPeriod.AvailableMetricKeys;
+
+            // Per-metric footer status: a metric is only "tersedia" when the
+            // registered provider explicitly declares it (verified mapping).
+            // Everything else is honestly reported as not-yet-verified, even
+            // when the source itself answers.
+            string StatusFor(string key) => availableKeys is null || availableKeys.Contains(key)
+                ? $"tersedia dari {sourceName}"
+                : "belum tersedia dari sumber yang terverifikasi";
+
+            notes.Add(new DailyReportSourceNote
             {
-                var availableLabels = CardMetrics.Where(m => currentPeriod.AvailableMetricKeys.Contains(m.Key)).Select(m => m.Label).ToList();
-                if (availableLabels.Count > 0)
-                    notes.Add(new DailyReportSourceNote { Metric = "Metrik tersedia", Definition = "Sumber data menyediakan: " + string.Join(", ", availableLabels), Status = "tersedia" });
-            }
-            if (currentPeriod.Interactions is not null && currentPeriod.Interactions.Value.HasValue)
-                notes.Add(new DailyReportSourceNote { Metric = "Interactions", Definition = "Like + Comment + Share dari endpoint shop video performance overview", Status = "tersedia" });
+                Metric = "Reach",
+                Definition = "Total viewers unik level akun untuk seluruh periode (bukan penjumlahan reach harian atau reach per-video).",
+                Status = StatusFor(DailyReportMetrics.Reach)
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Video Views",
+                Definition = "Total Video Views level akun per bulan, diakumulasi dari agregat harian terverifikasi pada jendela bulan tersebut.",
+                Status = StatusFor(DailyReportMetrics.VideoViews)
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Profile Views",
+                Definition = "Total Profile Views level akun per bulan dari agregat harian terverifikasi.",
+                Status = StatusFor(DailyReportMetrics.ProfileViews)
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Interactions",
+                Definition = "Likes + Comments + Shares per bulan, memakai total agregat untuk TEPAT jendela bulan tersebut " +
+                    "(analytics/202605 video list). Total jendela yang lebih besar tidak pernah dibagi rata ke beberapa bulan " +
+                    "dan tidak pernah dijumlah ganda dengan nilai harian.",
+                Status = StatusFor(DailyReportMetrics.Interactions)
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Engagement Rate",
+                Definition = "Total Interactions periode / Total Reach periode x 100% (bukan rerata ER bulanan) - " +
+                    "Reach sebagai pembagi; selama Reach belum tersedia nilai tetap \"-\" (tidak diganti Views).",
+                Status = "dihitung oleh dashboard"
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Net Follower",
+                Definition = "Followers Gained - Followers Lost level akun per bulan, lalu diakumulasi per periode - " +
+                    "keuntungan follower per-video tidak pernah dijumlah jadi Net Follower akun.",
+                Status = StatusFor(DailyReportMetrics.NetFollower)
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Total Follower",
+                Definition = "Snapshot follower pada posisi akhir periode - penyimpanan snapshot internal belum tersedia, " +
+                    "sehingga nilai selalu \"-\" (tanpa migrasi database baru).",
+                Status = StatusFor(DailyReportMetrics.TotalFollower)
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Periode Pembanding",
+                Definition = "Rentang sama panjang (jumlah hari kalender sama) yang berakhir tepat sehari sebelum StartDate " +
+                    "(apples-to-apples, tanpa overlap) - konvensi yang sama dengan tab Daily dan Weekly.",
+                Status = "dihitung oleh dashboard"
+            });
+            notes.Add(new DailyReportSourceNote
+            {
+                Metric = "Bucketing bulan",
+                Definition = "Bulan = kalender bulan (Asia/Jakarta); rentang terpilih dipotong per bulan tanpa snapping - " +
+                    "kolom Hari menunjukkan jumlah hari tercakup dan tanda parsial menandai bulan yang tidak penuh.",
+                Status = "dihitung oleh dashboard"
+            });
         }
         return notes;
     }

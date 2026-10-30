@@ -17,8 +17,10 @@ public readonly struct MonthlyReportDateRange : IEquatable<MonthlyReportDateRang
     /// <summary>Inclusive last day of the range.</summary>
     public DateTime End { get; }
 
-    /// <summary>Exclusive upper bound for database filters: End + 1 month.</summary>
-    public DateTime EndExclusive => End.AddMonths(1);
+    /// <summary>Exclusive upper bound for database filters: End + 1 day
+    /// (same half-open contract as DailyReportDateRange and WeeklyBucketing, so
+    /// [Start, EndExclusive) covers exactly the inclusive range).</summary>
+    public DateTime EndExclusive => End.AddDays(1);
 
     /// <summary>Number of calendar days covered (inclusive): at least 1.</summary>
     public int DayCount => (End - Start).Days + 1;
@@ -101,13 +103,20 @@ public readonly struct MonthlyReportDateRange : IEquatable<MonthlyReportDateRang
         {
             var monthStart = new DateTime(current.Year, current.Month, 1);
             var monthEnd = monthStart.AddMonths(1).AddDays(-1);
-            var clippedEnd = Math.Min(monthEnd, End);
-            var dayCount = (clippedEnd - monthStart).Days + 1;
-            var isPartial = monthStart < Start || clippedEnd < End;
+            // Math.Min(DateTime, DateTime) does not exist; the overload pick would be
+            // Math.Min(byte, byte) (CS1503) - compare via Ticks explicitly instead.
+            var clippedEnd = monthEnd.Ticks < End.Ticks ? monthEnd : End;
+            // The FIRST bucket is also clipped at the range start: a range that
+            // begins mid-month must never query or count days before Start.
+            var bucketStart = monthStart < Start ? Start : monthStart;
+            var dayCount = (clippedEnd - bucketStart).Days + 1;
+            // Partial = the bucket does not cover the FULL calendar month
+            // (starts after the 1st or ends before the month's last day).
+            var isPartial = bucketStart > monthStart || clippedEnd < monthEnd;
 
             yield return new MonthlyBucket
             {
-                Start = monthStart,
+                Start = bucketStart,
                 End = clippedEnd,
                 DayCount = dayCount,
                 IsPartial = isPartial

@@ -83,11 +83,34 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
     public const int BatchMaxWindowDays = 7;
 
     /// <summary>
-    /// Hard bound on one window's batch fan-out: video chunks x day sub-windows.
-    /// A 14-day window over ~2.800 videos costs 2 x 6 = 12 requests (vs ~28 list pages);
-    /// anything beyond this budget degrades to the list-based period totals.
+    /// Largest window SPAN the batch daily path serves: 31 days = one calendar month.
+    ///
+    /// ROOT-CAUSE NOTE (Monthly Report, 2026-10-30): the Monthly Report queries the
+    /// provider ONCE PER CALENDAR MONTH, so every full-month window is 29..31 days.
+    /// The previous 16-request fan-out budget could not cover that span over the live
+    /// catalog (~2.600 videos = 6 chunks x 5 sub-windows = 30 requests), so EVERY
+    /// month of a monthly report silently degraded to the paginated list totals - the
+    /// path with no concurrency guard and only a single 429 retry, which is exactly
+    /// where Interactions disappeared while Video Views (one cheap overview request)
+    /// kept working. A 14-day window (2 sub-windows x 6 chunks = 12 requests) stayed
+    /// on the batch path, which is why 16-29 October still showed its 8.135.
+    ///
+    /// Windows WIDER than one month (only reachable by a hand-built query, never by
+    /// any report bucket - Daily = 1 day, Weekly = <= 7 days, Monthly = month buckets)
+    /// still degrade to the list-based period totals: the fan-out stays bounded.
     /// </summary>
-    public const int BatchMaxFanOutRequests = 16;
+    public const int BatchMaxWindowSpanDays = 31;
+
+    /// <summary>
+    /// Hard bound on one window's batch fan-out: video chunks x day sub-windows.
+    /// 12 chunks (BatchMaxVideos / BatchChunkSize) x 5 sub-windows
+    /// (BatchMaxWindowSpanDays / BatchMaxWindowDays) = 60, i.e. the mathematically
+    /// largest fan-out the two guards above can ever produce - so a full calendar
+    /// month over the largest allowed catalog always fits, while an oversized span is
+    /// rejected by <see cref="BatchMaxWindowSpanDays"/> before any request is made.
+    /// Anything beyond this budget degrades to the list-based period totals.
+    /// </summary>
+    public const int BatchMaxFanOutRequests = 60;
 
     /// <summary>
     /// Hard guard on how many local catalog videos are sent per window (12 chunks of 500).
@@ -109,6 +132,16 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
     /// dressed up as a complete period value.
     /// </summary>
     public const int ListMaxPages = 100;
+
+    /// <summary>
+    /// Bounded number of Retry-After-aware waits the LIST fallback may take for ONE
+    /// window when TikTok answers HTTP 429. The previous policy waited ONCE for the
+    /// whole pagination, so the second 429 of a ~26-page run (always reachable when
+    /// the shared app-group limit is busy) aborted the window and Interactions went
+    /// "-". Waits stay sequential, per-page and honor Retry-After - the fallback is
+    /// throttled, never hammered.
+    /// </summary>
+    public const int ListMaxRateLimitWaits = 3;
 
     public const string ProviderSourceName =
         "TikTok Shop Video Performance Overview API (analytics/202609)";
@@ -622,6 +655,22 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
                 ? new HashSet<string>(VerifiedMetricKeys, StringComparer.Ordinal) { DailyReportMetrics.Interactions }
                 : VerifiedMetricKeys;
 
+            // DIAGNOSTIC DECISION LOG (numbers, paths and codes only - never a token,
+            // signature or payload): proves WHICH path answered this window, WHY the
+            // batch path was skipped when it was, whether PeriodInteractions got built
+            // and which metric keys the dashboard will render as available.
+            _logger.LogInformation(
+                "TikTok interactions decision for window {Start}..{EndExclusive}: path {Path}, batchOk {BatchOk} ({BatchReason}), listOk {ListOk} ({ListReason}), periodInteractions formed {Formed}, availableKeys [{Keys}]",
+                query.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                query.EndExclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                dailyInteractions.IsSuccess ? "Batch" : interactions.IsSuccess ? "ListFallback" : "None",
+                dailyInteractions.IsSuccess,
+                dailyInteractions.Reason ?? "-",
+                interactions.IsSuccess,
+                interactions.Reason ?? "-",
+                interactions.IsSuccess,
+                string.Join(", ", availableKeys));
+
             return AccountDailyMetricResult.Available(new AccountDailyMetricDataset
             {
                 Records = records
@@ -684,8 +733,8 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
             if (_interactionsCache.TryGet(cacheKey, out var cached))
             {
                 _logger.LogInformation(
-                    "TikTok list interactions served from cache for window {Start}..{End} (no TikTok list requests made)",
-                    startIso, endIso);
+                    "TikTok list interactions served from cache for window {Start}..{End} (no TikTok list requests made): success {IsSuccess}",
+                    startIso, endIso, cached.IsSuccess);
                 return new ListInteractionsOutcome(
                     cached.Likes, cached.Comments, cached.Shares, cached.VideoCount, cached.IsSuccess, null);
             }
@@ -778,6 +827,48 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
     // (see BatchEndpointPath: per-video daily intervals with traffic likes/comments/shares)
     // ------------------------------------------------------------------
 
+    /// <summary>
+    /// The fan-out ONE window would cost on the batch path, computed from the guard
+    /// constants only - no request is made. The runtime decision and the unit tests
+    /// read the SAME numbers, so a log line can always be reproduced by a test:
+    ///   chunks       = ceil(eligible videos / BatchChunkSize), capped at BatchMaxVideos
+    ///   sub-windows  = ceil(span days / BatchMaxWindowDays)
+    ///   fan-out      = chunks x sub-windows
+    /// ExceedsCatalogCap / ExceedsSpanBound / ExceedsBudget are the three conditions
+    /// that degrade a window to the list-based period totals (never a partial sum).
+    /// </summary>
+    public static BatchFanOutPlan PlanFanOut(DateTime start, DateTime endExclusive, int eligibleVideos)
+    {
+        var spanDays = (endExclusive.Date - start.Date).Days;
+        var subWindows = spanDays <= 0 ? 0 : (int)Math.Ceiling(spanDays / (double)BatchMaxWindowDays);
+        var cappedVideos = Math.Max(0, Math.Min(eligibleVideos, BatchMaxVideos));
+        var chunks = cappedVideos == 0 ? 0 : (int)Math.Ceiling(cappedVideos / (double)BatchChunkSize);
+        var fanOut = chunks * subWindows;
+
+        return new BatchFanOutPlan(
+            spanDays,
+            eligibleVideos,
+            cappedVideos,
+            chunks,
+            subWindows,
+            fanOut,
+            ExceedsCatalogCap: eligibleVideos > BatchMaxVideos,
+            ExceedsSpanBound: spanDays > BatchMaxWindowSpanDays,
+            ExceedsBudget: fanOut > BatchMaxFanOutRequests);
+    }
+
+    /// <summary>Immutable fan-out plan of one batch window (see <see cref="PlanFanOut"/>).</summary>
+    public readonly record struct BatchFanOutPlan(
+        int SpanDays,
+        int EligibleVideos,
+        int CappedVideos,
+        int Chunks,
+        int SubWindows,
+        int FanOutRequests,
+        bool ExceedsCatalogCap,
+        bool ExceedsSpanBound,
+        bool ExceedsBudget);
+
     /// <summary>Outcome of aggregating one window over the batch endpoint.</summary>
     private sealed record DailyInteractionsOutcome(
         bool IsSuccess,
@@ -824,6 +915,9 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
             }
 
             var outcome = await FetchDailyInteractionsCoreAsync(shopCipher, accessToken, query, cancellationToken);
+            _logger.LogInformation(
+                "TikTok batch daily interactions cached for window {Start}..{End}: success {IsSuccess} (no further TikTok batch requests for this window)",
+                startIso, endIso, outcome.IsSuccess);
             _interactionsCache.Set(cacheKey, new TikTokPeriodInteractionsCache.CachedTotals(
                 outcome.IsSuccess,
                 outcome.Likes,
@@ -858,6 +952,9 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
     ///    summed per day - a period aggregate is never distributed across dates.
     ///  - NULL != 0: a traffic field that never appears on any video keeps the whole
     ///    metric unavailable; explicit 0 values are counted as real zeros.
+    ///  - BOUNDED SPAN + FAN-OUT: windows up to <see cref="BatchMaxWindowSpanDays"/>
+    ///    (one calendar month - the largest bucket the Monthly Report queries) stay on
+    ///    this path; wider windows and oversized fan-outs degrade to the list totals.
     ///  - ALL-OR-NOTHING: any chunk failure (HTTP, rate limit, business error, lookback
     ///    rejection, schema mismatch) fails the WHOLE daily outcome - the caller then
     ///    falls back to the list-based period totals; a partial daily sum is never shown.
@@ -881,10 +978,31 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
 
         // Local catalog ids: only videos posted BEFORE the window end can have
         // interactions inside the window. No TikTok request is spent on the id list.
-        var videoIds = await _db.ContentLogs.AsNoTracking()
+        var eligibleIds = _db.ContentLogs.AsNoTracking()
             .Where(x => x.VideoId != null && x.VideoId != ""
                 && (x.VideoPostTime == null || x.VideoPostTime < query.EndExclusive))
-            .Select(x => x.VideoId!)
+            .Select(x => x.VideoId!);
+
+        var eligibleCount = await eligibleIds.Distinct().CountAsync(cancellationToken);
+        var plan = PlanFanOut(query.Start, query.EndExclusive, eligibleCount);
+
+        // HONESTY GUARD (live shop measured 2026-10-30: 12.338 local videos vs the
+        // 6.000-video batch cap): a silent Take(BatchMaxVideos) would query only the
+        // first 6.000 ids and present that PARTIAL sum as a complete window total.
+        // The documented contract is that exceeding the guard degrades to the
+        // authoritative list-based period totals - never a batch sum missing videos.
+        if (plan.ExceedsCatalogCap)
+        {
+            _logger.LogWarning(
+                "TikTok batch daily interactions: window {Start}..{End} ({Span} days) has {Eligible} eligible local videos but the batch guard allows {Max} (plan: {Chunks} chunks x {SubWindows} sub-windows = {FanOut} requests) - batch would silently miss {Missing} videos, path=ListFallback",
+                startIso, endIso, plan.SpanDays, plan.EligibleVideos, BatchMaxVideos,
+                plan.Chunks, plan.SubWindows, plan.FanOutRequests, plan.EligibleVideos - BatchMaxVideos);
+            return new DailyInteractionsOutcome(false, null, null, null, null, null,
+                $"Interactions harian tidak tersedia: katalog lokal {plan.EligibleVideos} video melebihi batas batch {BatchMaxVideos} - " +
+                "memakai total periode dari video list agar jumlah parsial tidak dihitung sebagai total lengkap.");
+        }
+
+        var videoIds = await eligibleIds
             .Distinct()
             .Take(BatchMaxVideos)
             .ToListAsync(cancellationToken);
@@ -961,8 +1079,19 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
         // batch endpoint accepts windows of at most SEVEN days (8-day span -> HTTP 400
         // "Invalid Parameter"; an old 7-day window returned code=0, so POSITION does not
         // matter - only the span). Longer report windows are split into <=7-day
-        // sub-windows; the total fan-out is bounded by BatchMaxFanOutRequests and
-        // anything beyond that budget degrades to the list-based period totals.
+        // sub-windows; the span is bounded by BatchMaxWindowSpanDays and the total
+        // fan-out by BatchMaxFanOutRequests - anything beyond either degrades to the
+        // list-based period totals instead of an unbounded fan-out.
+        var spanDays = plan.SpanDays;
+        if (spanDays > BatchMaxWindowSpanDays)
+        {
+            _logger.LogInformation(
+                "TikTok batch daily interactions: window span of {Span} days exceeds the batch span bound of {MaxSpan} days for window {Start}..{End} - falling back to list totals",
+                spanDays, BatchMaxWindowSpanDays, startIso, endIso);
+            return new DailyInteractionsOutcome(false, null, null, null, null, null,
+                $"Interactions harian tidak tersedia: jendela {spanDays} hari melebihi batas batch harian ({BatchMaxWindowSpanDays} hari) - memakai total periode dari video list.");
+        }
+
         var subWindows = new List<(DateTime Start, DateTime EndExclusive)>();
         for (var windowStart = query.Start; windowStart < query.EndExclusive; windowStart = windowStart.AddDays(BatchMaxWindowDays))
         {
@@ -985,6 +1114,17 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
                 $"Interactions harian tidak tersedia: jendela terlalu lebar untuk batch harian ({totalRequests} request melebihi budget {BatchMaxFanOutRequests}).");
         }
 
+        // DIAGNOSTIC: the plan that is about to execute (numbers only - no token,
+        // no secret, no payload). Read together with the decision log in GetAsync to
+        // prove which path (Batch or ListFallback) a monthly window actually took.
+        _logger.LogInformation(
+            "TikTok batch daily interactions plan: window {Start}..{End} ({Span} days), eligible videos {Eligible} (cap {Cap}), chunks {Chunks}, sub-windows {SubWindows}, estimated fan-out {FanOut} requests (budget {Budget}) - path=Batch, requests run sequentially",
+            startIso, endIso, plan.SpanDays, plan.EligibleVideos, BatchMaxVideos,
+            plan.Chunks, plan.SubWindows, plan.FanOutRequests, BatchMaxFanOutRequests);
+
+        var requestsAttempted = 0;
+        var requestsFailed = 0;
+
         foreach (var (subStart, subEnd) in subWindows)
         {
             // Identity dedupe is PER SUB-WINDOW: the same video legitimately appears in
@@ -995,6 +1135,7 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
             for (var chunkIndex = 0; chunkIndex < chunks.Count; chunkIndex++)
             {
                 TikTokBatchPerformanceResult response;
+                requestsAttempted++;
                 try
                 {
                     response = await _videoService.FetchBatchPerformanceAsync(
@@ -1006,30 +1147,36 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
                 }
                 catch (Exception ex)
                 {
+                    requestsFailed++;
                     _logger.LogWarning(ex,
-                        "TikTok batch daily interactions: chunk {Chunk}/{Chunks} of sub-window {SubStart}..{SubEnd} failed (transport) for window {Start}..{End} - daily breakdown unavailable, falling back to list totals",
-                        chunkIndex + 1, chunks.Count, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"), startIso, endIso);
+                        "TikTok batch daily interactions: chunk {Chunk}/{Chunks} of sub-window {SubStart}..{SubEnd} failed (transport) for window {Start}..{End} after {Attempted} request(s), {Failed} failed - daily breakdown unavailable, path=ListFallback",
+                        chunkIndex + 1, chunks.Count, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"), startIso, endIso,
+                        requestsAttempted, requestsFailed);
                     return new DailyInteractionsOutcome(false, null, null, null, null, null,
                         $"Interactions harian tidak tersedia: request batch gagal (chunk {chunkIndex + 1}/{chunks.Count}).");
                 }
 
                 if (response.StatusCode == 429)
                 {
+                    requestsFailed++;
                     _logger.LogWarning(
-                        "TikTok batch daily interactions: rate-limited (429) on chunk {Chunk}/{Chunks} of sub-window {SubStart}..{SubEnd} for window {Start}..{End} - falling back to list totals",
-                        chunkIndex + 1, chunks.Count, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"), startIso, endIso);
+                        "TikTok batch daily interactions: rate-limited (429) on chunk {Chunk}/{Chunks} of sub-window {SubStart}..{SubEnd} for window {Start}..{End} after {Attempted} request(s), {Failed} failed - path=ListFallback",
+                        chunkIndex + 1, chunks.Count, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"), startIso, endIso,
+                        requestsAttempted, requestsFailed);
                     return new DailyInteractionsOutcome(false, null, null, null, null, null,
                         $"Interactions harian tidak tersedia: rate limit (429) pada chunk {chunkIndex + 1}/{chunks.Count}.");
                 }
 
                 if (response.StatusCode != 200 || response.Code is null or not 0)
                 {
+                    requestsFailed++;
                     var lookback = response.Code == BatchLookbackErrorCode
                         || (response.Message?.Contains("lookback window", StringComparison.OrdinalIgnoreCase) ?? false);
                     _logger.LogWarning(
-                        "TikTok batch daily interactions: chunk {Chunk}/{Chunks} of sub-window {SubStart}..{SubEnd} rejected (HTTP {Status}, code {Code}: {Message}, request_id {RequestId}, lookback {Lookback}) for window {Start}..{End} - falling back to list totals",
+                        "TikTok batch daily interactions: chunk {Chunk}/{Chunks} of sub-window {SubStart}..{SubEnd} rejected (HTTP {Status}, code {Code}: {Message}, request_id {RequestId}, lookback {Lookback}) for window {Start}..{End} after {Attempted} request(s), {Failed} failed - path=ListFallback",
                         chunkIndex + 1, chunks.Count, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"),
-                        response.StatusCode, response.Code, response.Message, response.RequestId, lookback, startIso, endIso);
+                        response.StatusCode, response.Code, response.Message, response.RequestId, lookback, startIso, endIso,
+                        requestsAttempted, requestsFailed);
                     return new DailyInteractionsOutcome(false, null, null, null, null, null,
                         lookback
                             ? $"Interactions harian tidak tersedia: batch API menolak jendela di luar lookback (code {response.Code})."
@@ -1056,9 +1203,11 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
                     if (TryReadPerVideoError(entry, out var perVideoErrorCode))
                     {
                         perVideoErrors++;
+                        requestsFailed++;
                         _logger.LogWarning(
-                            "TikTok batch daily interactions: video {VideoId} returned a per-video error (code {ErrorCode}) in sub-window {SubStart}..{SubEnd} for window {Start}..{End} - daily breakdown unavailable, falling back to list totals",
-                            videoId ?? "(unknown)", perVideoErrorCode, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"), startIso, endIso);
+                            "TikTok batch daily interactions: video {VideoId} returned a per-video error (code {ErrorCode}) in sub-window {SubStart}..{SubEnd} for window {Start}..{End} after {Attempted} request(s), {Failed} failed - daily breakdown unavailable, path=ListFallback",
+                            videoId ?? "(unknown)", perVideoErrorCode, subStart.ToString("yyyy-MM-dd"), subEnd.ToString("yyyy-MM-dd"), startIso, endIso,
+                            requestsAttempted, requestsFailed);
                         return new DailyInteractionsOutcome(false, null, null, null, null, null,
                             $"Interactions harian tidak tersedia: {perVideoErrors} video mengembalikan error per-video " +
                             $"(code {perVideoErrorCode}) - cakupan tidak lengkap, total parsial tidak ditampilkan.");
@@ -1154,8 +1303,9 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
         }
 
         _logger.LogInformation(
-            "TikTok batch daily interactions summed: window {Start}..{End}, chunks {Chunks}, sub-windows {SubWindows}, unique videos {Videos}, days {Days}, likes {Likes}, comments {Comments}, shares {Shares}",
-            startIso, endIso, chunks.Count, subWindows.Count, seenVideoIds.Count, daily.Count,
+            "TikTok batch daily interactions summed: window {Start}..{End}, chunks {Chunks}, sub-windows {SubWindows}, requests {Attempted} ({Failed} failed), unique videos {Videos}, days {Days}, likes {Likes}, comments {Comments}, shares {Shares} - path=Batch",
+            startIso, endIso, chunks.Count, subWindows.Count, requestsAttempted, requestsFailed,
+            seenVideoIds.Count, daily.Count,
             likesSeen ? likes : -1, commentsSeen ? comments : -1, sharesSeen ? shares : -1);
 
         return new DailyInteractionsOutcome(
@@ -1200,7 +1350,7 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
 
         string? pageToken = null;
         var pages = 0;
-        var rateLimitRetried = false;
+        var rateLimitWaits = 0;
 
         var client = _httpFactory.CreateClient("TikTokApi");
 
@@ -1248,15 +1398,15 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
                     // Rate limit (429): ONE bounded, Retry-After-aware wait for this page -
                     // the shared app-group limit is real (observed live 2026-10-22) and must
                     // be honored instead of hammering.
-                    if ((int)httpStatus == 429 && !rateLimitRetried)
+                    if ((int)httpStatus == 429 && rateLimitWaits < ListMaxRateLimitWaits)
                     {
-                        rateLimitRetried = true;
+                        rateLimitWaits++;
                         var delaySeconds = res.Headers.RetryAfter?.Delta?.TotalSeconds is > 0 and <= 10
                             ? (int)Math.Ceiling(res.Headers.RetryAfter.Delta.Value.TotalSeconds)
                             : 1;
                         _logger.LogWarning(
-                            "TikTok video list rate-limited (429) on page {Page} of {Route} - waiting {Seconds}s once",
-                            pages, ListEndpointPath, delaySeconds);
+                            "TikTok video list rate-limited (429) on page {Page} of {Route} for window {Start}..{End} - waiting {Seconds}s ({Attempt}/{Max} bounded waits)",
+                            pages, ListEndpointPath, startIso, endIso, delaySeconds, rateLimitWaits, ListMaxRateLimitWaits);
                         await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
                         continue;
                     }
