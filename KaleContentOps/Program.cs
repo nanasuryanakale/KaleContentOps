@@ -151,6 +151,16 @@ builder.Services.AddScoped<IDailyPerformanceService, DailyPerformanceService>();
 // ("-") with honest reasons until a verified source exists - no per-video sums, no fake zeroes,
 // no new migrations.
 builder.Services.AddScoped<IWeeklyPerformanceService, WeeklyPerformanceService>();
+// Monthly Performance - Monthly Report (account-level analytics).
+// Registered provider: same TikTokShopVideoOverviewMetricSource - maps the verified
+// daily video_views of GET /analytics/202609/shop_videos/overview_performance
+// (granularity=1D) plus the verified PERIOD interaction totals (likes/comments/shares)
+// from the paginated GET /analytics/202605/shop_videos/performance list. Metric
+// families without a verified account-level source (Reach, Profile Views, followers,
+// viewer composition, Engagement Rate, Net Follower, Total Follower) stay Unavailable
+// ("-") with honest reasons until a verified source exists - no per-video sums, no fake zeroes,
+// no new migrations.
+builder.Services.AddScoped<IMonthlyPerformanceService, MonthlyPerformanceService>();
 // The list endpoint returns the whole catalog per window (~28 requests per period),
 // so a short-lived singleton cache bounds the TikTok request cost per report render
 // (see TikTokPeriodInteractionsCache).
