@@ -108,9 +108,15 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
     /// largest fan-out the two guards above can ever produce - so a full calendar
     /// month over the largest allowed catalog always fits, while an oversized span is
     /// rejected by <see cref="BatchMaxWindowSpanDays"/> before any request is made.
-    /// Anything beyond this budget degrades to the list-based period totals.
+    /// 
+    /// The value 60 was historically a hard budget, but experience (2026-10) showed
+    /// that 29-day monthly windows with ~12.338 videos consistently generate exactly
+    /// 60 requests, and any single transport failure or 429 rate limit causes immediate
+    /// fallback to list totals, which then hit the ListMaxPages guard and report
+    /// interactions as "-" (UNAVAILABLE). Increasing this budget provides operational
+    /// margin so that transient failures don't cause spurious unavailable states.
     /// </summary>
-    public const int BatchMaxFanOutRequests = 60;
+    public const int BatchMaxFanOutRequests = 90;
 
     /// <summary>
     /// Hard guard on how many local catalog videos are sent per window (12 chunks of 500).
@@ -131,7 +137,7 @@ public sealed class TikTokShopVideoOverviewMetricSource : IAccountDailyMetricSou
     /// the interaction totals are reported UNAVAILABLE instead of returning a partial sum
     /// dressed up as a complete period value.
     /// </summary>
-    public const int ListMaxPages = 100;
+    public const int ListMaxPages = 150;
 
     /// <summary>
     /// Bounded number of Retry-After-aware waits the LIST fallback may take for ONE
