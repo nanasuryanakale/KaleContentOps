@@ -131,7 +131,7 @@ public class AccountController : Controller
             return Redirect(returnUrl);
         }
 
-        return RedirectToAction("Index", "ContentLog");
+        return RedirectToAction("Index", "Home");
     }
 }
 
@@ -148,11 +148,4 @@ public class LoginViewModel
 
     [Display(Name = "Ingat saya")]
     public bool RememberMe { get; set; }
-}
-
-// Root URL redirect to Content Log for unauthenticated access prevention
-public class RootRedirectController : Controller
-{
-    [HttpGet]
-    public IActionResult Index() => RedirectToAction("Index", "ContentLog");
 }
