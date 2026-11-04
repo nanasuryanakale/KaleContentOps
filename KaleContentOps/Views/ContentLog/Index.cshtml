@@ -165,9 +165,9 @@
         <table class="content-table">
             <thead>
                 <tr>
-                    <th colspan="7" class="group-head">KONTEN</th>
-                    <th colspan="8" class="group-head metrics-head">METRICS</th>
-                    <th colspan="10" class="group-head audience-head">DATA PENONTON (%)</th>
+                    <th class="group-head">KONTEN</th>
+                    <th class="group-head metrics-head">METRICS</th>
+                    <th class="group-head audience-head">DATA PENONTON (%)</th>
                 </tr>
 
                 <tr class="column-head">
@@ -215,7 +215,7 @@
                 @if (!Model.Items.Any())
                 {
                 <tr>
-                    <td colspan="35" class="empty-cell">
+                    <td colspan="17" class="empty-cell">
                             Belum ada data Content Log.
                         </td>
                     </tr>
@@ -549,19 +549,168 @@
         // COLUMN VISIBILITY
         // =========================================================
         (function () {
-            var key = 'contentlog_columns_visibility_v2';
+            var key = 'contentlog_columns_visibility_v3';
 
-            var defaults = {};
+            // Define default visibility per column key (CHECKED = show, UNCHECKED = hide)
+            var defaults = {
+                // KONTEN columns (default: show)
+                production: true,  // Cara Produksi
+                pic: true,         // PIC
+                link: true,        // Link
+                // METRICS columns (default: 6 show out of 8)
+                views: true,       // Views
+                reach: true,       // Reach
+                avgwatch: true,    // Average Watch
+                fullwatch: true,   // % Full Watch
+                likes: true,       // Like
+                comments: true,    // Comment
+                // Save and Share default to UNCHECKED (hidden)
+                save: false,       // Save
+                share: false,      // Share
+                // DATA PENONTON (%) columns (default: 4 show out of 10)
+                follower: true,    // Follower
+                nonfollower: true, // Non-Follower
+                male: true,        // Male
+                female: true,      // Female
+                // Non-Gender and age groups default to UNCHECKED (hidden)
+                nongender: false,  // Non-Gender
+                age18: false,      // 18-24
+                age25: false,      // 25-34
+                age35: false,      // 35-44
+                age45: false,      // 45-54
+                age55: false       // 55+
+            };
 
-            document.querySelectorAll('.col-toggle').forEach(function (cb) {
-                var k = cb.getAttribute('data-col-key');
+            // Column group definitions for dynamic colspan calculation
+            // Each group maps to its column keys in order
+            var columnGroups = {
+                konten: ['no', 'tanggal', 'jenis_konte', 'judul', 'production', 'pic', 'link'], // 7 columns default
+                metrics: ['views', 'reach', 'avgwatch', 'fullwatch', 'likes', 'comments', 'save', 'share'], // 8 columns
+                penonton: ['follower', 'nonfollower', 'male', 'female', 'nongender', 'age18', 'age25', 'age35', 'age45', 'age55'] // 10 columns
+            };
 
-                if (k) {
-                    defaults[k] = cb.checked;
+            function calculateGroupColspan(groupName) {
+                var keys = columnGroups[groupName];
+                var visibleCount = 0;
+                keys.forEach(function (key) {
+                    var el = document.querySelector('[data-col="' + key + '"]');
+                    if (el && el.style.display !== 'none') {
+                        visibleCount++;
+                    }
+                });
+                return visibleCount;
+            }
+
+            function updateGroupHeaders() {
+                // KONTEN: 4 fixed columns (No, Tanggal, Jenis Konten, Judul) + visible configurable columns
+                // The first 4 th elements in the column-head row are the fixed konten columns
+                var kontenColspan = 4; // No, Tanggal, Jenis Konten, Judul are always visible
+                var metricsColspan = calculateGroupColspan('metrics');
+                var penontonColspan = calculateGroupColspan('penonton');
+
+                // Update group headers
+                var groupHeads = document.querySelectorAll('.group-head');
+                if (groupHeads.length >= 3) {
+                    // KONTEN header spans the first 7 columns (4 fixed + configurable)
+                    // But we need to calculate based on visible columns
+                    var kontenHeader = groupHeads[0];
+                    kontenHeader.setAttribute('colspan', calculateGroupColspan('konten'));
+                    
+                    // METRICS header
+                    var metricsHeader = groupHeads[1];
+                    metricsHeader.setAttribute('colspan', metricsColspan);
+                    
+                    // DATA PENONTON header
+                    var penontonHeader = groupHeads[2];
+                    penontonHeader.setAttribute('colspan', penontonColspan);
+                }
+
+                // Update empty state colspan
+                updateEmptyStateColspan();
+            }
+n            function updateEmptyStateColspan() {
+                var totalVisible = 0;
+                // Count all visible data columns
+                var allDataCols = ['no', 'tanggal', 'jenis_konte', 'judul', 'production', 'pic', 'link',
+                                   'views', 'reach', 'avgwatch', 'fullwatch', 'likes', 'comments',
+                                   'save', 'share',
+                                   'follower', 'nonfollower', 'male', 'female', 'nongender', 'age18', 'age25', 'age35', 'age45', 'age55'];
+                
+                allDataCols.forEach(function (key) {
+                    var el = document.querySelector('[data-col="' + key + '"]');
+                    if (el && el.style.display !== 'none') {
+                        totalVisible++;
+                    }
+                });
+                
+                var emptyCell = document.querySelector('.empty-cell');
+                if (emptyCell) {
+                    emptyCell.setAttribute('colspan', totalVisible);
+                }
+            }
+
+            function applyState() {
+                document.querySelectorAll('[data-col]').forEach(function (el) {
+                    var col = el.getAttribute('data-col');
+
+                    if (!col) return;
+
+                    var visible = true;
+
+                    if (Object.prototype.hasOwnProperty.call(state, col)) {
+                        visible = state[col];
+                    }
+
+                    el.style.display = visible ? '' : 'none';
+                });
+
+                document.querySelectorAll('.col-toggle').forEach(function (cb) {
+                    var k = cb.getAttribute('data-col-key');
+
+                    if (k) {
+                        cb.checked = !!state[k];
+                    }
+                });
+
+                // Update group headers and empty state after applying state
+                updateGroupHeaders();
+            }
+
+            // Initialize state from localStorage
+            var state = {};
+
+            try {
+                state = JSON.parse(
+                    localStorage.getItem(key) || '{}'
+                );
+            }
+            catch {
+                state = {};
+            }
+n            // Apply defaults for any keys not yet in localStorage
+            Object.keys(defaults).forEach(function (k) {
+                if (state[k] === undefined) {
+                    state[k] = defaults[k];
                 }
             });
 
-        // =========================================================
+            applyState();
+n            // Handle checkbox changes
+            document.addEventListener('change', function (e) {
+                if (!e.target.classList.contains('col-toggle')) {
+                    return;
+                }
+n                var k = e.target.getAttribute('data-col-key');
+n                if (!k) return;
+n                state[k] = e.target.checked;
+n                localStorage.setItem(
+                    key,
+                    JSON.stringify(state)
+                );
+n                applyState();
+            });
+        })();
+n        // =========================================================
         // PRODUCTION METHOD TOGGLE -> SAVE VIA AJAX
         // =========================================================
         document.addEventListener('click', function (e) {
