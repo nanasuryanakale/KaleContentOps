@@ -165,9 +165,9 @@
         <table class="content-table">
             <thead>
                 <tr>
-                    <th colspan="7" class="group-head">KONTEN</th>
-                    <th colspan="8" class="group-head metrics-head">METRICS</th>
-                    <th colspan="10" class="group-head audience-head">DATA PENONTON (%)</th>
+                    <th data-group-head="content" colspan="7" class="group-head">KONTEN</th>
+                    <th data-group-head="metrics" colspan="8" class="group-head metrics-head">METRICS</th>
+                    <th data-group-head="audience" colspan="10" class="group-head audience-head">DATA PENONTON (%)</th>
                     
                 </tr>
 
@@ -696,6 +696,43 @@
                 });
             }
 
+            function updateGroupHeaders() {
+                // Count visible columns per group based on style.display
+                function isVisible(el) {
+                    return el.style.display !== 'none';
+                }
+
+                // KONTEN: 4 fixed (No, Tanggal, Jenis Konten, Judul) + configurable (production, pic, link)
+                var contentVisible = 4; // Always: No, Tanggal, Jenis Konten, Judul
+                var allCols = document.querySelectorAll('.content-table thead tr.column-head th[data-col]');
+                allCols.forEach(function (el) {
+                    if (['production', 'pic', 'link'].indexOf(el.getAttribute('data-col')) !== -1 && isVisible(el)) {
+                        contentVisible++;
+                    }
+                });
+
+                // METRICS: views, reach, avgwatch, fullwatch, likes, comments, save, share
+                var metricsVisible = 0;
+                allCols.forEach(function (el) {
+                    if (["views", "reach", "avgwatch", "fullwatch", "likes", "comments", "save", "share"].indexOf(el.getAttribute('data-col')) !== -1 && isVisible(el)) {
+                        metricsVisible++;
+                    }
+                });
+
+                // DATA PENONTON (%): follower, nonfollower, male, female, nongender, age18-55
+                var audienceVisible = 0;
+                allCols.forEach(function (el) {
+                    if (["follower", "nonfollower", "male", "female", "nongender", "age18", "age25", "age35", "age45", "age55"].indexOf(el.getAttribute('data-col')) !== -1 && isVisible(el)) {
+                        audienceVisible++;
+                    }
+                });
+
+                // Apply colspans
+                document.querySelector('[data-group-head="content"]').setAttribute('colspan', contentVisible);
+                document.querySelector('[data-group-head="metrics"]').setAttribute('colspan', metricsVisible);
+                document.querySelector('[data-group-head="audience"]').setAttribute('colspan', audienceVisible);
+            }
+
             document.addEventListener('change', function (e) {
                 if (!e.target.classList.contains('col-toggle')) {
                     return;
@@ -713,9 +750,11 @@
                 );
 
                 applyState();
+                updateGroupHeaders();
             });
 
             applyState();
+            updateGroupHeaders();
 
             // =========================================================
             // PIC SELECT -> SAVE VIA AJAX
