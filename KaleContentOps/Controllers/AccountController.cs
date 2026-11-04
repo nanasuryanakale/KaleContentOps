@@ -131,7 +131,8 @@ public class AccountController : Controller
             return Redirect(returnUrl);
         }
 
-        return RedirectToAction("Index", "Home");
+        // Default to Content Log as the landing page after login
+        return RedirectToAction("Index", "ContentLog");
     }
 }
 
