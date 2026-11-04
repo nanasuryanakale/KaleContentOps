@@ -592,21 +592,18 @@
         // =========================================================
         // COLUMN VISIBILITY
         // =========================================================
-        (function () {
-            var key = 'contentlog_columns_visibility_v2';
+        window.contentlog_columns_visibility_v2_key = 'contentlog_columns_visibility_v2';
 
-            var defaults = {};
+        var contentlog_columns_visibility_v2_defaults = {};
 
-            document.querySelectorAll('.col-toggle').forEach(function (cb) {
-                var k = cb.getAttribute('data-col-key');
+        document.querySelectorAll('.col-toggle').forEach(function (cb) {
+            var k = cb.getAttribute('data-col-key');
 
-                if (k) {
-                    defaults[k] = cb.checked;
-                }
-            });
+            if (k) {
+                contentlog_columns_visibility_v2_defaults[k] = cb.checked;
+            }
+        });
 
-        // =========================================================
-        })
         // =========================================================
         // PRODUCTION METHOD TOGGLE -> SAVE VIA AJAX
         // =========================================================
@@ -660,17 +657,18 @@
             var state = {};
 
             try {
+                var storedKey = window.contentlog_columns_visibility_v2_key || 'contentlog_columns_visibility_v2';
                 state = JSON.parse(
-                    localStorage.getItem(key) || '{}'
+                    localStorage.getItem(storedKey) || '{}'
                 );
             }
             catch {
                 state = {};
             }
 
-            Object.keys(defaults).forEach(function (k) {
+            Object.keys(contentlog_columns_visibility_v2_defaults).forEach(function (k) {
                 if (state[k] === undefined) {
-                    state[k] = defaults[k];
+                    state[k] = contentlog_columns_visibility_v2_defaults[k];
                 }
             });
 
@@ -710,7 +708,7 @@
                 state[k] = e.target.checked;
 
                 localStorage.setItem(
-                    key,
+                    window.contentlog_columns_visibility_v2_key,
                     JSON.stringify(state)
                 );
 
