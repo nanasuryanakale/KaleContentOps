@@ -104,17 +104,7 @@
                 ("age25", "25-34", false),
                 ("age35", "35-44", false),
                 ("age45", "45-54", false),
-                ("age55", "55+", false),
-                ("country", "Country", false),
-                ("nfmale", "Male (Pengikut Baru)", false),
-                ("nffemale", "Female (Pengikut Baru)", false),
-                ("nfnongender", "Non-Gender (Pengikut Baru)", false),
-                ("nfage18", "18-24 (Pengikut Baru)", false),
-                ("nfage25", "25-34 (Pengikut Baru)", false),
-                ("nfage35", "35-44 (Pengikut Baru)", false),
-                ("nfage45", "45-54 (Pengikut Baru)", false),
-                ("nfage55", "55+ (Pengikut Baru)", false),
-                ("nfcountry", "Country (Pengikut Baru)", false)
+                ("age55", "55+", false)
                 })
                 {
                     <label class="column-check">
@@ -175,10 +165,10 @@
         <table class="content-table">
             <thead>
                 <tr>
-                    <th colspan="7" class="group-head">KONTEN</th>
-                    <th colspan="11" class="group-head metrics-head">METRICS</th>
-                    <th colspan="11" class="group-head audience-head">DATA PENONTON (%)</th>
-                    <th colspan="9" class="group-head audience-head">PENGIKUT BARU (%)</th>
+                    <th data-group-head="content" colspan="7" class="group-head">KONTEN</th>
+                    <th data-group-head="metrics" colspan="8" class="group-head metrics-head">METRICS</th>
+                    <th data-group-head="audience" colspan="10" class="group-head audience-head">DATA PENONTON (%)</th>
+                    
                 </tr>
 
                 <tr class="column-head">
@@ -200,9 +190,6 @@
                         Average<br />Watch
                     </th>
 
-                    <th data-col="finishrate" title="Finish rate per video dari list API (video_finish_rate, 0..1) - window sync, bukan all-time">Finish Rate</th>
-                    <th data-col="vtlclicks" title="Klik video-to-live (v_to_l_clicks) pada window sync">V2L Clicks</th>
-                    <th data-col="vtlrate" title="Rasio klik video-to-live terhadap views (v_to_l_rate = v_to_l_clicks / views)">V2L Rate</th>
                     <th data-col="fullwatch">
                         % Full<br />Watch
                     </th>
@@ -222,16 +209,8 @@
                     <th data-col="age35">35-44</th>
                     <th data-col="age45">45-54</th>
                     <th data-col="age55">55+</th>
-                    <th data-col="country">Country</th>
-                    <th data-col="nfmale">Male (PB)</th>
-                    <th data-col="nffemale">Female (PB)</th>
-                    <th data-col="nfnongender">Non-Gender (PB)</th>
-                    <th data-col="nfage18">18-24 (PB)</th>
-                    <th data-col="nfage25">25-34 (PB)</th>
-                    <th data-col="nfage35">35-44 (PB)</th>
-                    <th data-col="nfage45">45-54 (PB)</th>
-                    <th data-col="nfage55">55+ (PB)</th>
-                    <th data-col="nfcountry">Country (PB)</th>
+                    
+                    
                 </tr>
             </thead>
 
@@ -239,7 +218,7 @@
                 @if (!Model.Items.Any())
                 {
                 <tr>
-                    <td colspan="35" class="empty-cell">
+                    <td colspan="25" class="empty-cell">
                             Belum ada data Content Log.
                         </td>
                     </tr>
@@ -411,21 +390,11 @@
                                 @(metric?.AverageWatch?.ToString("0.##") ?? "—")s
                             </td>
 
-                            <td data-col="finishrate">
-                                @(metric?.VideoFinishRate is null
-                                    ? "—"
-                                    : (metric.VideoFinishRate.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="vtlclicks">
-                                @(metric?.VToLClicks?.ToString("N0") ?? "—")
-                            </td>
+                            
 
-                            <td data-col="vtlrate">
-                                @(metric?.VToLRate is null
-                                    ? "—"
-                                    : (metric.VToLRate.Value * 100).ToString("0.00") + "%")
-                            </td>
+                            
 
                             <td data-col="fullwatch">
                                 @(metric?.FullWatchRate is null
@@ -489,49 +458,25 @@
                                 @(metric?.Age55Plus is null ? "—" : (metric.Age55Plus.Value * 100).ToString("0.0") + "%")
                             </td>
 
-                            <td data-col="country" class="cell-wrap">
-                                @(metric?.Countries is { Count: > 0 }
-                                    ? string.Join(", ", metric.Countries.Select(kv => kv.Key + " " + (kv.Value * 100).ToString("0.0") + "%"))
-                                    : "—")
-                            </td>
+                            
 
-                            <td data-col="nfmale">
-                                @(metric?.NfMale is null ? "—" : (metric.NfMale.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nffemale">
-                                @(metric?.NfFemale is null ? "—" : (metric.NfFemale.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nfnongender">
-                                @(metric?.NfNonGender is null ? "—" : (metric.NfNonGender.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nfage18">
-                                @(metric?.NfAge18_24 is null ? "—" : (metric.NfAge18_24.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nfage25">
-                                @(metric?.NfAge25_34 is null ? "—" : (metric.NfAge25_34.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nfage35">
-                                @(metric?.NfAge35_44 is null ? "—" : (metric.NfAge35_44.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nfage45">
-                                @(metric?.NfAge45_54 is null ? "—" : (metric.NfAge45_54.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nfage55">
-                                @(metric?.NfAge55Plus is null ? "—" : (metric.NfAge55Plus.Value * 100).ToString("0.0") + "%")
-                            </td>
+                            
 
-                            <td data-col="nfcountry" class="cell-wrap">
-                                @(metric?.NfCountries is { Count: > 0 }
-                                    ? string.Join(", ", metric.NfCountries.Select(kv => kv.Key + " " + (kv.Value * 100).ToString("0.0") + "%"))
-                                    : "—")
-                            </td>
+                            
                         </tr>
                     }
                 }
@@ -647,18 +592,17 @@
         // =========================================================
         // COLUMN VISIBILITY
         // =========================================================
-        (function () {
-            var key = 'contentlog_columns_visibility_v2';
+        window.contentlog_columns_visibility_v2_key = 'contentlog_columns_visibility_v2';
 
-            var defaults = {};
+        var contentlog_columns_visibility_v2_defaults = {};
 
-            document.querySelectorAll('.col-toggle').forEach(function (cb) {
-                var k = cb.getAttribute('data-col-key');
+        document.querySelectorAll('.col-toggle').forEach(function (cb) {
+            var k = cb.getAttribute('data-col-key');
 
-                if (k) {
-                    defaults[k] = cb.checked;
-                }
-            });
+            if (k) {
+                contentlog_columns_visibility_v2_defaults[k] = cb.checked;
+            }
+        });
 
         // =========================================================
         // PRODUCTION METHOD TOGGLE -> SAVE VIA AJAX
@@ -673,8 +617,7 @@
             // disable to prevent double-click
             btn.disabled = true;
             var originalText = btn.textContent;
-            btn.textContent = '⏳';
-
+            btn.textContent = '⏳'
             fetch('/ContentLog/ToggleProductionMethod', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -714,17 +657,18 @@
             var state = {};
 
             try {
+                var storedKey = window.contentlog_columns_visibility_v2_key || 'contentlog_columns_visibility_v2';
                 state = JSON.parse(
-                    localStorage.getItem(key) || '{}'
+                    localStorage.getItem(storedKey) || '{}'
                 );
             }
             catch {
                 state = {};
             }
 
-            Object.keys(defaults).forEach(function (k) {
+            Object.keys(contentlog_columns_visibility_v2_defaults).forEach(function (k) {
                 if (state[k] === undefined) {
-                    state[k] = defaults[k];
+                    state[k] = contentlog_columns_visibility_v2_defaults[k];
                 }
             });
 
@@ -752,6 +696,43 @@
                 });
             }
 
+            function updateGroupHeaders() {
+                // Count visible columns per group based on style.display
+                function isVisible(el) {
+                    return el.style.display !== 'none';
+                }
+
+                // KONTEN: 4 fixed (No, Tanggal, Jenis Konten, Judul) + configurable (production, pic, link)
+                var contentVisible = 4; // Always: No, Tanggal, Jenis Konten, Judul
+                var allCols = document.querySelectorAll('.content-table thead tr.column-head th[data-col]');
+                allCols.forEach(function (el) {
+                    if (['production', 'pic', 'link'].indexOf(el.getAttribute('data-col')) !== -1 && isVisible(el)) {
+                        contentVisible++;
+                    }
+                });
+
+                // METRICS: views, reach, avgwatch, fullwatch, likes, comments, save, share
+                var metricsVisible = 0;
+                allCols.forEach(function (el) {
+                    if (["views", "reach", "avgwatch", "fullwatch", "likes", "comments", "save", "share"].indexOf(el.getAttribute('data-col')) !== -1 && isVisible(el)) {
+                        metricsVisible++;
+                    }
+                });
+
+                // DATA PENONTON (%): follower, nonfollower, male, female, nongender, age18-55
+                var audienceVisible = 0;
+                allCols.forEach(function (el) {
+                    if (["follower", "nonfollower", "male", "female", "nongender", "age18", "age25", "age35", "age45", "age55"].indexOf(el.getAttribute('data-col')) !== -1 && isVisible(el)) {
+                        audienceVisible++;
+                    }
+                });
+
+                // Apply colspans
+                document.querySelector('[data-group-head="content"]').setAttribute('colspan', contentVisible);
+                document.querySelector('[data-group-head="metrics"]').setAttribute('colspan', metricsVisible);
+                document.querySelector('[data-group-head="audience"]').setAttribute('colspan', audienceVisible);
+            }
+
             document.addEventListener('change', function (e) {
                 if (!e.target.classList.contains('col-toggle')) {
                     return;
@@ -764,18 +745,19 @@
                 state[k] = e.target.checked;
 
                 localStorage.setItem(
-                    key,
+                    window.contentlog_columns_visibility_v2_key,
                     JSON.stringify(state)
                 );
 
                 applyState();
+                updateGroupHeaders();
             });
 
             applyState();
-        })();
+            updateGroupHeaders();
 
-        // =========================================================
-        // PIC SELECT -> SAVE VIA AJAX
+            // =========================================================
+            // PIC SELECT -> SAVE VIA AJAX
         // =========================================================
         document.addEventListener('change', function (e) {
             if (!e.target.classList.contains('pic-select')) {
