@@ -294,6 +294,9 @@ namespace KaleContentOps.Migrations
                     b.Property<long?>("Reach")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("Saves")
+                        .HasColumnType("bigint");
+
                     b.Property<long?>("Shares")
                         .HasColumnType("bigint");
 

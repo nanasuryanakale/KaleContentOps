@@ -18,6 +18,9 @@ public class DetailsMetrics
     public long? Shares { get; set; }
     public string? SharesPath { get; set; }
 
+    public long? Saves { get; set; }
+    public string? SavesPath { get; set; }
+
     public long? NewFollowers { get; set; }
     public string? NewFollowersPath { get; set; }
 

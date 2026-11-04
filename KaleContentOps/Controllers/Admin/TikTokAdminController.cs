@@ -88,6 +88,32 @@ namespace KaleContentOps.Controllers.Admin
             return Json(history);
         }
 
+        /// <summary>
+        /// Recovers a stale batch sync job by resetting stuck ProcessingDetails items
+        /// to Pending and transitioning the job to Queued so the background worker can reclaim it.
+        /// Only eligible when: (a) the job is in ProcessingDetails status, (b) ID collection is complete,
+        /// and (c) the processing leases have expired (older than the BatchSyncLeaseMinutes window).
+        /// This action is restricted to administrators with the TikTokAdminView permission.
+        /// </summary>
+        [HttpPost("RecoverStaleJob/{jobId:long}")]
+        [ValidateAntiForgeryToken]
+        [Authorize(Policy = "Permission.TikTokAdmin.View")]
+        public async Task<IActionResult> RecoverStaleJob(long jobId, CancellationToken cancellationToken = default)
+        {
+            var result = await _batchSyncService.RecoverStaleJobAsync(jobId, cancellationToken);
+            var (finalStatus, recoveredCount, alreadyRecovered) = result;
+            return Ok(new
+            {
+                jobId,
+                finalStatus = finalStatus.ToString(),
+                recoveredItems = recoveredCount,
+                alreadyRecovered = alreadyRecovered,
+                message = recoveredCount > 0
+                    ? $"{recoveredCount} stale ProcessingDetails items reset to Pending. Job set to Queued."
+                    : "Job leases are still valid; no items recovered. Job left in current state."
+            });
+        }
+
         [HttpGet("ControlledSingleItemPreview/{jobId:long}")]
         public async Task<IActionResult> ControlledSingleItemPreview(long jobId = TikTokBatchSyncService.ControlledTestJobId, CancellationToken cancellationToken = default)
         {

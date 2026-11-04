@@ -214,6 +214,7 @@ public class ContentLogController : Controller
                             && (m.Views != null || m.Reach != null || m.Likes != null || m.Comments != null
                                 || m.Shares != null || m.NewFollowers != null
                                 || m.AverageWatch != null || m.FullWatchRate != null
+                                || m.Saves != null
                                 || m.GmvAmount != null || m.GmvCurrency != null
                                 || m.ItemsSold != null || m.SkuOrders != null
                                 || m.AvgCustomers != null || m.ClickThroughRate != null
@@ -232,6 +233,7 @@ public class ContentLogController : Controller
                     NewFollowers = m.NewFollowers,
                     AverageWatch = m.AverageWatch,
                     FullWatchRate = m.FullWatchRate,
+                    Saves = m.Saves,
                     GmvAmount = m.GmvAmount,
                     GmvCurrency = m.GmvCurrency,
                     ItemsSold = m.ItemsSold,
@@ -257,8 +259,7 @@ public class ContentLogController : Controller
         // Parse the selected DemographicsJson into display fields (0..1 viewer shares).
         // Done after materialization to keep the query translatable to SQL (no client-eval in projection).
         foreach (var item in items)
-        {
-            // Resolve every metric scalar from the ordered snapshot list below: first non-null
+        {// Resolve every metric scalar from the ordered snapshot list below: first non-null
             // wins, which is exactly "the newest snapshot that carries this field" (CapturedAt DESC,
             // Id DESC - deterministic even when two snapshots share an instant). The projection never
             // sets these columns, so they start null and this loop is their single source of truth -
@@ -273,6 +274,7 @@ public class ContentLogController : Controller
                     item.Comments ??= snapshot.Comments;
                     item.Shares ??= snapshot.Shares;
                     item.NewFollowers ??= snapshot.NewFollowers;
+                    item.Saves ??= snapshot.Saves;
                     item.AverageWatch ??= snapshot.AverageWatch;
                     item.FullWatchRate ??= snapshot.FullWatchRate;
                     item.GmvAmount ??= snapshot.GmvAmount;
@@ -312,134 +314,23 @@ public class ContentLogController : Controller
                     item.Male = ReadDemographicShare(root, "male");
                     item.Female = ReadDemographicShare(root, "female");
                     item.NonGender = ReadDemographicShare(root, "no_gender");
-
-                    if (root.TryGetProperty("ages", out var ages) && ages.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        item.Age18_24 = ReadDemographicShare(ages, "18-24");
-                        item.Age25_34 = ReadDemographicShare(ages, "25-34");
-                        item.Age35_44 = ReadDemographicShare(ages, "35-44");
-                        item.Age45_54 = ReadDemographicShare(ages, "45-54");
-                        item.Age55Plus = ReadDemographicShare(ages, "55+");
-                    }
-
-                    // Countries: JSON object { "ID": 1.000, ... } (VIEWERS country_distribution).
-                    // Only present keys are surfaced; unknown shapes are skipped safely.
-                    if (root.TryGetProperty("countries", out var countries) && countries.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        item.Countries = countries.EnumerateObject()
-                            .Select(c => c.Value.ValueKind == System.Text.Json.JsonValueKind.Number && c.Value.TryGetDecimal(out var cv)
-                                ? new KeyValuePair<string, decimal>(c.Name, cv)
-                                : (KeyValuePair<string, decimal>?)null)
-                            .Where(kv => kv.HasValue)
-                            .Select(kv => kv!.Value)
-                            .OrderByDescending(kv => kv.Value)
-                            .ToList();
-                    }
-                }
-                catch (System.Text.Json.JsonException)
-                {
-                    // Corrupt/unknown demographics JSON: leave demographic fields null (UI shows "—")
-                }
+                    if (root.TryGetProperty("ages", out var ages) && ages.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {                        item.Age18_24 = ReadDemographicShare(ages, "18-24");                        item.Age25_34 = ReadDemographicShare(ages, "25-34");                        item.Age35_44 = ReadDemographicShare(ages, "35-44");                        item.Age45_54 = ReadDemographicShare(ages, "45-54");                        item.Age55Plus = ReadDemographicShare(ages, "55+");                    }
+                    // Countries: JSON object { "ID": 1.000, ... } (VIEWERS country_distribution).                    // Only present keys are surfaced; unknown shapes are skipped safely.                    if (root.TryGetProperty("countries", out var countries) && countries.ValueKind == System.Text.Json.JsonValueKind.Object)                    {                        item.Countries = countries.EnumerateObject()                            .Select(c => c.Value.ValueKind == System.Text.Json.JsonValueKind.Number && c.Value.TryGetDecimal(out var cv)                                ? new KeyValuePair<string, decimal>(c.Name, cv)                                : (KeyValuePair<string, decimal>?)null)                            .Where(kv => kv.HasValue)                            .Select(kv => kv!.Value)                            .OrderByDescending(kv => kv.Value)                            .ToList();                    }                }                catch (System.Text.Json.JsonException)                {                    // Corrupt/unknown demographics JSON: leave demographic fields null (UI shows "—")                }
             }
 
-            // NEW_FOLLOWER demographics: same serialized shape as VIEWERS but a separate
-            // TikTok viewer_profile population - parsed into its own Nf* fields only, so the
-            // two populations can never cross-populate each other's display fields.
-            item.NewFollowerDemographicsJson = null;
+            // NEW_FOLLOWER demographics: same serialized shape as VIEWERS but a separate            // TikTok viewer_profile population - parsed into its own Nf* fields only, so the            // two populations can never cross-populate each other's display fields.            item.NewFollowerDemographicsJson = null;
             if (newFollowerDemographicCandidates.TryGetValue(item.Id, out var nfCandidates))
-            {
-                foreach (var candidate in nfCandidates)
-                {
-                    if (IsMeaningfulDemographics(candidate))
-                    {
-                        item.NewFollowerDemographicsJson = candidate;
-                        break;
-                    }
-                }
-            }
+            {                foreach (var candidate in nfCandidates)
+                {                    if (IsMeaningfulDemographics(candidate))                    {                        item.NewFollowerDemographicsJson = candidate;                        break;                    }                }            }
 
             if (!string.IsNullOrWhiteSpace(item.NewFollowerDemographicsJson))
-            {
-                try
-                {
-                    using var nfDoc = System.Text.Json.JsonDocument.Parse(item.NewFollowerDemographicsJson);
-                    var nfRoot = nfDoc.RootElement;
+            {                try                {                    using var nfDoc = System.Text.Json.JsonDocument.Parse(item.NewFollowerDemographicsJson);                    var nfRoot = nfDoc.RootElement;
 
-                    item.NfMale = ReadDemographicShare(nfRoot, "male");
-                    item.NfFemale = ReadDemographicShare(nfRoot, "female");
-                    item.NfNonGender = ReadDemographicShare(nfRoot, "no_gender");
-
-                    if (nfRoot.TryGetProperty("ages", out var nfAges) && nfAges.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        item.NfAge18_24 = ReadDemographicShare(nfAges, "18-24");
-                        item.NfAge25_34 = ReadDemographicShare(nfAges, "25-34");
-                        item.NfAge35_44 = ReadDemographicShare(nfAges, "35-44");
-                        item.NfAge45_54 = ReadDemographicShare(nfAges, "45-54");
-                        item.NfAge55Plus = ReadDemographicShare(nfAges, "55+");
-                    }
-
-                    if (nfRoot.TryGetProperty("countries", out var nfCountries) && nfCountries.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        item.NfCountries = nfCountries.EnumerateObject()
-                            .Select(c => c.Value.ValueKind == System.Text.Json.JsonValueKind.Number && c.Value.TryGetDecimal(out var cv)
-                                ? new KeyValuePair<string, decimal>(c.Name, cv)
-                                : (KeyValuePair<string, decimal>?)null)
-                            .Where(kv => kv.HasValue)
-                            .Select(kv => kv!.Value)
-                            .OrderByDescending(kv => kv.Value)
-                            .ToList();
-                    }
-                }
-                catch (System.Text.Json.JsonException)
-                {
-                    // Corrupt/unknown NEW_FOLLOWER JSON: leave Nf* fields null (UI shows "—")
-                }
-            }
-
-            // Hashtags: JSON array of strings
-            if (!string.IsNullOrWhiteSpace(item.HashtagsJson))
-            {
-                try
-                {
-                    using var tagsDoc = System.Text.Json.JsonDocument.Parse(item.HashtagsJson);
-                    if (tagsDoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-                    {
-                        item.Hashtags = tagsDoc.RootElement.EnumerateArray()
-                            .Select(t => t.GetString())
-                            .Where(t => !string.IsNullOrWhiteSpace(t))
-                            .Select(t => t!)
-                            .ToList();
-                    }
-                }
-                catch (System.Text.Json.JsonException)
-                {
-                    // leave null
-                }
-            }
-
-            // Products: JSON array of { id, name }
-            if (!string.IsNullOrWhiteSpace(item.ProductsJson))
-            {
-                try
-                {
-                    using var prodDoc = System.Text.Json.JsonDocument.Parse(item.ProductsJson);
-                    if (prodDoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-                    {
-                        item.Products = prodDoc.RootElement.EnumerateArray()
-                            .Where(p => p.ValueKind == System.Text.Json.JsonValueKind.Object)
-                            .Select(p => new ContentLogProductItem
-                            {
-                                Id = p.TryGetProperty("id", out var pid) && pid.ValueKind == System.Text.Json.JsonValueKind.String ? pid.GetString() : null,
-                                Name = p.TryGetProperty("name", out var pname) && pname.ValueKind == System.Text.Json.JsonValueKind.String ? pname.GetString() : null
-                            })
-                            .ToList();
-                    }
-                }
-                catch (System.Text.Json.JsonException)
-                {
-                    // leave null
-                }
-            }
+                    item.NfMale = ReadDemographicShare(nfRoot, "male");                    item.NfFemale = ReadDemographicShare(nfRoot, "female");                    item.NfNonGender = ReadDemographicShare(nfRoot, "no_gender");
+                    if (nfRoot.TryGetProperty("ages", out var nfAges) && nfAges.ValueKind == System.Text.Json.JsonValueKind.Object)                    {                        item.NfAge18_24 = ReadDemographicShare(nfAges, "18-24");                        item.NfAge25_34 = ReadDemographicShare(nfAges, "25-34");                        item.NfAge35_44 = ReadDemographicShare(nfAges, "35-44");                        item.NfAge45_54 = ReadDemographicShare(nfAges, "45-54");                        item.NfAge55Plus = ReadDemographicShare(nfAges, "55+");                    }                    if (nfRoot.TryGetProperty("countries", out var nfCountries) && nfCountries.ValueKind == System.Text.Json.JsonValueKind.Object)                    {                        item.NfCountries = nfCountries.EnumerateObject()                            .Select(c => c.Value.ValueKind == System.Text.Json.JsonValueKind.Number && c.Value.TryGetDecimal(out var cv)                                ? new KeyValuePair<string, decimal>(c.Name, cv)                                : (KeyValuePair<string, decimal>?)null)                            .Where(kv => kv.HasValue)                            .Select(kv => kv!.Value)                            .OrderByDescending(kv => kv.Value)                            .ToList();                    }                }                catch (System.Text.Json.JsonException)                {                    // Corrupt/unknown NEW_FOLLOWER JSON: leave Nf* fields null (UI shows "—")                }            }
+            // Hashtags: JSON array of strings            if (!string.IsNullOrWhiteSpace(item.HashtagsJson))            {                try                {                    using var tagsDoc = System.Text.Json.JsonDocument.Parse(item.HashtagsJson);                    if (tagsDoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)                    {                        item.Hashtags = tagsDoc.RootElement.EnumerateArray()                            .Select(t => t.GetString())                            .Where(t => !string.IsNullOrWhiteSpace(t))                            .Select(t => t!)                            .ToList();                    }                }                catch (System.Text.Json.JsonException)                {                    // leave null                }            }
+            // Products: JSON array of { id, name }            if (!string.IsNullOrWhiteSpace(item.ProductsJson))            {                try                {                    using var prodDoc = System.Text.Json.JsonDocument.Parse(item.ProductsJson);                    if (prodDoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)                    {                        item.Products = prodDoc.RootElement.EnumerateArray()                            .Where(p => p.ValueKind == System.Text.Json.JsonValueKind.Object)                            .Select(p => new ContentLogProductItem                            {                                Id = p.TryGetProperty("id", out var pid) && pid.ValueKind == System.Text.Json.JsonValueKind.String ? pid.GetString() : null,                                Name = p.TryGetProperty("name", out var pname) && pname.ValueKind == System.Text.Json.JsonValueKind.String ? pname.GetString() : null                            })                            .ToList();                    }                }                catch (System.Text.Json.JsonException)                {                    // leave null                }            }
         }
 
         var contentTypes = await _db.ContentTypes.Where(ct => ct.IsActive).OrderBy(ct => ct.Name).ToListAsync();
@@ -491,6 +382,7 @@ public class ContentLogController : Controller
         public long? NewFollowers { get; set; }
         public decimal? AverageWatch { get; set; }
         public decimal? FullWatchRate { get; set; }
+        public long? Saves { get; set; }
         public decimal? GmvAmount { get; set; }
         public string? GmvCurrency { get; set; }
         public long? ItemsSold { get; set; }

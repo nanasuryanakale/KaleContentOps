@@ -15,8 +15,8 @@ public class ContentMetric
     public long? Comments { get; set; }
 
     public long? Shares { get; set; }
-
-    public long? NewFollowers { get; set; }
+    public long? Saves { get; set; }
+    public long? NewFollowers { get; set; }
 
     public decimal? AverageWatch { get; set; }
 

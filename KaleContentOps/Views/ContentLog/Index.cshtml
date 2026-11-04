@@ -218,7 +218,7 @@
                 @if (!Model.Items.Any())
                 {
                 <tr>
-                    <td colspan="25" class="empty-cell">
+                    <td colspan="17" class="empty-cell" id="empty-state-row">
                             Belum ada data Content Log.
                         </td>
                     </tr>
@@ -419,11 +419,10 @@
                             </td>
 
                             <td data-col="follower">
-                                @(metric?.NewFollowers?.ToString("N0") ?? "—")
+                                —
                             </td>
-
                             <td data-col="nonfollower">
-                                @(metric?.NonFollowers?.ToString("N0") ?? "—")
+                                —
                             </td>
 
                             <td data-col="male">
@@ -727,10 +726,10 @@
                     }
                 });
 
-                // Apply colspans
-                document.querySelector('[data-group-head="content"]').setAttribute('colspan', contentVisible);
+                // Apply colspans                document.querySelector('[data-group-head="content"]').setAttribute('colspan', contentVisible);
                 document.querySelector('[data-group-head="metrics"]').setAttribute('colspan', metricsVisible);
                 document.querySelector('[data-group-head="audience"]').setAttribute('colspan', audienceVisible);
+                // Dynamic empty state colspan: KONTEN(7) + METRICS(6) + DATA PENONTON(4) = 17 total                var emptyStateRow = document.getElementById('empty-state-row');                if (emptyStateRow) {                    emptyStateRow.setAttribute('colspan', contentVisible + metricsVisible + audienceVisible);                }
             }
 
             document.addEventListener('change', function (e) {

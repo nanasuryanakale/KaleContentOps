@@ -516,34 +516,21 @@ public class TikTokDetailsSyncService
                 if (_videoService is TikTokVideoService concrete)
                 {
                     var dm = concrete.ParseDetailsMetrics(d);
-                    var metric = concrete.MapDetailsMetricsToContentMetric(dm, log.Id);
+                    var metric = concrete.MapDetailsMetricsToContentMetric(dm, log.Id);var refreshedLog = await _db.ContentLogs.FindAsync(new object[] { log.Id }, cancellationToken: cancellationToken);
+                    var reclassifiedTypeId = ContentTypeClassifier.TryClassify(refreshedLog.IsLive, refreshedLog.HasCommerce, metric.ProductsJson);
 
                     if (metric != null && (metric.Views.HasValue || metric.Likes.HasValue || metric.Comments.HasValue || metric.Shares.HasValue || metric.NewFollowers.HasValue || metric.Reach.HasValue || metric.AverageWatch.HasValue || metric.FullWatchRate.HasValue || !string.IsNullOrWhiteSpace(metric.DemographicsJson) || !string.IsNullOrWhiteSpace(metric.NewFollowerDemographicsJson)))
                     {
-                        _db.ContentMetrics.Add(metric);
-                        await _db.SaveChangesAsync(cancellationToken);
-
-                        // After new metric is saved with potentially ProductsJson, re-classify ContentType
-                        // This ensures KK vs NON-KK classification is determined based on actual product link presence.
-                        // Only classify when a deterministic signal exists (IsLive/HasCommerce/ProductsJson) and
-                        // only persist an actual change - same convention as BackfillContentTypeService
-                        // ("tidak membuat klasifikasi fiktif jika informasi determinan tidak tersedia").
-                        var refreshedLog = await _db.ContentLogs.FindAsync(new object[] { log.Id }, cancellationToken: cancellationToken);
-                        if (refreshedLog != null)
-                        {
-                            var reclassifiedTypeId = ContentTypeClassifier.TryClassify(refreshedLog.IsLive, refreshedLog.HasCommerce, metric.ProductsJson);
-                            if (reclassifiedTypeId.HasValue && reclassifiedTypeId != refreshedLog.ContentTypeId)
-                            {
-                                refreshedLog.ContentTypeId = reclassifiedTypeId;
-                                await _db.SaveChangesAsync(cancellationToken);
-                            }
-                        }
-
-                        outInfo.Synced = true;
-                        outInfo.NewMetricAdded = true;
-                        outInfo.DemographicsPopulated = !string.IsNullOrWhiteSpace(metric.DemographicsJson) || !string.IsNullOrWhiteSpace(metric.NewFollowerDemographicsJson);
-                        return outInfo;
-                    }
+                        // UPSERT: check if a ContentMetric already exists for this ContentLogId                        var existingMetric = await _db.ContentMetrics.FirstOrDefaultAsync(m => m.ContentLogId == log.Id, cancellationToken);
+                        if (existingMetric != null)
+                        {                            // UPDATE path: preserve existing values for fields not present in the API response                            existingMetric.Views = metric.Views ?? existingMetric.Views;                            existingMetric.Likes = metric.Likes ?? existingMetric.Likes;                            existingMetric.Comments = metric.Comments ?? existingMetric.Comments;                            existingMetric.Shares = metric.Shares ?? existingMetric.Shares;                            existingMetric.Saves = metric.Saves.HasValue ? metric.Saves.Value : existingMetric.Saves;                            existingMetric.Reach = metric.Reach ?? existingMetric.Reach;                            existingMetric.AverageWatch = metric.AverageWatch ?? existingMetric.AverageWatch;                            existingMetric.FullWatchRate = metric.FullWatchRate ?? existingMetric.FullWatchRate;                            existingMetric.NewFollowers = metric.NewFollowers ?? existingMetric.NewFollowers;                            existingMetric.DemographicsJson = metric.DemographicsJson ?? existingMetric.DemographicsJson;                            existingMetric.NewFollowerDemographicsJson = metric.NewFollowerDemographicsJson ?? existingMetric.NewFollowerDemographicsJson;                            // Re-classify ContentType when product link presence changes                            if (reclassifiedTypeId.HasValue && reclassifiedTypeId != refreshedLog.ContentTypeId)
+                            {                                refreshedLog.ContentTypeId = reclassifiedTypeId;                                await _db.SaveChangesAsync(cancellationToken);                            }                            await _db.SaveChangesAsync(cancellationToken);
+                            outInfo.Synced = true;                            outInfo.NewMetricAdded = false;                            outInfo.DemographicsPopulated = !string.IsNullOrWhiteSpace(metric.DemographicsJson) || !string.IsNullOrWhiteSpace(metric.NewFollowerDemographicsJson);                            return outInfo;                        }                        else                        {                            // INSERT path: new ContentMetric for this ContentLog                            _db.ContentMetrics.Add(metric);
+				await _db.SaveChangesAsync(cancellationToken);
+                            // After new metric is saved with potentially ProductsJson, re-classify ContentType                            // This ensures KK vs NON-KK classification is determined based on actual product link presence.                            // Only classify when a deterministic signal exists (IsLive/HasCommerce/ProductsJson) and                            // only persist an actual change - same convention as BackfillContentService                            // ("tidak membuat klasifikasi fiktif jika informasi determinan tidak tersedia").                            if (refreshedLog != null)
+                            {                                if (reclassifiedTypeId.HasValue && reclassifiedTypeId != refreshedLog.ContentTypeId)
+                                {                                    refreshedLog.ContentTypeId = reclassifiedTypeId;                                    await _db.SaveChangesAsync(cancellationToken);                                }                            }
+				outInfo.Synced = true;                            outInfo.NewMetricAdded = true;                            outInfo.DemographicsPopulated = !string.IsNullOrWhiteSpace(metric.DemographicsJson) || !string.IsNullOrWhiteSpace(metric.NewFollowerDemographicsJson);                            return outInfo;                        }                    }
 
                     // Bounded, credential-free diagnostic: a 200 response that yielded NO storable
                     // metric is exactly where "details sync never produced a row" used to disappear

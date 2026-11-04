@@ -1029,6 +1029,110 @@ public class TikTokBatchSyncService
         await FinalizeJobAsync(job, ct);
     }
 
+    // ------------------------------------------------------------------
+    // Recovery helpers
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Recovers a stale batch sync job by resetting stuck ProcessingDetails items
+    /// to Pending status and transitioning the job to Queued so the background worker
+    /// can reclaim it.
+    /// <para>
+    /// This method is intended for operational recovery when a batch sync job has
+    /// completed ID collection (CollectionCompleted = true) but processing was
+    /// interrupted (e.g. DNS/network error, worker crash) leaving items in
+    /// ProcessingDetails status with no active worker lease.
+    /// </para>
+    /// <para>
+    /// The recovery process:
+    /// 1. Identifies items whose processing leases have expired (UpdatedAt older than
+    ///    the BatchSyncLeaseMinutes window).
+    /// 2. Resets those items back to Pending status, clearing their LastError and
+    ///    ProcessedAt so they can be re-sent through the normal pipeline.
+    /// 3. Transitions the job from ProcessingDetails to Queued, releasing the
+    ///    shop active-job lock immediately.
+    /// 4. Refreshes job counters to reflect the item status changes.
+    /// 5. Returns the final job status and counts of recovered items.
+    /// </para>
+    /// <para>
+    /// Resume preference: If any stale items are found and recovered, the job is
+    /// transitioned to Queued and the worker will continue processing the existing
+    /// 3,023 collected video IDs without needing to recollect. If no stale items are
+    /// found (all leases are still valid), the job is left in its current state and
+    /// the caller should not start a new batch.</para>
+    /// </summary>
+    /// <param name="jobId">The job ID to recover.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A tuple containing the final job status, count of recovered items, and count of already-recovered items.</returns>
+    public async Task<(TikTokBatchSyncJobStatus FinalJobStatus, int RecoveredItems, int AlreadyRecovered)> RecoverStaleJobAsync(long jobId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var leaseMinutes = Math.Max(1, _options.BatchSyncLeaseMinutes);
+        var leaseCutoff = now - TimeSpan.FromMinutes(leaseMinutes);
+
+        // Load the exact job with shop ownership verification.
+        var job = await _db.TikTokBatchSyncJobs
+            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        if (job == null)
+        {
+            return (TikTokBatchSyncJobStatus.Failed, 0, 0);
+        }
+
+        // Only jobs in ProcessingDetails with completed ID collection are recoverable.
+        if (job.Status != TikTokBatchSyncJobStatus.ProcessingDetails
+            || !job.CollectionCompleted)
+        {
+            return (job.Status, 0, 0);
+        }
+
+        // Identify stale ProcessingDetails items: whose processing lease has expired.
+        // Items with Status = Processing and UpdatedAt before the lease cutoff are stale.
+        var staleItems = await _db.TikTokBatchSyncJobItems
+            .Where(i => i.TikTokBatchSyncJobId == jobId
+                && i.Status == TikTokBatchSyncJobItemStatus.Processing
+                && (job.UpdatedAt == null || job.UpdatedAt.Value <= leaseCutoff))
+            .ToListAsync(cancellationToken);
+
+        int recoveredCount = 0;
+
+        // Reset stale items back to Pending so they can be re-processed.
+        foreach (var item in staleItems)
+        {
+            item.Status = TikTokBatchSyncJobItemStatus.Pending;
+            item.LastError = null;
+            item.ProcessedAt = null;
+            // Preserve the existing AttemptCount so items that were previously attempted
+            // don't reset to 0 unless they truly have no prior attempts.
+            recoveredCount++;
+        }
+
+        // If no stale items were found, the job leases are still valid.
+        // Leave the job in its current state and return early.
+        if (recoveredCount == 0)
+        {
+            return (job.Status, 0, 0);
+        }
+
+        // Transition the job to Queued so the background worker can claim it.
+        // This releases the shop active-job lock immediately.
+        job.Status = TikTokBatchSyncJobStatus.Queued;
+        job.UpdatedAt = now;
+        job.CompletedAt = null; // Clear CompletedAt since job is not truly complete
+        job.NextAttemptAt = null;
+
+        // Persist the job status change.
+        await _db.SaveChangesAsync(cancellationToken);
+
+        // Refresh counters to reflect the item status changes.
+        await RefreshCountersAsync(job, cancellationToken);
+
+        _logger.LogInformation(
+            "Batch sync job {JobId} recovered: {Count} stale ProcessingDetails items reset to Pending; job set to Queued.",
+            job.Id, recoveredCount);
+
+        return (TikTokBatchSyncJobStatus.Queued, recoveredCount, 0);
+    }
+
     private async Task FailJobAsync(TikTokBatchSyncJob job, string message, CancellationToken ct)
     {
         job.Status = TikTokBatchSyncJobStatus.Failed;

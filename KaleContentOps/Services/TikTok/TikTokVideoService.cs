@@ -86,6 +86,7 @@ public class TikTokVideoService : ITikTokVideoService
                 long viewsSum = 0;
                 long likesSum = 0;
                 long commentsSum = 0;
+                long savesSum = 0;
                 long sharesSum = 0;
                 long newFollowersSum = 0;
 
@@ -93,6 +94,7 @@ public class TikTokVideoService : ITikTokVideoService
                 bool viewsFound = false;
                 bool likesFound = false;
                 bool commentsFound = false;
+                bool savesFound = false;
                 bool sharesFound = false;
                 bool newFollowersFound = false;
 
@@ -116,6 +118,7 @@ public class TikTokVideoService : ITikTokVideoService
                     var l = ReadLong(traffic, "likes", "like_count"); if (l.HasValue) { likesSum += l.Value; likesFound = true; if (result.LikesPath == null) result.LikesPath = "data.performance.intervals[].traffic.likes"; }
                     var c = ReadLong(traffic, "comments", "comment_count"); if (c.HasValue) { commentsSum += c.Value; commentsFound = true; if (result.CommentsPath == null) result.CommentsPath = "data.performance.intervals[].traffic.comments"; }
                     var s = ReadLong(traffic, "shares", "share_count"); if (s.HasValue) { sharesSum += s.Value; sharesFound = true; if (result.SharesPath == null) result.SharesPath = "data.performance.intervals[].traffic.shares"; }
+                    var sv = ReadLong(traffic, "saves", "save_count"); if (sv.HasValue) { savesSum += sv.Value; savesFound = true; if (result.SavesPath == null) result.SavesPath = "data.performance.intervals[].traffic.saves"; }
                     var nf = ReadLong(traffic, "new_followers", "new_follower_count"); if (nf.HasValue) { newFollowersSum += nf.Value; newFollowersFound = true; if (result.NewFollowersPath == null) result.NewFollowersPath = "data.performance.intervals[].traffic.new_followers"; }
 
                     var aw = ReadDecimal(traffic, "average_watch_time", "avg_watch_time_ms"); if (aw.HasValue) { avgWatchFound = true; avgWatchSum += aw.Value; if (result.AverageWatchPath == null) result.AverageWatchPath = "data.performance.intervals[].traffic.average_watch_time"; }
@@ -132,6 +135,7 @@ public class TikTokVideoService : ITikTokVideoService
                     if (commentsFound) result.Comments = commentsSum;
                     if (sharesFound) result.Shares = sharesSum;
                     if (newFollowersFound) result.NewFollowers = newFollowersSum;
+                    if (savesFound) result.Saves = savesSum;
 
                     if (avgWatchFound) result.AverageWatch = avgWatchSum; // sum of avg may not be meaningful; preserve presence
                     if (fullWatchFound) result.FullWatchRate = fullWatchSum;
@@ -304,6 +308,7 @@ public class TikTokVideoService : ITikTokVideoService
             Likes = dm.Likes,
             Comments = dm.Comments,
             Shares = dm.Shares,
+            Saves = dm.Saves,
             NewFollowers = dm.NewFollowers,
             Reach = dm.Reach,
             AverageWatch = dm.AverageWatch,
