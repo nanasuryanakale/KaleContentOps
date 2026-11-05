@@ -264,32 +264,11 @@ public class ContentLogController : Controller
             // Id DESC - deterministic even when two snapshots share an instant). The projection never
             // sets these columns, so they start null and this loop is their single source of truth -
             // including HashtagsJson/ProductsJson, which are parsed further down in this same loop.
-            if (metricSnapshots.TryGetValue(item.Id, out var metricCandidates))
+            if (metricSnapshots.TryGetValue(item.Id, out var metricCandidates) && metricCandidates.Count > 0)
             {
-                foreach (var snapshot in metricCandidates)
-                {
-                    item.Views ??= snapshot.Views;
-                    item.Reach ??= snapshot.Reach;
-                    item.Likes ??= snapshot.Likes;
-                    item.Comments ??= snapshot.Comments;
-                    item.Shares ??= snapshot.Shares;
-                    item.NewFollowers ??= snapshot.NewFollowers;
-                    item.Saves ??= snapshot.Saves;
-                    item.AverageWatch ??= snapshot.AverageWatch;
-                    item.FullWatchRate ??= snapshot.FullWatchRate;
-                    item.GmvAmount ??= snapshot.GmvAmount;
-                    item.GmvCurrency ??= snapshot.GmvCurrency;
-                    item.ItemsSold ??= snapshot.ItemsSold;
-                    item.SkuOrders ??= snapshot.SkuOrders;
-                    item.AvgCustomers ??= snapshot.AvgCustomers;
-                    item.ClickThroughRate ??= snapshot.ClickThroughRate;
-                    item.VideoFinishRate ??= snapshot.VideoFinishRate;
-                    item.VToLClicks ??= snapshot.VToLClicks;
-                    item.VToLRate ??= snapshot.VToLRate;
-                    item.HashtagsJson ??= snapshot.HashtagsJson;
-                    item.ProductsJson ??= snapshot.ProductsJson;
-                }
-            }
+                var newest = metricCandidates[0]; // Already ordered CapturedAt DESC, Id DESC
+
+                item.Views = newest.Views;                item.Reach = newest.Reach;                item.Likes = newest.Likes;                item.Comments = newest.Comments;                item.Shares = newest.Shares;                item.NewFollowers = newest.NewFollowers;                item.Saves = newest.Saves;                item.AverageWatch = newest.AverageWatch;                item.FullWatchRate = newest.FullWatchRate;                item.GmvAmount = newest.GmvAmount;                item.GmvCurrency = newest.GmvCurrency;                item.ItemsSold = newest.ItemsSold;                item.SkuOrders = newest.SkuOrders;                item.AvgCustomers = newest.AvgCustomers;                item.ClickThroughRate = newest.ClickThroughRate;                item.VideoFinishRate = newest.VideoFinishRate;                item.VToLClicks = newest.VToLClicks;                item.VToLRate = newest.VToLRate;                item.HashtagsJson = newest.HashtagsJson;                item.ProductsJson = newest.ProductsJson;            }
 
             item.DemographicsJson = null;
             if (viewersDemographicCandidates.TryGetValue(item.Id, out var candidates))
